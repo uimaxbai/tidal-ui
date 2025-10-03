@@ -34,7 +34,7 @@
 <div class="quality-selector relative">
 	<button
 		onclick={toggleDropdown}
-		class="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors"
+		class="flex items-center gap-2 rounded-lg bg-gray-800 px-4 py-2 text-white transition-colors hover:bg-gray-700"
 		aria-label="Select audio quality"
 	>
 		<Settings size={18} />
@@ -45,25 +45,25 @@
 
 	{#if isOpen}
 		<div
-			class="absolute right-0 mt-2 w-64 bg-gray-800 rounded-lg shadow-lg border border-gray-700 z-50 overflow-hidden"
+			class="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
 		>
-			<div class="p-2 border-b border-gray-700">
+			<div class="border-b border-gray-700 p-2">
 				<h3 class="text-sm font-semibold text-white">Audio Quality</h3>
 			</div>
 			<div class="py-1">
 				{#each qualities as quality}
 					<button
 						onclick={() => selectQuality(quality.value)}
-						class="w-full flex items-start gap-3 px-4 py-3 hover:bg-gray-700 transition-colors text-left"
+						class="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-700"
 					>
-						<div class="flex-shrink-0 w-5 h-5 flex items-center justify-center mt-0.5">
+						<div class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center">
 							{#if $playerStore.quality === quality.value}
 								<Check size={18} class="text-blue-500" />
 							{/if}
 						</div>
 						<div class="flex-1">
-							<div class="text-white font-medium text-sm">{quality.label}</div>
-							<div class="text-gray-400 text-xs">{quality.description}</div>
+							<div class="text-sm font-medium text-white">{quality.label}</div>
+							<div class="text-xs text-gray-400">{quality.description}</div>
 						</div>
 					</button>
 				{/each}

@@ -143,3 +143,9 @@ export interface StreamData {
 	trackInfo: TrackInfo;
 	songInfo: Track;
 }
+
+export interface TrackLookup {
+	track: Track;
+	info: TrackInfo;
+	originalTrackUrl?: string;
+}

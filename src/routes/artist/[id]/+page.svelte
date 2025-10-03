@@ -25,7 +25,7 @@
 			error = null;
 			const data = await tidalAPI.getArtist(id);
 			artist = data;
-			
+
 			// Get artist picture
 			if (artist.picture) {
 				artistImage = tidalAPI.getArtistPictureUrl(artist.picture);
@@ -45,16 +45,16 @@
 
 {#if isLoading}
 	<div class="flex items-center justify-center py-24">
-		<div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+		<div class="h-16 w-16 animate-spin rounded-full border-b-2 border-blue-500"></div>
 	</div>
 {:else if error}
-	<div class="max-w-2xl mx-auto py-12">
-		<div class="bg-red-900/20 border border-red-900 rounded-lg p-6">
-			<h2 class="text-xl font-semibold text-red-400 mb-2">Error Loading Artist</h2>
+	<div class="mx-auto max-w-2xl py-12">
+		<div class="rounded-lg border border-red-900 bg-red-900/20 p-6">
+			<h2 class="mb-2 text-xl font-semibold text-red-400">Error Loading Artist</h2>
 			<p class="text-red-300">{error}</p>
 			<button
 				onclick={() => goto('/')}
-				class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+				class="mt-4 rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
 			>
 				Go Home
 			</button>
@@ -65,20 +65,22 @@
 		<!-- Back Button -->
 		<button
 			onclick={() => window.history.back()}
-			class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
 		<!-- Artist Header -->
-		<div class="flex flex-col md:flex-row gap-8 items-start md:items-end">
+		<div class="flex flex-col items-start gap-8 md:flex-row md:items-end">
 			<!-- Artist Picture -->
-			<div class="w-full md:w-80 aspect-square rounded-full overflow-hidden shadow-2xl flex-shrink-0 bg-gray-800">
+			<div
+				class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-full bg-gray-800 shadow-2xl md:w-80"
+			>
 				{#if artistImage}
-					<img src={artistImage} alt={artist.name} class="w-full h-full object-cover" />
+					<img src={artistImage} alt={artist.name} class="h-full w-full object-cover" />
 				{:else}
-					<div class="w-full h-full flex items-center justify-center">
+					<div class="flex h-full w-full items-center justify-center">
 						<User size={120} class="text-gray-600" />
 					</div>
 				{/if}
@@ -86,18 +88,20 @@
 
 			<!-- Artist Info -->
 			<div class="flex-1">
-				<p class="text-sm text-gray-400 mb-2">ARTIST</p>
-				<h1 class="text-4xl md:text-6xl font-bold mb-4">{artist.name}</h1>
+				<p class="mb-2 text-sm text-gray-400">ARTIST</p>
+				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{artist.name}</h1>
 
-				<div class="flex flex-wrap items-center gap-4 mb-6">
+				<div class="mb-6 flex flex-wrap items-center gap-4">
 					{#if artist.popularity}
 						<div class="text-sm text-gray-400">
-							Popularity: <span class="text-white font-semibold">{artist.popularity}</span>
+							Popularity: <span class="font-semibold text-white">{artist.popularity}</span>
 						</div>
 					{/if}
 					{#if artist.artistTypes && artist.artistTypes.length > 0}
 						{#each artist.artistTypes as type}
-							<div class="px-3 py-1 bg-blue-900/30 text-blue-400 rounded-full text-xs font-semibold">
+							<div
+								class="rounded-full bg-blue-900/30 px-3 py-1 text-xs font-semibold text-blue-400"
+							>
 								{type}
 							</div>
 						{/each}
@@ -106,10 +110,10 @@
 
 				{#if artist.artistRoles && artist.artistRoles.length > 0}
 					<div class="mb-4">
-						<h3 class="text-sm font-semibold text-gray-400 mb-2">Roles</h3>
+						<h3 class="mb-2 text-sm font-semibold text-gray-400">Roles</h3>
 						<div class="flex flex-wrap gap-2">
 							{#each artist.artistRoles as role}
-								<div class="px-3 py-1 bg-gray-800 rounded-full text-xs text-gray-300">
+								<div class="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300">
 									{role.category}
 								</div>
 							{/each}
@@ -120,9 +124,9 @@
 		</div>
 
 		<!-- Additional Content -->
-		<div class="bg-yellow-900/20 border border-yellow-900 rounded-lg p-6 text-yellow-400 mt-8">
+		<div class="mt-8 rounded-lg border border-yellow-900 bg-yellow-900/20 p-6 text-yellow-400">
 			<p>Artist discography and tracks not available.</p>
-			<p class="text-sm mt-2 text-gray-400">
+			<p class="mt-2 text-sm text-gray-400">
 				To explore this artist's music, use the search feature to find their tracks and albums.
 			</p>
 		</div>
@@ -132,7 +136,7 @@
 				href={artist.url}
 				target="_blank"
 				rel="noopener noreferrer"
-				class="inline-block text-blue-400 hover:text-blue-300 text-sm"
+				class="inline-block text-sm text-blue-400 hover:text-blue-300"
 			>
 				View on TIDAL →
 			</a>

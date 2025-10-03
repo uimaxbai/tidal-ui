@@ -91,7 +91,6 @@ export const isPlaying = derived(playerStore, ($store) => $store.isPlaying);
 export const currentTime = derived(playerStore, ($store) => $store.currentTime);
 export const duration = derived(playerStore, ($store) => $store.duration);
 export const volume = derived(playerStore, ($store) => $store.volume);
-export const progress = derived(
-	playerStore,
-	($store) => ($store.duration > 0 ? ($store.currentTime / $store.duration) * 100 : 0)
+export const progress = derived(playerStore, ($store) =>
+	$store.duration > 0 ? ($store.currentTime / $store.duration) * 100 : 0
 );

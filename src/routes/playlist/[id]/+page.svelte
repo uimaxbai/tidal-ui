@@ -59,16 +59,16 @@
 
 {#if isLoading}
 	<div class="flex items-center justify-center py-24">
-		<div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+		<div class="h-16 w-16 animate-spin rounded-full border-b-2 border-blue-500"></div>
 	</div>
 {:else if error}
-	<div class="max-w-2xl mx-auto py-12">
-		<div class="bg-red-900/20 border border-red-900 rounded-lg p-6">
-			<h2 class="text-xl font-semibold text-red-400 mb-2">Error Loading Playlist</h2>
+	<div class="mx-auto max-w-2xl py-12">
+		<div class="rounded-lg border border-red-900 bg-red-900/20 p-6">
+			<h2 class="mb-2 text-xl font-semibold text-red-400">Error Loading Playlist</h2>
 			<p class="text-red-300">{error}</p>
 			<button
 				onclick={() => goto('/')}
-				class="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+				class="mt-4 rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
 			>
 				Go Home
 			</button>
@@ -79,50 +79,52 @@
 		<!-- Back Button -->
 		<button
 			onclick={() => window.history.back()}
-			class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
 		<!-- Playlist Header -->
-		<div class="flex flex-col md:flex-row gap-8">
+		<div class="flex flex-col gap-8 md:flex-row">
 			<!-- Playlist Cover -->
 			{#if playlist.image}
-				<div class="w-full md:w-80 aspect-square rounded-lg overflow-hidden shadow-2xl flex-shrink-0">
+				<div
+					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-80"
+				>
 					<img
 						src={tidalAPI.getCoverUrl(playlist.image, '640')}
 						alt={playlist.title}
-						class="w-full h-full object-cover"
+						class="h-full w-full object-cover"
 					/>
 				</div>
 			{/if}
 
 			<!-- Playlist Info -->
-			<div class="flex-1 flex flex-col justify-end">
-				<p class="text-sm text-gray-400 mb-2">PLAYLIST</p>
-				<h1 class="text-4xl md:text-6xl font-bold mb-4">{playlist.title}</h1>
+			<div class="flex flex-1 flex-col justify-end">
+				<p class="mb-2 text-sm text-gray-400">PLAYLIST</p>
+				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{playlist.title}</h1>
 
 				{#if playlist.description}
-					<p class="text-gray-300 mb-4">{playlist.description}</p>
+					<p class="mb-4 text-gray-300">{playlist.description}</p>
 				{/if}
 
-				<div class="flex items-center gap-2 mb-4">
+				<div class="mb-4 flex items-center gap-2">
 					{#if playlist.creator.picture}
 						<img
 							src={tidalAPI.getCoverUrl(playlist.creator.picture, '80')}
 							alt={playlist.creator.name}
-							class="w-8 h-8 rounded-full"
+							class="h-8 w-8 rounded-full"
 						/>
 					{:else}
-						<div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+						<div class="flex h-8 w-8 items-center justify-center rounded-full bg-gray-700">
 							<User size={16} class="text-gray-400" />
 						</div>
 					{/if}
 					<span class="text-sm text-gray-300">{playlist.creator.name}</span>
 				</div>
 
-				<div class="flex flex-wrap items-center gap-4 text-sm text-gray-400 mb-6">
+				<div class="mb-6 flex flex-wrap items-center gap-4 text-sm text-gray-400">
 					<div>{playlist.numberOfTracks} tracks</div>
 					{#if playlist.duration}
 						<div class="flex items-center gap-1">
@@ -131,7 +133,7 @@
 						</div>
 					{/if}
 					{#if playlist.type}
-						<div class="px-2 py-1 bg-purple-900/30 text-purple-400 rounded text-xs font-semibold">
+						<div class="rounded bg-purple-900/30 px-2 py-1 text-xs font-semibold text-purple-400">
 							{playlist.type}
 						</div>
 					{/if}
@@ -140,7 +142,7 @@
 				{#if tracks.length > 0}
 					<button
 						onclick={handlePlayAll}
-						class="flex items-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 rounded-full font-semibold transition-colors w-fit"
+						class="flex w-fit items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
 					>
 						<Play size={20} fill="currentColor" />
 						Play All
@@ -152,12 +154,12 @@
 		<!-- Promoted Artists -->
 		{#if playlist.promotedArtists && playlist.promotedArtists.length > 0}
 			<div>
-				<h3 class="text-sm font-semibold text-gray-400 mb-3">Featured Artists</h3>
+				<h3 class="mb-3 text-sm font-semibold text-gray-400">Featured Artists</h3>
 				<div class="flex flex-wrap gap-2">
 					{#each playlist.promotedArtists as artist}
 						<button
 							onclick={() => goto(`/artist/${artist.id}`)}
-							class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-full text-sm transition-colors"
+							class="rounded-full bg-gray-800 px-3 py-1.5 text-sm transition-colors hover:bg-gray-700"
 						>
 							{artist.name}
 						</button>
@@ -169,17 +171,17 @@
 		<!-- Tracks -->
 		{#if tracks.length > 0}
 			<div class="mt-8">
-				<h2 class="text-2xl font-bold mb-4">Tracks</h2>
+				<h2 class="mb-4 text-2xl font-bold">Tracks</h2>
 				<TrackList {tracks} />
 			</div>
 		{:else}
-			<div class="bg-gray-800 rounded-lg p-6 text-gray-400">
+			<div class="rounded-lg bg-gray-800 p-6 text-gray-400">
 				<p>No tracks in this playlist.</p>
 			</div>
 		{/if}
 
 		<!-- Metadata -->
-		<div class="text-xs text-gray-500 space-y-1">
+		<div class="space-y-1 text-xs text-gray-500">
 			{#if playlist.created}
 				<p>Created: {new Date(playlist.created).toLocaleDateString()}</p>
 			{/if}

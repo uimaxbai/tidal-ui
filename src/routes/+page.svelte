@@ -24,45 +24,44 @@
 
 <svelte:head>
 	<title>TIDAL UI - Privacy-focused Streaming</title>
-	<meta
-		name="description"
-		content="Privacy-focused, cross-platform Tidal streaming interface"
-	/>
+	<meta name="description" content="Privacy-focused, cross-platform Tidal streaming interface" />
 </svelte:head>
 
 <div class="space-y-8">
 	<!-- Hero Section -->
-	<div class="text-center py-12">
-		<h2 class="text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+	<div class="py-12 text-center">
+		<h2
+			class="mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-5xl font-bold text-transparent"
+		>
 			Welcome to TIDAL UI
 		</h2>
-		<p class="text-xl text-gray-400 max-w-2xl mx-auto">
+		<p class="mx-auto max-w-2xl text-xl text-gray-400">
 			Experience high-fidelity music streaming with support for Hi-Res lossless, MQA, Dolby Atmos,
 			and more. Privacy-focused and completely free.
 		</p>
 	</div>
 
 	<!-- Features -->
-	<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-		<div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-			<div class="text-blue-500 text-2xl mb-2">🎵</div>
-			<h3 class="text-lg font-semibold mb-2">High-Quality Audio</h3>
+	<div class="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+		<div class="rounded-lg border border-gray-700 bg-gray-800 p-6">
+			<div class="mb-2 text-2xl text-blue-500">🎵</div>
+			<h3 class="mb-2 text-lg font-semibold">High-Quality Audio</h3>
 			<p class="text-sm text-gray-400">
 				Stream in up to 24-bit, 192 kHz Hi-Res lossless quality with support for MQA and Dolby Atmos
 			</p>
 		</div>
 
-		<div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-			<div class="text-blue-500 text-2xl mb-2">🔒</div>
-			<h3 class="text-lg font-semibold mb-2">Privacy-Focused</h3>
+		<div class="rounded-lg border border-gray-700 bg-gray-800 p-6">
+			<div class="mb-2 text-2xl text-blue-500">🔒</div>
+			<h3 class="mb-2 text-lg font-semibold">Privacy-Focused</h3>
 			<p class="text-sm text-gray-400">
 				No tracking, no ads, no data collection. Just pure music streaming
 			</p>
 		</div>
 
-		<div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-			<div class="text-blue-500 text-2xl mb-2">📥</div>
-			<h3 class="text-lg font-semibold mb-2">Download Support</h3>
+		<div class="rounded-lg border border-gray-700 bg-gray-800 p-6">
+			<div class="mb-2 text-2xl text-blue-500">📥</div>
+			<h3 class="mb-2 text-lg font-semibold">Download Support</h3>
 			<p class="text-sm text-gray-400">
 				Download your favorite tracks in any quality for offline listening
 			</p>
@@ -77,4 +76,5 @@
 		onPlaylistSelect={handlePlaylistSelect}
 	/>
 </div>
+
 

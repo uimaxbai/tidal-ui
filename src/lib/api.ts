@@ -10,7 +10,8 @@ import type {
 	StreamData,
 	CoverImage,
 	Lyrics,
-	TrackInfo
+	TrackInfo,
+	TrackLookup
 } from './types';
 
 const API_BASE = API_CONFIG.baseUrl;
@@ -20,6 +21,62 @@ class TidalAPI {
 
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
+	}
+
+	private async delay(ms: number): Promise<void> {
+		await new Promise((resolve) => setTimeout(resolve, ms));
+	}
+
+	private parseTrackLookup(data: unknown): TrackLookup {
+		const entries = Array.isArray(data) ? data : [data];
+		let track: Track | undefined;
+		let info: TrackInfo | undefined;
+		let originalTrackUrl: string | undefined;
+
+		for (const entry of entries) {
+			if (!entry || typeof entry !== 'object') continue;
+			if (!track && 'album' in entry && 'artist' in entry && 'duration' in entry) {
+				track = entry as Track;
+				continue;
+			}
+			if (!info && 'manifest' in entry) {
+				info = entry as TrackInfo;
+				continue;
+			}
+			if (!originalTrackUrl && 'OriginalTrackUrl' in entry) {
+				const candidate = (entry as { OriginalTrackUrl?: unknown }).OriginalTrackUrl;
+				if (typeof candidate === 'string') {
+					originalTrackUrl = candidate;
+				}
+			}
+		}
+
+		if (!track || !info) {
+			throw new Error('Malformed track response');
+		}
+
+		return { track, info, originalTrackUrl };
+	}
+
+	private extractStreamUrlFromManifest(manifest: string): string | null {
+		try {
+			const decoded = atob(manifest);
+			try {
+				const parsed = JSON.parse(decoded) as { urls?: string[] };
+				if (parsed && Array.isArray(parsed.urls) && parsed.urls.length > 0) {
+					return parsed.urls[0] ?? null;
+				}
+			} catch (jsonError) {
+				// Ignore JSON parse failure and fall back to regex search
+				console.debug('Manifest JSON parse failed, falling back to pattern match', jsonError);
+			}
+
+			const match = decoded.match(/https?:\/\/[\w\-.~:?#[\]@!$&'()*+,;=%/]+/);
+			return match ? match[0] : null;
+		} catch (error) {
+			console.error('Failed to decode manifest:', error);
+			return null;
+		}
 	}
 
 	/**
@@ -66,15 +123,38 @@ class TidalAPI {
 	}
 
 	/**
-	 * Get track info and stream URL
+	 * Get track info and stream URL (with retries for quality fallback)
 	 */
-	async getTrack(id: number, quality: AudioQuality = 'LOSSLESS'): Promise<TrackInfo> {
-		const response = await this.fetch(
-			`${this.baseUrl}/track/?id=${id}&quality=${quality}`
-		);
-		if (!response.ok) throw new Error('Failed to get track');
-		const data = await response.json();
-		return Array.isArray(data) ? data[0] : data;
+	async getTrack(id: number, quality: AudioQuality = 'LOSSLESS'): Promise<TrackLookup> {
+		const url = `${this.baseUrl}/track/?id=${id}&quality=${quality}`;
+		let lastError: Error | null = null;
+
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			const response = await this.fetch(url);
+			if (response.ok) {
+				const data = await response.json();
+				return this.parseTrackLookup(data);
+			}
+
+			let detail: string | undefined;
+			try {
+				const errorData = (await response.json()) as { detail?: string };
+				detail = errorData?.detail;
+			} catch (error) {
+				// Ignore JSON parse errors
+			}
+
+			lastError = new Error(detail ?? `Failed to get track (status ${response.status})`);
+			const shouldRetry = detail ? /quality not found/i.test(detail) : response.status >= 500;
+
+			if (attempt === 3 || !shouldRetry) {
+				throw lastError;
+			}
+
+			await this.delay(200 * attempt);
+		}
+
+		throw lastError ?? new Error('Failed to get track');
 	}
 
 	/**
@@ -101,9 +181,7 @@ class TidalAPI {
 	/**
 	 * Get playlist details
 	 */
-	async getPlaylist(
-		uuid: string
-	): Promise<{ playlist: Playlist; items: Array<{ item: Track }> }> {
+	async getPlaylist(uuid: string): Promise<{ playlist: Playlist; items: Array<{ item: Track }> }> {
 		const response = await this.fetch(`${this.baseUrl}/playlist/?id=${uuid}`);
 		if (!response.ok) throw new Error('Failed to get playlist');
 		const data = await response.json();
@@ -117,9 +195,7 @@ class TidalAPI {
 	 * Get artist details
 	 */
 	async getArtist(id: number, full: boolean = false): Promise<Artist> {
-		const url = full
-			? `${this.baseUrl}/artist/?f=${id}`
-			: `${this.baseUrl}/artist/?id=${id}`;
+		const url = full ? `${this.baseUrl}/artist/?f=${id}` : `${this.baseUrl}/artist/?id=${id}`;
 		const response = await this.fetch(url);
 		if (!response.ok) throw new Error('Failed to get artist');
 		const data = await response.json();
@@ -150,14 +226,19 @@ class TidalAPI {
 
 	/**
 	 * Get stream URL for a track
-	 * The HIFI API returns the actual TIDAL CDN URL which is CORS-friendly
 	 */
 	async getStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
-		const response = await this.getTrack(trackId, quality);
-		// The API returns the track info, but we need to parse the manifest
-		// For now, we'll construct a direct stream URL through the API
-		// The HIFI API acts as a proxy and returns CORS-friendly URLs
-		return `${this.baseUrl}/stream/${trackId}?quality=${quality}`;
+		const lookup = await this.getTrack(trackId, quality);
+		if (lookup.originalTrackUrl) {
+			return lookup.originalTrackUrl;
+		}
+
+		const manifestUrl = this.extractStreamUrlFromManifest(lookup.info.manifest);
+		if (manifestUrl) {
+			return manifestUrl;
+		}
+
+		throw new Error('Unable to resolve stream URL for track');
 	}
 
 	/**
@@ -170,31 +251,36 @@ class TidalAPI {
 		filename: string
 	): Promise<void> {
 		try {
-			// Get track info with stream URL
-			const trackInfo = await this.getTrack(trackId, quality);
-			
-			// Decode the manifest to get the actual stream URL
-			const decoded = atob(trackInfo.manifest);
-			const urlMatch = decoded.match(/https?:\/\/[^\s<>"]+/);
-			
-			if (!urlMatch) {
-				throw new Error('Could not extract stream URL from manifest');
+			const lookup = await this.getTrack(trackId, quality);
+			let streamUrl = lookup.originalTrackUrl || null;
+			let response: Response | null = null;
+
+			if (streamUrl) {
+				response = await this.fetch(streamUrl);
+				if (!response.ok) {
+					console.warn('OriginalTrackUrl download failed, falling back to manifest', {
+						status: response.status
+					});
+					response = null;
+				}
 			}
-			
-			const streamUrl = urlMatch[0];
-			
-			// Fetch the audio file
-			// Note: The TIDAL CDN URLs should be CORS-friendly
-			// If you still get CORS errors, you'll need to proxy through a backend
-			const response = await this.fetch(streamUrl);
-			
-			if (!response.ok) {
-				throw new Error('Failed to fetch audio stream');
+
+			if (!response) {
+				const fallbackUrl = this.extractStreamUrlFromManifest(lookup.info.manifest);
+				if (!fallbackUrl) {
+					throw new Error('Could not extract stream URL from manifest');
+				}
+
+				streamUrl = fallbackUrl;
+				response = await this.fetch(streamUrl);
+				if (!response.ok) {
+					throw new Error('Failed to fetch audio stream');
+				}
 			}
-			
+
 			const blob = await response.blob();
 			const url = URL.createObjectURL(blob);
-			
+
 			// Trigger download
 			const a = document.createElement('a');
 			a.href = url;

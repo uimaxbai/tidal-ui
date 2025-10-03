@@ -20,7 +20,7 @@
 
 	async function handleDownload(track: Track, event: MouseEvent) {
 		event.stopPropagation();
-		
+
 		try {
 			const filename = `${track.artist.name} - ${track.title}.flac`;
 			await tidalAPI.downloadTrack(track.id, $playerStore.quality, filename);
@@ -41,14 +41,14 @@
 
 <div class="w-full">
 	{#if tracks.length === 0}
-		<div class="text-center py-12 text-gray-400">
+		<div class="py-12 text-center text-gray-400">
 			<p>No tracks available</p>
 		</div>
 	{:else}
 		<div class="space-y-1">
 			{#each tracks as track, index}
 				<div
-					class="w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left group {isCurrentTrack(
+					class="group flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors {isCurrentTrack(
 						track
 					)
 						? 'bg-blue-900/20'
@@ -57,7 +57,7 @@
 					<!-- Track Number / Play Button -->
 					<button
 						onclick={() => handlePlayTrack(track, index)}
-						class="w-8 flex items-center justify-center flex-shrink-0 hover:scale-110 transition-transform"
+						class="flex w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>
 						{#if isPlaying(track)}
@@ -65,8 +65,8 @@
 						{:else if isCurrentTrack(track)}
 							<Play size={16} class="text-blue-500" />
 						{:else}
-							<span class="text-gray-400 text-sm group-hover:hidden">{index + 1}</span>
-							<Play size={16} class="text-white hidden group-hover:block" />
+							<span class="text-sm text-gray-400 group-hover:hidden">{index + 1}</span>
+							<Play size={16} class="hidden text-white group-hover:block" />
 						{/if}
 					</button>
 
@@ -75,20 +75,20 @@
 						<img
 							src={tidalAPI.getCoverUrl(track.album.cover, '80')}
 							alt={track.title}
-							class="w-12 h-12 rounded object-cover flex-shrink-0"
+							class="h-12 w-12 flex-shrink-0 rounded object-cover"
 						/>
 					{/if}
 
 					<!-- Track Info -->
-					<div class="flex-1 min-w-0">
+					<div class="min-w-0 flex-1">
 						<h3
-							class="font-medium truncate {isCurrentTrack(track)
+							class="truncate font-medium {isCurrentTrack(track)
 								? 'text-blue-500'
 								: 'text-white group-hover:text-blue-400'}"
 						>
 							{track.title}
 							{#if track.explicit}
-								<span class="text-xs text-gray-500 ml-1">[E]</span>
+								<span class="ml-1 text-xs text-gray-500">[E]</span>
 							{/if}
 						</h3>
 						<div class="flex items-center gap-2 text-sm text-gray-400">
@@ -102,7 +102,7 @@
 								<span class="truncate">{track.album.title}</span>
 							{/if}
 						</div>
-						<div class="text-xs text-gray-500 mt-0.5">
+						<div class="mt-0.5 text-xs text-gray-500">
 							{track.audioQuality}
 							{#if track.mediaMetadata?.tags && track.mediaMetadata.tags.length > 0}
 								• {track.mediaMetadata.tags.join(', ')}
@@ -111,10 +111,10 @@
 					</div>
 
 					<!-- Actions -->
-					<div class="flex items-center gap-2 flex-shrink-0">
+					<div class="flex flex-shrink-0 items-center gap-2">
 						<button
 							onclick={(e) => handleDownload(track, e)}
-							class="p-2 text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+							class="p-2 text-gray-400 transition-colors hover:text-white"
 							aria-label="Download track"
 							title="Download track"
 						>
@@ -122,7 +122,7 @@
 						</button>
 
 						<!-- Duration -->
-						<div class="flex items-center gap-1 text-gray-400 text-sm w-16 justify-end">
+						<div class="flex w-16 items-center justify-end gap-1 text-sm text-gray-400">
 							<Clock size={14} />
 							{tidalAPI.formatDuration(track.duration)}
 						</div>
@@ -132,4 +132,3 @@
 		</div>
 	{/if}
 </div>
-

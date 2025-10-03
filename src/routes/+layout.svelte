@@ -12,12 +12,12 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="min-h-screen bg-gray-900 text-white flex flex-col">
+<div class="flex min-h-screen flex-col bg-gray-900 text-white">
 	<!-- Header -->
-	<header class="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
-		<div class="max-w-screen-2xl mx-auto px-4 py-4">
+	<header class="sticky top-0 z-40 border-b border-gray-800 bg-gray-900">
+		<div class="mx-auto max-w-screen-2xl px-4 py-4">
 			<div class="flex items-center justify-between">
-				<a href="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+				<a href="/" class="flex items-center gap-3 transition-opacity hover:opacity-80">
 					<Music2 size={32} class="text-blue-500" />
 					<div>
 						<h1 class="text-2xl font-bold">TIDAL UI</h1>
@@ -34,7 +34,7 @@
 
 	<!-- Main Content -->
 	<main class="flex-1 pb-32">
-		<div class="max-w-screen-2xl mx-auto px-4 py-6">
+		<div class="mx-auto max-w-screen-2xl px-4 py-6">
 			{@render children?.()}
 		</div>
 	</main>
@@ -42,4 +42,3 @@
 	<!-- Audio Player (Fixed at bottom) -->
 	<AudioPlayer />
 </div>
-
