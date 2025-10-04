@@ -51,8 +51,61 @@ function createPlayerStore() {
 				...state,
 				queue,
 				queueIndex: startIndex,
-				currentTrack: queue[startIndex] || null
+				currentTrack: queue[startIndex] || null,
+				isPlaying: queue.length > 0 ? state.isPlaying : false,
+				isLoading: queue.length > 0,
+				currentTime: queue.length > 0 ? state.currentTime : 0
 			})),
+		enqueue: (track: Track) =>
+			update((state) => {
+				const queue = state.queue.slice();
+				if (queue.length === 0) {
+					return {
+						...state,
+						queue: [track],
+						queueIndex: 0,
+						currentTrack: track,
+						isPlaying: true,
+						isLoading: true,
+						currentTime: 0,
+						duration: track.duration
+					};
+				}
+
+				queue.push(track);
+				return {
+					...state,
+					queue
+				};
+			}),
+		enqueueNext: (track: Track) =>
+			update((state) => {
+				const queue = state.queue.slice();
+				let queueIndex = state.queueIndex;
+				if (queue.length === 0 || queueIndex === -1) {
+					return {
+						...state,
+						queue: [track],
+						queueIndex: 0,
+						currentTrack: track,
+						isPlaying: true,
+						isLoading: true,
+						currentTime: 0,
+						duration: track.duration
+					};
+				}
+
+				const insertIndex = Math.min(queueIndex + 1, queue.length);
+				queue.splice(insertIndex, 0, track);
+				if (insertIndex <= queueIndex) {
+					queueIndex += 1;
+				}
+				return {
+					...state,
+					queue,
+					queueIndex
+				};
+			}),
 		next: () =>
 			update((state) => {
 				if (state.queueIndex < state.queue.length - 1) {
@@ -79,6 +132,89 @@ function createPlayerStore() {
 				}
 				return state;
 			}),
+		playAtIndex: (index: number) =>
+			update((state) => {
+				if (index < 0 || index >= state.queue.length) {
+					return state;
+				}
+
+				return {
+					...state,
+					queueIndex: index,
+					currentTrack: state.queue[index],
+					currentTime: 0,
+					isPlaying: true,
+					isLoading: true,
+					duration: state.queue[index].duration
+				};
+			}),
+		removeFromQueue: (index: number) =>
+			update((state) => {
+				if (index < 0 || index >= state.queue.length) {
+					return state;
+				}
+
+				const queue = state.queue.slice();
+				queue.splice(index, 1);
+				let queueIndex = state.queueIndex;
+				let currentTrack = state.currentTrack;
+				let isPlaying = state.isPlaying;
+				let currentTime = state.currentTime;
+				let duration = state.duration;
+				let isLoading = state.isLoading;
+
+				if (queue.length === 0) {
+					return {
+						...state,
+						queue,
+						queueIndex: -1,
+						currentTrack: null,
+						isPlaying: false,
+						isLoading: false,
+						currentTime: 0,
+						duration: 0
+					};
+				}
+
+				if (index < queueIndex) {
+					queueIndex -= 1;
+				} else if (index === queueIndex) {
+					if (queueIndex >= queue.length) {
+						queueIndex = queue.length - 1;
+					}
+					currentTrack = queue[queueIndex] ?? null;
+					currentTime = 0;
+					duration = currentTrack?.duration ?? 0;
+					if (!currentTrack) {
+						isPlaying = false;
+						isLoading = false;
+					} else {
+						isLoading = true;
+					}
+				}
+
+				return {
+					...state,
+					queue,
+					queueIndex,
+					currentTrack,
+					isPlaying,
+					isLoading,
+					currentTime,
+					duration
+				};
+			}),
+		clearQueue: () =>
+			update((state) => ({
+				...state,
+				queue: [],
+				queueIndex: -1,
+				currentTrack: null,
+				isPlaying: false,
+				isLoading: false,
+				currentTime: 0,
+				duration: 0
+			})),
 		reset: () => set(initialState)
 	};
 }

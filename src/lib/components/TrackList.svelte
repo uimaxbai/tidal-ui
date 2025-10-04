@@ -2,7 +2,7 @@
 	import type { Track } from '$lib/types';
 	import { tidalAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
-	import { Play, Pause, Download, Clock } from 'lucide-svelte';
+	import { Play, Pause, Download, Clock, Plus, ListPlus } from 'lucide-svelte';
 
 	interface Props {
 		tracks: Track[];
@@ -17,6 +17,16 @@
 	function handlePlayTrack(track: Track, index: number) {
 		playerStore.setQueue(tracks, index);
 		playerStore.play();
+	}
+
+	function handleAddToQueue(track: Track, event: MouseEvent) {
+		event.stopPropagation();
+		playerStore.enqueue(track);
+	}
+
+	function handlePlayNext(track: Track, event: MouseEvent) {
+		event.stopPropagation();
+		playerStore.enqueueNext(track);
 	}
 
 	async function handleDownload(track: Track, event: MouseEvent) {
@@ -122,6 +132,22 @@
 
 					<!-- Actions -->
 					<div class="flex flex-shrink-0 items-center gap-2">
+						<button
+							onclick={(event) => handlePlayNext(track, event)}
+							class="p-2 text-gray-400 transition-colors hover:text-white"
+							title="Play next"
+							aria-label={`Play ${track.title} next`}
+						>
+							<ListPlus size={18} />
+						</button>
+						<button
+							onclick={(event) => handleAddToQueue(track, event)}
+							class="p-2 text-gray-400 transition-colors hover:text-white"
+							title="Add to queue"
+							aria-label={`Add ${track.title} to queue`}
+						>
+							<Plus size={18} />
+						</button>
 						<button
 							onclick={(e) => handleDownload(track, e)}
 							class="p-2 text-gray-400 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"

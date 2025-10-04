@@ -2,7 +2,7 @@
 	import { tidalAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
 	import type { Track, Album, Artist, Playlist } from '$lib/types';
-	import { Search, Music, User, Disc, ListMusic, Download, Newspaper } from 'lucide-svelte';
+	import { Search, Music, User, Disc, Download, Newspaper, Plus, ListPlus } from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
 
@@ -74,6 +74,16 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 
 	function handleTrackActivation(track: Track) {
 		onTrackSelect?.(track);
+	}
+
+	function handleAddToQueue(track: Track, event: MouseEvent) {
+		event.stopPropagation();
+		playerStore.enqueue(track);
+	}
+
+	function handlePlayNext(track: Track, event: MouseEvent) {
+		event.stopPropagation();
+		playerStore.enqueueNext(track);
 	}
 
 	function handleTrackKeydown(event: KeyboardEvent, track: Track) {
@@ -272,6 +282,22 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 							</p>
 						</div>
 						<div class="flex items-center gap-2 text-sm text-gray-400">
+							<button
+								onclick={(event) => handlePlayNext(track, event)}
+								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+								title="Play next"
+								aria-label={`Play ${track.title} next`}
+							>
+								<ListPlus size={18} />
+							</button>
+							<button
+								onclick={(event) => handleAddToQueue(track, event)}
+								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+								title="Add to queue"
+								aria-label={`Add ${track.title} to queue`}
+							>
+								<Plus size={18} />
+							</button>
 							<button
 								onclick={(event) => handleDownload(track, event)}
 								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"

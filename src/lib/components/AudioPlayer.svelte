@@ -4,7 +4,7 @@
 	import { tidalAPI } from '$lib/api';
 	import { getProxiedUrl } from '$lib/config';
 	import type { Track } from '$lib/types';
-	import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX } from 'lucide-svelte';
+	import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, ListMusic, Trash2, X } from 'lucide-svelte';
 
 	let audioElement: HTMLAudioElement;
 	let streamUrl = '';
@@ -17,6 +17,7 @@
 
 	let containerElement: HTMLDivElement | null = null;
 	let resizeObserver: ResizeObserver | null = null;
+	let showQueuePanel = false;
 
 	$:{
 		const current = $playerStore.currentTrack;
@@ -31,6 +32,33 @@
 			streamUrl = '';
 			loadTrack(current);
 		}
+	}
+
+	$: if (showQueuePanel && $playerStore.queue.length === 0) {
+		showQueuePanel = false;
+	}
+
+	function toggleQueuePanel() {
+		showQueuePanel = !showQueuePanel;
+	}
+
+	function closeQueuePanel() {
+		showQueuePanel = false;
+	}
+
+	function playFromQueue(index: number) {
+		playerStore.playAtIndex(index);
+	}
+
+	function removeFromQueue(index: number, event?: MouseEvent) {
+		if (event) {
+			event.stopPropagation();
+		}
+		playerStore.removeFromQueue(index);
+	}
+
+	function clearQueue() {
+		playerStore.clearQueue();
 	}
 
 	$: if (audioElement) {
@@ -251,7 +279,7 @@
 					</div>
 				</div>
 
-				<div class="flex items-center justify-between gap-4">
+				<div class="flex flex-wrap items-center justify-between gap-4">
 					<!-- Track Info -->
 					<div class="flex min-w-0 flex-1 items-center gap-3">
 						{#if $playerStore.currentTrack.album.cover}
@@ -308,6 +336,21 @@
 
 					</div>
 
+					<!-- Queue Toggle -->
+					<div class="flex items-center gap-2">
+						<button
+							onclick={toggleQueuePanel}
+							class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {showQueuePanel
+								? 'border-blue-500 text-white'
+								: ''}"
+							aria-label="Toggle queue panel"
+							aria-expanded={showQueuePanel}
+						>
+							<ListMusic size={18} />
+							<span class="hidden sm:inline">Queue ({$playerStore.queue.length})</span>
+						</button>
+					</div>
+
 					<!-- Volume Control -->
 					<div class="flex items-center gap-2">
 						<button
@@ -333,6 +376,85 @@
 						/>
 					</div>
 				</div>
+
+				{#if showQueuePanel}
+					<div class="mt-4 space-y-3 rounded-2xl border border-gray-800/80 bg-neutral-900/90 p-4 text-sm shadow-inner">
+						<div class="flex items-center justify-between gap-2">
+							<div class="flex items-center gap-2 text-gray-300">
+								<ListMusic size={18} />
+								<span class="font-medium">Playback Queue</span>
+								<span class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
+									{$playerStore.queue.length}
+								</span>
+							</div>
+							<div class="flex items-center gap-2">
+								<button
+									onclick={clearQueue}
+									class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs uppercase tracking-wide text-gray-400 transition-colors hover:border-red-500 hover:text-red-400"
+									type="button"
+									disabled={$playerStore.queue.length === 0}
+								>
+									<Trash2 size={14} />
+									Clear
+								</button>
+								<button
+									onclick={closeQueuePanel}
+									class="rounded-full p-1 text-gray-400 transition-colors hover:text-white"
+									aria-label="Close queue panel"
+								>
+									<X size={16} />
+								</button>
+							</div>
+						</div>
+
+						{#if $playerStore.queue.length > 0}
+							<ul class="max-h-60 space-y-2 overflow-y-auto pr-1">
+								{#each $playerStore.queue as queuedTrack, index}
+									<li>
+										<div
+											onclick={() => playFromQueue(index)}
+											onkeydown={(event) => {
+												if (event.key === 'Enter' || event.key === ' ') {
+													event.preventDefault();
+													playFromQueue(index);
+												}
+											}}
+											tabindex="0"
+											role="button"
+											class="group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === $playerStore.queueIndex
+												? 'bg-blue-500/10 text-white'
+												: 'hover:bg-gray-800/70 text-gray-200'}"
+										>
+											<span class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300">
+												{index + 1}
+											</span>
+											<div class="min-w-0 flex-1">
+												<p class="truncate text-sm font-medium">
+													{queuedTrack.title}
+												</p>
+												<p class="truncate text-xs text-gray-400 group-hover:text-gray-300">
+													{queuedTrack.artist.name}
+												</p>
+											</div>
+											<button
+												onclick={(event) => removeFromQueue(index, event)}
+												class="rounded-full p-1 text-gray-500 transition-colors hover:text-red-400"
+												aria-label={`Remove ${queuedTrack.title} from queue`}
+												type="button"
+											>
+												<X size={14} />
+											</button>
+										</div>
+									</li>
+								{/each}
+							</ul>
+						{:else}
+							<p class="rounded-lg border border-dashed border-gray-700 bg-gray-900/70 px-3 py-8 text-center text-gray-400">
+								Queue is empty
+							</p>
+						{/if}
+					</div>
+				{/if}
 
 				{#if $playerStore.currentTrack && $playerStore.isLoading}
 					<div class="loading-overlay">
