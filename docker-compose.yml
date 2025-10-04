@@ -1,0 +1,28 @@
+version: '3'
+
+services:
+  svelte-prod:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - '5000:5000'
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - TITLE=${TITLE}
+      - REDIS_URL=${REDIS_URL}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_USERNAME=${REDIS_USERNAME}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_TLS=${REDIS_TLS}
+      - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS}
+      - REDIS_CACHE_TTL_SEARCH_SECONDS=${REDIS_CACHE_TTL_SEARCH_SECONDS}
+      - REDIS_CACHE_TTL_TRACK_SECONDS=${REDIS_CACHE_TTL_TRACK_SECONDS}
+      - REDIS_CACHE_MAX_BODY_BYTES=${REDIS_CACHE_MAX_BODY_BYTES}
+      - PORT=5000
+
+networks:
+  default:
+    driver: bridge

@@ -1,3 +1,22 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+button,
+[type='button'],
+[type='submit'],
+[type='reset'],
+a,
+[role='button'],
+summary {
+	cursor: pointer;
+}
+
+button:disabled,
+[type='button']:disabled,
+[type='submit']:disabled,
+[type='reset']:disabled,
+[role='button'][aria-disabled='true'],
+a[aria-disabled='true'] {
+	cursor: not-allowed;
+}

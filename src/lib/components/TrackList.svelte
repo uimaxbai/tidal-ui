@@ -13,6 +13,12 @@
 
 	let { tracks, showAlbum = true, showArtist = true, showCover = true }: Props = $props();
 	let downloadingIds = $state(new Set<number>());
+	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
+
+	function getDisplayTags(tags?: string[] | null): string[] {
+		if (!tags) return [];
+		return tags.filter((tag) => tag && !IGNORED_TAGS.has(tag));
+	}
 
 	function handlePlayTrack(track: Track, index: number) {
 		playerStore.setQueue(tracks, index);
@@ -93,9 +99,9 @@
 					<!-- Cover -->
 					{#if showCover && track.album.cover}
 						<img
-							src={tidalAPI.getCoverUrl(track.album.cover, '80')}
+							src={tidalAPI.getCoverUrl(track.album.cover, '320')}
 							alt={track.title}
-							class="h-12 w-12 flex-shrink-0 rounded object-cover"
+							class="h-16 w-16 flex-shrink-0 rounded object-cover"
 						/>
 					{/if}
 
@@ -123,9 +129,8 @@
 							{/if}
 						</div>
 						<div class="mt-0.5 text-xs text-gray-500">
-							{track.audioQuality}
-							{#if track.mediaMetadata?.tags && track.mediaMetadata.tags.length > 0}
-								• {track.mediaMetadata.tags.join(', ')}
+							{#if getDisplayTags(track.mediaMetadata?.tags).length > 0}
+								• {getDisplayTags(track.mediaMetadata?.tags).join(', ')}
 							{/if}
 						</div>
 					</div>
@@ -158,7 +163,9 @@
 						>
 							{#if downloadingIds.has(track.id)}
 								<span class="flex h-4 w-4 items-center justify-center">
-									<span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+									<span
+										class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+									></span>
 								</span>
 							{:else}
 								<Download size={18} />

@@ -2,7 +2,16 @@
 	import { tidalAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
 	import type { Track, Album, Artist, Playlist } from '$lib/types';
-	import { Search, Music, User, Disc, Download, Newspaper, Plus, ListPlus } from 'lucide-svelte';
+	import {
+		Search,
+		Music,
+		User,
+		Disc,
+		Download,
+		Newspaper,
+		ListPlus,
+		ListVideo
+	} from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
 
@@ -20,12 +29,17 @@
 		{
 			title: 'Initial release!',
 			description:
-				'Two Tidal APIs fetch lossless CD-quality 16/44.1kHz FLACs. No support for Hi-Res yet but I\'m working on it haha. No playlist saving or logging in either but downloading and streaming work.'
+				"Two Tidal APIs fetch lossless CD-quality 16/44.1kHz FLACs. No support for Hi-Res yet but I'm working on it haha. No playlist saving or logging in either but downloading and streaming work."
+		},
+		{
+			title: 'QOL changes',
+			description:
+				'This website is still very much in beta, but queue management and album/artist pages/downloads have been added as well as some bug squashing/QOL changes such as bigger album covers and download all for albums.'
 		}
 	];
 
-const trackSkeletons = Array.from({ length: 6 }, (_, index) => index);
-const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
+	const trackSkeletons = Array.from({ length: 6 }, (_, index) => index);
+	const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 
 	interface Props {
 		onTrackSelect?: (track: Track) => void;
@@ -36,7 +50,11 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 
 	let { onTrackSelect, onAlbumSelect, onArtistSelect, onPlaylistSelect }: Props = $props();
 
-	async function fetchWithRetry<T>(action: () => Promise<T>, attempts = 3, delayMs = 250): Promise<T> {
+	async function fetchWithRetry<T>(
+		action: () => Promise<T>,
+		attempts = 3,
+		delayMs = 250
+	): Promise<T> {
 		let lastError: unknown = null;
 		for (let attempt = 1; attempt <= attempts; attempt += 1) {
 			try {
@@ -173,10 +191,11 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 	</div>
 
 	<!-- Tabs -->
-	<div class="mb-6 flex gap-2 border-b border-gray-700 overflow-auto">
+	<div class="mb-6 flex gap-2 overflow-auto border-b border-gray-700">
 		<button
 			onclick={() => handleTabChange('tracks')}
-			class="flex items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab === 'tracks'
+			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
+			'tracks'
 				? 'border-blue-500 text-blue-500'
 				: 'border-transparent text-gray-400 hover:text-white'}"
 		>
@@ -185,7 +204,8 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 		</button>
 		<button
 			onclick={() => handleTabChange('albums')}
-			class="flex items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab === 'albums'
+			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
+			'albums'
 				? 'border-blue-500 text-blue-500'
 				: 'border-transparent text-gray-400 hover:text-white'}"
 		>
@@ -194,7 +214,8 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 		</button>
 		<button
 			onclick={() => handleTabChange('artists')}
-			class="flex items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab === 'artists'
+			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
+			'artists'
 				? 'border-blue-500 text-blue-500'
 				: 'border-transparent text-gray-400 hover:text-white'}"
 		>
@@ -209,13 +230,13 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 			<div class="space-y-2">
 				{#each trackSkeletons as _}
 					<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
-						<div class="h-12 w-12 flex-shrink-0 rounded bg-gray-700/80 animate-pulse"></div>
+						<div class="h-12 w-12 flex-shrink-0 animate-pulse rounded bg-gray-700/80"></div>
 						<div class="flex-1 space-y-2">
-							<div class="h-4 w-2/3 rounded bg-gray-700/80 animate-pulse"></div>
-							<div class="h-3 w-1/3 rounded bg-gray-700/60 animate-pulse"></div>
-							<div class="h-3 w-1/4 rounded bg-gray-700/40 animate-pulse"></div>
+							<div class="h-4 w-2/3 animate-pulse rounded bg-gray-700/80"></div>
+							<div class="h-3 w-1/3 animate-pulse rounded bg-gray-700/60"></div>
+							<div class="h-3 w-1/4 animate-pulse rounded bg-gray-700/40"></div>
 						</div>
-						<div class="h-6 w-12 rounded-full bg-gray-700/80 animate-pulse"></div>
+						<div class="h-6 w-12 animate-pulse rounded-full bg-gray-700/80"></div>
 					</div>
 				{/each}
 			</div>
@@ -223,9 +244,9 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 				{#each gridSkeletons as _}
 					<div class="space-y-3">
-						<div class="aspect-square w-full rounded-lg bg-gray-800/70 animate-pulse"></div>
-						<div class="h-4 w-3/4 rounded bg-gray-700/80 animate-pulse"></div>
-						<div class="h-3 w-1/2 rounded bg-gray-700/60 animate-pulse"></div>
+						<div class="aspect-square w-full animate-pulse rounded-lg bg-gray-800/70"></div>
+						<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
+						<div class="h-3 w-1/2 animate-pulse rounded bg-gray-700/60"></div>
 					</div>
 				{/each}
 			</div>
@@ -233,9 +254,9 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
 				{#each gridSkeletons as _}
 					<div class="flex flex-col items-center gap-3">
-						<div class="aspect-square w-full rounded-full bg-gray-800/70 animate-pulse"></div>
-						<div class="h-4 w-3/4 rounded bg-gray-700/80 animate-pulse"></div>
-						<div class="h-3 w-1/2 rounded bg-gray-700/60 animate-pulse"></div>
+						<div class="aspect-square w-full animate-pulse rounded-full bg-gray-800/70"></div>
+						<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
+						<div class="h-3 w-1/2 animate-pulse rounded bg-gray-700/60"></div>
 					</div>
 				{/each}
 			</div>
@@ -263,11 +284,11 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 						tabindex="0"
 						onclick={() => handleTrackActivation(track)}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="hover:bg-gray-750 group flex w-full cursor-pointer items-center gap-3 rounded-lg bg-gray-800 p-3 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+						class="hover:bg-gray-750 group flex w-full cursor-pointer items-center gap-3 rounded-lg bg-gray-800 p-3 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none"
 					>
 						{#if track.album.cover}
 							<img
-								src={tidalAPI.getCoverUrl(track.album.cover, '80')}
+								src={tidalAPI.getCoverUrl(track.album.cover, '320')}
 								alt={track.title}
 								class="h-12 w-12 rounded object-cover"
 							/>
@@ -288,7 +309,7 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 								title="Play next"
 								aria-label={`Play ${track.title} next`}
 							>
-								<ListPlus size={18} />
+								<ListVideo size={18} />
 							</button>
 							<button
 								onclick={(event) => handleAddToQueue(track, event)}
@@ -296,7 +317,7 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 								title="Add to queue"
 								aria-label={`Add ${track.title} to queue`}
 							>
-								<Plus size={18} />
+								<ListPlus size={18} />
 							</button>
 							<button
 								onclick={(event) => handleDownload(track, event)}
@@ -308,7 +329,9 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 							>
 								{#if downloadingIds.has(track.id)}
 									<span class="flex h-4 w-4 items-center justify-center">
-										<span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+										<span
+											class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+										></span>
 									</span>
 								{:else}
 									<Download size={18} />
@@ -389,22 +412,28 @@ const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 					</button>
 				{/each}
 			</div>
-		<!-- News Section -->
+			<!-- News Section -->
 		{:else if !query.trim()}
-			<section class="grid gap-4 border border-gray-800 rounded-lg p-4 text-left shadow-lg sm:grid-cols-2">
-				<h2 class="text-3xl font-bold">News</h2>
-				{#each newsItems as item}
-					<article class="flex flex-col gap-3 rounded-lg border border-gray-800/80 bg-gray-900/70 p-4 transition-transform hover:-translate-y-0.5">
-						<div class="flex items-center gap-3">
-							<div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-900/40 text-blue-300">
-								<Newspaper size={20} />
+			<div class="rounded-lg border border-gray-800 p-4">
+				<h2 class="mb-4 text-3xl font-bold">News</h2>
+				<section class="grid gap-4 text-left shadow-lg sm:grid-cols-2">
+					{#each newsItems as item}
+						<article
+							class="flex flex-col gap-3 rounded-lg border border-gray-800/80 bg-gray-900/70 p-4 transition-transform hover:-translate-y-0.5"
+						>
+							<div class="flex items-center gap-3">
+								<div
+									class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-900/40 text-blue-300"
+								>
+									<Newspaper size={20} />
+								</div>
+								<h3 class="text-lg font-semibold text-white">{item.title}</h3>
 							</div>
-							<h3 class="text-lg font-semibold text-white">{item.title}</h3>
-						</div>
-						<p class="text-sm text-gray-400">{item.description}</p>
-					</article>
-				{/each}
-			</section>
+							<p class="text-sm text-gray-400">{item.description}</p>
+						</article>
+					{/each}
+				</section>
+			</div>
 		{:else if query.trim() && !isLoading}
 			<div class="py-12 text-center text-gray-400">
 				<p>No results found...</p>

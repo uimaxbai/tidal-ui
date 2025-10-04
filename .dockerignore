@@ -1,0 +1,12 @@
+node_modules
+.svelte-kit
+build
+.env.*
+!.env
+.git
+.gitignore
+.vscode
+coverage
+*.log
+Dockerfile
+bun.lock

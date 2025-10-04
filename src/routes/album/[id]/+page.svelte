@@ -2,16 +2,19 @@
 	import { page } from '$app/stores';
 	import { tidalAPI } from '$lib/api';
 	import TrackList from '$lib/components/TrackList.svelte';
-	import type { Album } from '$lib/types';
+	import type { Album, Track } from '$lib/types';
 	import { onMount } from 'svelte';
-	import { ArrowLeft, Play, Calendar, Disc } from 'lucide-svelte';
+	import { ArrowLeft, Play, Calendar, Disc, Clock, Download, Shuffle } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
 
 	let album = $state<Album | null>(null);
-	let tracks = $state<any[]>([]);
+	let tracks = $state<Track[]>([]);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
+	let isDownloadingAll = $state(false);
+	let downloadedCount = $state(0);
+	let downloadError = $state<string | null>(null);
 
 	const albumId = $derived($page.params.id);
 
@@ -25,13 +28,9 @@
 		try {
 			isLoading = true;
 			error = null;
-			const data = await tidalAPI.getAlbum(id);
-			album = data;
-
-			// Note: The API doesn't return tracks with album details
-			// In a real implementation, you'd need an endpoint to get album tracks
-			// For now, we'll show the album info
-			tracks = [];
+			const { album: albumData, tracks: albumTracks } = await tidalAPI.getAlbum(id);
+			album = albumData;
+			tracks = albumTracks;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load album';
 			console.error('Failed to load album:', err);
@@ -46,6 +45,49 @@
 			playerStore.play();
 		}
 	}
+
+	function shuffleTracks(list: Track[]): Track[] {
+		const items = list.slice();
+		for (let i = items.length - 1; i > 0; i -= 1) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[items[i], items[j]] = [items[j]!, items[i]!];
+		}
+		return items;
+	}
+
+	function handleShufflePlay() {
+		if (tracks.length === 0) return;
+		const shuffled = shuffleTracks(tracks);
+		playerStore.setQueue(shuffled, 0);
+		playerStore.play();
+	}
+
+	async function handleDownloadAll() {
+		if (tracks.length === 0 || isDownloadingAll) {
+			return;
+		}
+
+		isDownloadingAll = true;
+		downloadedCount = 0;
+		downloadError = null;
+		const quality = $playerStore.quality;
+
+		for (const track of tracks) {
+			try {
+				const filename = `${track.artist.name} - ${track.title}.flac`;
+				await tidalAPI.downloadTrack(track.id, quality, filename);
+				downloadedCount += 1;
+			} catch (err) {
+				console.error('Failed to download album track:', err);
+				downloadError =
+					err instanceof Error ? err.message : 'Failed to download one or more tracks.';
+			}
+		}
+
+		isDownloadingAll = false;
+	}
+
+	const totalDuration = $derived(tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));
 </script>
 
 <svelte:head>
@@ -70,7 +112,7 @@
 		</div>
 	</div>
 {:else if album}
-	<div class="space-y-6">
+	<div class="space-y-6 pb-32 lg:pb-40">
 		<!-- Back Button -->
 		<button
 			onclick={() => window.history.back()}
@@ -116,20 +158,28 @@
 							{new Date(album.releaseDate).getFullYear()}
 						</div>
 					{/if}
-					{#if album.numberOfTracks}
+					{#if tracks.length > 0 || album.numberOfTracks}
 						<div class="flex items-center gap-1">
 							<Disc size={16} />
-							{album.numberOfTracks} tracks
+							{tracks.length || album.numberOfTracks} tracks
 						</div>
 					{/if}
+					{#if totalDuration > 0}
+						<div class="flex items-center gap-1">
+							<Clock size={16} />
+							{tidalAPI.formatDuration(totalDuration)} total
+						</div>
+					{/if}
+					<!--
 					{#if album.audioQuality}
 						<div class="rounded bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400">
 							{album.audioQuality}
 						</div>
 					{/if}
+					-->
 					{#if album.mediaMetadata?.tags}
 						{#each album.mediaMetadata.tags as tag}
-							<div class="rounded bg-purple-900/30 px-2 py-1 text-xs font-semibold text-purple-400">
+							<div class="rounded bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400">
 								{tag}
 							</div>
 						{/each}
@@ -137,35 +187,54 @@
 				</div>
 
 				{#if tracks.length > 0}
-					<button
-						onclick={handlePlayAll}
-						class="flex w-fit items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
-					>
-						<Play size={20} fill="currentColor" />
-						Play All
-					</button>
+					<div class="flex flex-wrap items-center gap-3">
+						<button
+							onclick={handlePlayAll}
+							class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
+						>
+							<Play size={20} fill="currentColor" />
+							Play All
+						</button>
+						<button
+							onclick={handleShufflePlay}
+							class="flex items-center gap-2 rounded-full border border-purple-400/50 px-6 py-3 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-300 hover:text-purple-100"
+						>
+							<Shuffle size={18} />
+							Shuffle Play
+						</button>
+						<button
+							onclick={handleDownloadAll}
+							class="flex items-center gap-2 rounded-full border border-blue-400/40 px-6 py-3 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+							disabled={isDownloadingAll}
+						>
+							<Download size={18} />
+							{isDownloadingAll
+								? `Downloading ${downloadedCount}/${tracks.length}`
+								: 'Download All'}
+						</button>
+					</div>
+					{#if downloadError}
+						<p class="mt-2 text-sm text-red-400">{downloadError}</p>
+					{/if}
 				{/if}
 			</div>
 		</div>
 
-		<!-- Copyright -->
-		{#if album.copyright}
-			<p class="text-xs text-gray-500">{album.copyright}</p>
-		{/if}
-
 		<!-- Tracks -->
-		{#if tracks.length > 0}
-			<div class="mt-8">
-				<h2 class="mb-4 text-2xl font-bold">Tracks</h2>
-				<TrackList {tracks} showAlbum={false} showCover={false} />
-			</div>
-		{:else}
-			<div class="rounded-lg border border-yellow-900 bg-yellow-900/20 p-6 text-yellow-400">
-				<p>Track listing not available. This feature requires additional API endpoints.</p>
-				<p class="mt-2 text-sm text-gray-400">
-					You can still search for individual tracks from this album using the search feature.
-				</p>
-			</div>
-		{/if}
+		<div class="mt-8 space-y-4">
+			<h2 class="text-2xl font-bold">Tracks</h2>
+			<TrackList {tracks} showAlbum={false} />
+			{#if tracks.length === 0}
+				<div class="rounded-lg border border-yellow-900 bg-yellow-900/20 p-6 text-yellow-300">
+					<p>
+						We couldn't find tracks for this album. Try refreshing or searching for individual
+						songs.
+					</p>
+				</div>
+			{/if}
+			{#if album.copyright}
+				<p class="pt-2 text-xs text-gray-500">{album.copyright}</p>
+			{/if}
+		</div>
 	</div>
 {/if}

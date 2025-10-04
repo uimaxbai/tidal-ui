@@ -380,7 +380,11 @@ export async function fetchWithCORS(url: string, options?: RequestInit): Promise
 	}
 
 	if (lastError) {
-		if (lastError instanceof TypeError && typeof lastError.message === 'string' && lastError.message.includes('CORS')) {
+		if (
+			lastError instanceof TypeError &&
+			typeof lastError.message === 'string' &&
+			lastError.message.includes('CORS')
+		) {
 			throw new Error(
 				'CORS error detected. Please configure a proxy in src/lib/config.ts or enable CORS on your backend.'
 			);

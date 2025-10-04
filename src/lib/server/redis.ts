@@ -51,7 +51,8 @@ export function getRedisClient(): Redis | null {
 	}
 
 	try {
-		client = typeof options === 'string' ? new Redis(options, { lazyConnect: true }) : new Redis(options);
+		client =
+			typeof options === 'string' ? new Redis(options, { lazyConnect: true }) : new Redis(options);
 		client.on('error', logRedisError);
 		return client;
 	} catch (error) {

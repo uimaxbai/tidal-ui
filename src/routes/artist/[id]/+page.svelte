@@ -1,23 +1,43 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { tidalAPI } from '$lib/api';
-	import type { Artist } from '$lib/types';
+	import type { Album, ArtistDetails } from '$lib/types';
+	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import { onMount } from 'svelte';
 	import { ArrowLeft, User } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 
-	let artist = $state<Artist | null>(null);
+	let artist = $state<ArtistDetails | null>(null);
 	let artistImage = $state<string | null>(null);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
 
 	const artistId = $derived($page.params.id);
+	const topTracks = $derived(artist?.tracks ?? []);
+	const discography = $derived(artist?.albums ?? []);
 
 	onMount(async () => {
 		if (artistId) {
 			await loadArtist(parseInt(artistId));
 		}
 	});
+
+	function getReleaseYear(date?: string | null): string | null {
+		if (!date) return null;
+		const timestamp = Date.parse(date);
+		if (Number.isNaN(timestamp)) return null;
+		return new Date(timestamp).getFullYear().toString();
+	}
+
+	function formatAlbumMeta(album: Album): string | null {
+		const parts: string[] = [];
+		const year = getReleaseYear(album.releaseDate ?? null);
+		if (year) parts.push(year);
+		if (album.type) parts.push(album.type.replace(/_/g, ' '));
+		if (album.numberOfTracks) parts.push(`${album.numberOfTracks} tracks`);
+		if (parts.length === 0) return null;
+		return parts.join(' • ');
+	}
 
 	async function loadArtist(id: number) {
 		try {
@@ -61,7 +81,7 @@
 		</div>
 	</div>
 {:else if artist}
-	<div class="space-y-6">
+	<div class="space-y-6 pb-32 lg:pb-40">
 		<!-- Back Button -->
 		<button
 			onclick={() => window.history.back()}
@@ -123,12 +143,78 @@
 			</div>
 		</div>
 
-		<!-- Additional Content -->
-		<div class="mt-8 rounded-lg border border-yellow-900 bg-yellow-900/20 p-6 text-yellow-400">
-			<p>Artist discography and tracks not available.</p>
-			<p class="mt-2 text-sm text-gray-400">
-				To explore this artist's music, use the search feature to find their tracks and albums.
-			</p>
+		<!-- Music Overview -->
+		<div class="space-y-12">
+			<section>
+				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+					<div>
+						<h2 class="text-2xl font-semibold text-white">Top Tracks</h2>
+						<p class="text-sm text-gray-400">Best songs from {artist.name}.</p>
+					</div>
+				</div>
+				{#if topTracks.length > 0}
+					<div class="mt-6 overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/40 p-4">
+						<TopTracksGrid tracks={topTracks} />
+					</div>
+				{:else}
+					<div
+						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
+					>
+						<p>No top tracks available for this artist yet.</p>
+					</div>
+				{/if}
+			</section>
+
+			<section>
+				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+					<div>
+						<h2 class="text-2xl font-semibold text-white">Discography</h2>
+						<p class="text-sm text-gray-400">Albums, EPs, and more from {artist.name}.</p>
+					</div>
+				</div>
+				{#if discography.length > 0}
+					<div class="mt-6 grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+						{#each discography as album (album.id)}
+							<a
+								href={`/album/${album.id}`}
+								class="group flex h-full flex-col items-center gap-4 rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
+							>
+								<div
+									class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
+								>
+									{#if album.cover}
+										<img
+											src={tidalAPI.getCoverUrl(album.cover, '640')}
+											alt={album.title}
+											class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+										/>
+									{:else}
+										<div
+											class="flex h-full w-full items-center justify-center text-sm text-gray-500"
+										>
+											No artwork
+										</div>
+									{/if}
+								</div>
+								<div class="w-full">
+									<h3 class="truncate text-lg font-semibold text-white group-hover:text-blue-400">
+										{album.title}
+									</h3>
+									{#if formatAlbumMeta(album)}
+										<p class="mt-1 text-sm text-gray-400">{formatAlbumMeta(album)}</p>
+									{/if}
+								</div>
+							</a>
+						{/each}
+					</div>
+				{:else}
+					<div
+						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
+					>
+						<p>Discography information isn&apos;t available right now.</p>
+					</div>
+				{/if}
+			</section>
 		</div>
 
 		{#if artist.url}
@@ -136,7 +222,7 @@
 				href={artist.url}
 				target="_blank"
 				rel="noopener noreferrer"
-				class="inline-block text-sm text-blue-400 hover:text-blue-300"
+				class="inline-block text-sm text-blue-400 transition-colors hover:text-blue-300"
 			>
 				View on TIDAL →
 			</a>

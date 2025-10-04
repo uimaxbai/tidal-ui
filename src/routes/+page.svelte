@@ -4,6 +4,8 @@
 	import { playerStore } from '$lib/stores/player';
 	import { goto } from '$app/navigation';
 
+	let { data } = $props();
+
 	function handleTrackSelect(track: Track) {
 		playerStore.setQueue([track], 0);
 		playerStore.play();
@@ -33,13 +35,10 @@
 		<h2
 			class="mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-5xl font-bold text-transparent"
 		>
-			BiniTidal
+			{data.title}
 		</h2>
-		<p class="mx-auto max-w-2xl text-xl text-gray-400">
-			The easiest way to stream from Tidal.
-		</p>
+		<p class="mx-auto max-w-2xl text-xl text-gray-400">The easiest way to stream from Tidal.</p>
 	</div>
-
 
 	<!-- Search Interface -->
 	<SearchInterface
@@ -49,5 +48,3 @@
 		onPlaylistSelect={handlePlaylistSelect}
 	/>
 </div>
-
-

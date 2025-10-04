@@ -132,6 +132,55 @@ function createPlayerStore() {
 				}
 				return state;
 			}),
+		shuffleQueue: () =>
+			update((state) => {
+				const {
+					queue: originalQueue,
+					queueIndex: originalIndex,
+					currentTrack: originalCurrent
+				} = state;
+
+				if (originalQueue.length <= 1) {
+					return state;
+				}
+
+				const queue = originalQueue.slice();
+				let pinnedTrack: Track | null = null;
+
+				if (originalCurrent) {
+					const locatedIndex = queue.findIndex((track) => track.id === originalCurrent.id);
+					if (locatedIndex >= 0) {
+						pinnedTrack = queue.splice(locatedIndex, 1)[0] ?? null;
+					}
+				}
+
+				if (!pinnedTrack && originalIndex >= 0 && originalIndex < queue.length) {
+					pinnedTrack = queue.splice(originalIndex, 1)[0] ?? null;
+				}
+
+				if (!pinnedTrack && originalCurrent) {
+					pinnedTrack = originalCurrent;
+				}
+
+				for (let i = queue.length - 1; i > 0; i -= 1) {
+					const j = Math.floor(Math.random() * (i + 1));
+					[queue[i], queue[j]] = [queue[j]!, queue[i]!];
+				}
+
+				if (pinnedTrack) {
+					queue.unshift(pinnedTrack);
+				}
+
+				const nextQueueIndex = queue.length > 0 ? 0 : -1;
+				const nextCurrentTrack = queue.length > 0 ? (queue[0] ?? null) : null;
+
+				return {
+					...state,
+					queue,
+					queueIndex: nextQueueIndex,
+					currentTrack: nextCurrentTrack
+				};
+			}),
 		playAtIndex: (index: number) =>
 			update((state) => {
 				if (index < 0 || index >= state.queue.length) {

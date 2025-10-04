@@ -9,7 +9,11 @@
 	const disabledQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS', 'HI_RES']);
 
 	const qualities: { value: AudioQuality; label: string; description: string }[] = [
-		{ value: 'HI_RES_LOSSLESS', label: 'Hi-Res Lossless', description: '24/44.1kHz to 24/192kHz FLAC' },
+		{
+			value: 'HI_RES_LOSSLESS',
+			label: 'Hi-Res Lossless',
+			description: '24/44.1kHz to 24/192kHz FLAC'
+		},
 		{ value: 'HI_RES', label: 'Hi-Res', description: 'up to 96 kHz MQA' },
 		{ value: 'LOSSLESS', label: 'Lossless', description: '16-bit/44.1 kHz FLAC' },
 		{ value: 'HIGH', label: 'High', description: '320k AAC' },
@@ -64,7 +68,7 @@
 				{#each qualities as quality}
 					<button
 						onclick={() => selectQuality(quality.value)}
-						class="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60 disabled:text-gray-500 disabled:hover:bg-gray-800"
+						class="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-500 disabled:opacity-60 disabled:hover:bg-gray-800"
 						disabled={isQualityDisabled(quality.value)}
 						aria-disabled={isQualityDisabled(quality.value)}
 						title={isQualityDisabled(quality.value) ? 'Not available in this build' : undefined}
@@ -81,7 +85,9 @@
 							>
 								{quality.description}
 								{#if isQualityDisabled(quality.value)}
-									<span class="ml-1 uppercase tracking-wide text-[10px] text-gray-500">Unavailable</span>
+									<span class="ml-1 text-[10px] tracking-wide text-gray-500 uppercase"
+										>Unavailable</span
+									>
 								{/if}
 							</div>
 						</div>

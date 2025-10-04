@@ -3,8 +3,19 @@
 	import { playerStore } from '$lib/stores/player';
 	import { tidalAPI } from '$lib/api';
 	import { getProxiedUrl } from '$lib/config';
-	import type { Track } from '$lib/types';
-	import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, ListMusic, Trash2, X } from 'lucide-svelte';
+	import type { Track, AudioQuality } from '$lib/types';
+	import {
+		Play,
+		Pause,
+		SkipForward,
+		SkipBack,
+		Volume2,
+		VolumeX,
+		ListMusic,
+		Trash2,
+		X,
+		Shuffle
+	} from 'lucide-svelte';
 
 	let audioElement: HTMLAudioElement;
 	let streamUrl = '';
@@ -18,8 +29,85 @@
 	let containerElement: HTMLDivElement | null = null;
 	let resizeObserver: ResizeObserver | null = null;
 	let showQueuePanel = false;
+	const streamCache = new Map<string, string>();
+	let preloadingCacheKey: string | null = null;
+	const PRELOAD_THRESHOLD_SECONDS = 12;
 
-	$:{
+	function getCacheKey(trackId: number, quality: AudioQuality) {
+		return `${trackId}:${quality}`;
+	}
+
+	async function resolveStream(track: Track): Promise<string> {
+		const quality = $playerStore.quality;
+		const cacheKey = getCacheKey(track.id, quality);
+		const cached = streamCache.get(cacheKey);
+		if (cached) {
+			return cached;
+		}
+
+		const rawUrl = await tidalAPI.getStreamUrl(track.id, quality);
+		const proxied = getProxiedUrl(rawUrl);
+		streamCache.set(cacheKey, proxied);
+		return proxied;
+	}
+
+	function pruneStreamCache() {
+		const quality = $playerStore.quality;
+		const keepKeys = new Set<string>();
+		const current = $playerStore.currentTrack;
+		if (current) {
+			keepKeys.add(getCacheKey(current.id, quality));
+		}
+		const { queue, queueIndex } = $playerStore;
+		const nextTrack = queue[queueIndex + 1];
+		if (nextTrack) {
+			keepKeys.add(getCacheKey(nextTrack.id, quality));
+		}
+
+		for (const key of streamCache.keys()) {
+			if (!keepKeys.has(key)) {
+				streamCache.delete(key);
+			}
+		}
+	}
+
+	async function preloadNextTrack(track: Track) {
+		const quality = $playerStore.quality;
+		const cacheKey = getCacheKey(track.id, quality);
+		if (streamCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
+			return;
+		}
+
+		preloadingCacheKey = cacheKey;
+		try {
+			await resolveStream(track);
+			pruneStreamCache();
+		} catch (error) {
+			console.warn('Failed to preload next track:', error);
+		} finally {
+			if (preloadingCacheKey === cacheKey) {
+				preloadingCacheKey = null;
+			}
+		}
+	}
+
+	function maybePreloadNextTrack(remainingSeconds: number) {
+		if (remainingSeconds > PRELOAD_THRESHOLD_SECONDS) {
+			return;
+		}
+		const { queue, queueIndex, quality } = $playerStore;
+		const nextTrack = queue[queueIndex + 1];
+		if (!nextTrack) {
+			return;
+		}
+		const cacheKey = getCacheKey(nextTrack.id, quality);
+		if (streamCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
+			return;
+		}
+		preloadNextTrack(nextTrack);
+	}
+
+	$: {
 		const current = $playerStore.currentTrack;
 		if (!audioElement || !current) {
 			if (!current) {
@@ -61,6 +149,10 @@
 		playerStore.clearQueue();
 	}
 
+	function handleShuffleQueue() {
+		playerStore.shuffleQueue();
+	}
+
 	$: if (audioElement) {
 		audioElement.volume = $playerStore.volume;
 	}
@@ -77,13 +169,14 @@
 		bufferedPercent = 0;
 
 		try {
-			const resolvedUrl = await tidalAPI.getStreamUrl(track.id, $playerStore.quality);
+			const resolvedUrl = await resolveStream(track);
 
 			if (sequence !== loadSequence) {
 				return;
 			}
 
-			streamUrl = getProxiedUrl(resolvedUrl);
+			streamUrl = resolvedUrl;
+			pruneStreamCache();
 
 			if (audioElement) {
 				audioElement.crossOrigin = 'anonymous';
@@ -102,6 +195,8 @@
 		if (audioElement) {
 			playerStore.setCurrentTime(audioElement.currentTime);
 			updateBufferedPercent();
+			const remaining = ($playerStore.duration ?? 0) - audioElement.currentTime;
+			maybePreloadNextTrack(remaining);
 		}
 	}
 
@@ -243,10 +338,12 @@
 ></audio>
 
 <div
-	class="audio-player-backdrop fixed inset-x-0 bottom-0 z-50 px-4 pb-5 pt-6 sm:px-6 sm:pb-6 sm:pt-8"
+	class="audio-player-backdrop fixed inset-x-0 bottom-0 z-50 px-4 pt-16 pb-5 sm:px-6 sm:pt-16 sm:pb-6"
 	bind:this={containerElement}
 >
-	<div class="mx-auto w-full max-w-screen-2xl overflow-hidden rounded-2xl border border-gray-800 bg-zinc-900 shadow-2xl">
+	<div
+		class="mx-auto w-full max-w-screen-2xl overflow-hidden rounded-2xl border border-gray-800 bg-zinc-900 shadow-2xl"
+	>
 		<div class="relative px-4 py-3">
 			{#if $playerStore.currentTrack}
 				<!-- Progress Bar -->
@@ -284,7 +381,7 @@
 					<div class="flex min-w-0 flex-1 items-center gap-3">
 						{#if $playerStore.currentTrack.album.cover}
 							<img
-								src={tidalAPI.getCoverUrl($playerStore.currentTrack.album.cover, '80')}
+								src={tidalAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
 								alt={$playerStore.currentTrack.title}
 								class="h-14 w-14 rounded object-cover shadow-lg"
 							/>
@@ -333,7 +430,6 @@
 						>
 							<SkipForward size={20} />
 						</button>
-
 					</div>
 
 					<!-- Queue Toggle -->
@@ -378,7 +474,9 @@
 				</div>
 
 				{#if showQueuePanel}
-					<div class="mt-4 space-y-3 rounded-2xl border border-gray-800/80 bg-neutral-900/90 p-4 text-sm shadow-inner">
+					<div
+						class="mt-4 space-y-3 rounded-2xl border border-gray-800/80 bg-neutral-900/90 p-4 text-sm shadow-inner"
+					>
 						<div class="flex items-center justify-between gap-2">
 							<div class="flex items-center gap-2 text-gray-300">
 								<ListMusic size={18} />
@@ -389,8 +487,17 @@
 							</div>
 							<div class="flex items-center gap-2">
 								<button
+									onclick={handleShuffleQueue}
+									class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-blue-500 hover:text-blue-200 disabled:opacity-40"
+									type="button"
+									disabled={$playerStore.queue.length <= 1}
+								>
+									<Shuffle size={14} />
+									Shuffle
+								</button>
+								<button
 									onclick={clearQueue}
-									class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs uppercase tracking-wide text-gray-400 transition-colors hover:border-red-500 hover:text-red-400"
+									class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-red-500 hover:text-red-400"
 									type="button"
 									disabled={$playerStore.queue.length === 0}
 								>
@@ -421,11 +528,14 @@
 											}}
 											tabindex="0"
 											role="button"
-											class="group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === $playerStore.queueIndex
+											class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index ===
+											$playerStore.queueIndex
 												? 'bg-blue-500/10 text-white'
-												: 'hover:bg-gray-800/70 text-gray-200'}"
+												: 'text-gray-200 hover:bg-gray-800/70'}"
 										>
-											<span class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300">
+											<span
+												class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300"
+											>
 												{index + 1}
 											</span>
 											<div class="min-w-0 flex-1">
@@ -449,7 +559,9 @@
 								{/each}
 							</ul>
 						{:else}
-							<p class="rounded-lg border border-dashed border-gray-700 bg-gray-900/70 px-3 py-8 text-center text-gray-400">
+							<p
+								class="rounded-lg border border-dashed border-gray-700 bg-gray-900/70 px-3 py-8 text-center text-gray-400"
+							>
 								Queue is empty
 							</p>
 						{/if}
@@ -489,10 +601,7 @@
 		z-index: 0;
 		backdrop-filter: blur(20px);
 		-webkit-backdrop-filter: blur(20px);
-		mask: linear-gradient(
-			to bottom,
-			transparent, black, black
-		);
+		mask: linear-gradient(to bottom, transparent 0%, black 25%);
 	}
 
 	.audio-player-backdrop > * {

@@ -11,7 +11,8 @@ import type {
 	CoverImage,
 	Lyrics,
 	TrackInfo,
-	TrackLookup
+	TrackLookup,
+	ArtistDetails
 } from './types';
 
 const API_BASE = API_CONFIG.baseUrl;
@@ -32,15 +33,15 @@ class TidalAPI {
 		return this.buildSearchResponse<T>(section);
 	}
 
-	private buildSearchResponse<T>(section: Partial<SearchResponse<T>> | undefined): SearchResponse<T> {
+	private buildSearchResponse<T>(
+		section: Partial<SearchResponse<T>> | undefined
+	): SearchResponse<T> {
 		const items = section?.items;
 		const list = Array.isArray(items) ? (items as T[]) : [];
 		const limit = typeof section?.limit === 'number' ? section.limit : list.length;
 		const offset = typeof section?.offset === 'number' ? section.offset : 0;
 		const total =
-			typeof section?.totalNumberOfItems === 'number'
-				? section.totalNumberOfItems
-				: list.length;
+			typeof section?.totalNumberOfItems === 'number' ? section.totalNumberOfItems : list.length;
 
 		return {
 			items: list,
@@ -289,7 +290,7 @@ class TidalAPI {
 
 			const isTokenRetry = response.status === 401 && subStatus === 11002;
 			const message = detail ?? `Failed to get track (status ${response.status})`;
-			lastError = new Error(isTokenRetry ? userMessage ?? message : message);
+			lastError = new Error(isTokenRetry ? (userMessage ?? message) : message);
 			const shouldRetry =
 				isTokenRetry || (detail ? /quality not found/i.test(detail) : response.status >= 500);
 
@@ -316,14 +317,61 @@ class TidalAPI {
 	}
 
 	/**
-	 * Get album details
+	 * Get album details with track listing
 	 */
-	async getAlbum(id: number): Promise<Album> {
+	async getAlbum(id: number): Promise<{ album: Album; tracks: Track[] }> {
 		const response = await this.fetch(`${this.baseUrl}/album/?id=${id}`);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get album');
 		const data = await response.json();
-		return Array.isArray(data) ? data[0] : data;
+		const entries = Array.isArray(data) ? data : [data];
+
+		let albumEntry: Album | undefined;
+		let trackCollection: { items?: unknown[] } | undefined;
+
+		for (const entry of entries) {
+			if (!entry || typeof entry !== 'object') continue;
+
+			if (!albumEntry && 'title' in entry && 'id' in entry && 'cover' in entry) {
+				albumEntry = this.prepareAlbum(entry as Album);
+				continue;
+			}
+
+			if (
+				!trackCollection &&
+				'items' in entry &&
+				Array.isArray((entry as { items?: unknown[] }).items)
+			) {
+				trackCollection = entry as { items?: unknown[] };
+			}
+		}
+
+		if (!albumEntry) {
+			throw new Error('Album not found');
+		}
+
+		const tracks: Track[] = [];
+		if (trackCollection?.items) {
+			for (const rawItem of trackCollection.items) {
+				if (!rawItem || typeof rawItem !== 'object') continue;
+
+				let trackCandidate: Track | undefined;
+				if ('item' in rawItem && rawItem.item && typeof rawItem.item === 'object') {
+					trackCandidate = rawItem.item as Track;
+				} else {
+					trackCandidate = rawItem as Track;
+				}
+
+				if (!trackCandidate) continue;
+
+				const candidateWithAlbum = trackCandidate.album
+					? trackCandidate
+					: ({ ...trackCandidate, album: albumEntry } as Track);
+				tracks.push(this.prepareTrack(candidateWithAlbum));
+			}
+		}
+
+		return { album: albumEntry, tracks };
 	}
 
 	/**
@@ -341,15 +389,253 @@ class TidalAPI {
 	}
 
 	/**
-	 * Get artist details
+	 * Get artist overview, including discography modules and top tracks
 	 */
-	async getArtist(id: number, full: boolean = false): Promise<Artist> {
-		const url = full ? `${this.baseUrl}/artist/?f=${id}` : `${this.baseUrl}/artist/?id=${id}`;
-		const response = await this.fetch(url);
+	async getArtist(id: number): Promise<ArtistDetails> {
+		const response = await this.fetch(`${this.baseUrl}/artist/?f=${id}`);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get artist');
 		const data = await response.json();
-		return Array.isArray(data) ? data[0] : data;
+		const entries = Array.isArray(data) ? data : [data];
+
+		const visited = new Set<object>();
+		const albumMap = new Map<number, Album>();
+		const trackMap = new Map<number, Track>();
+		let artist: Artist | undefined;
+
+		const isTrackLike = (value: unknown): value is Track => {
+			if (!value || typeof value !== 'object') return false;
+			const candidate = value as Record<string, unknown>;
+			const albumCandidate = candidate.album as unknown;
+			return (
+				typeof candidate.id === 'number' &&
+				typeof candidate.title === 'string' &&
+				typeof candidate.duration === 'number' &&
+				'trackNumber' in candidate &&
+				albumCandidate !== undefined &&
+				albumCandidate !== null &&
+				typeof albumCandidate === 'object'
+			);
+		};
+
+		const isAlbumLike = (value: unknown): value is Album => {
+			if (!value || typeof value !== 'object') return false;
+			const candidate = value as Record<string, unknown>;
+			return (
+				typeof candidate.id === 'number' &&
+				typeof candidate.title === 'string' &&
+				'cover' in candidate
+			);
+		};
+
+		const isArtistLike = (value: unknown): value is Artist => {
+			if (!value || typeof value !== 'object') return false;
+			const candidate = value as Record<string, unknown>;
+			return (
+				typeof candidate.id === 'number' &&
+				typeof candidate.name === 'string' &&
+				typeof candidate.type === 'string' &&
+				('artistRoles' in candidate || 'artistTypes' in candidate || 'url' in candidate)
+			);
+		};
+
+		const recordArtist = (candidate: Artist | undefined) => {
+			if (!candidate) return;
+			const normalized = this.prepareArtist(candidate);
+			if (!artist || artist.id === normalized.id) {
+				artist = normalized;
+			}
+		};
+
+		const addAlbum = (candidate: Album | undefined) => {
+			if (!candidate || typeof candidate.id !== 'number') return;
+			const normalized = this.prepareAlbum({ ...candidate });
+			albumMap.set(normalized.id, normalized);
+			recordArtist(normalized.artist ?? normalized.artists?.[0]);
+		};
+
+		const addTrack = (candidate: Track | undefined) => {
+			if (!candidate || typeof candidate.id !== 'number') return;
+			const normalized = this.prepareTrack({ ...candidate });
+			if (!normalized.album) {
+				return;
+			}
+			addAlbum(normalized.album);
+			const knownAlbum = albumMap.get(normalized.album.id);
+			if (knownAlbum) {
+				normalized.album = knownAlbum;
+			}
+			trackMap.set(normalized.id, normalized);
+			recordArtist(normalized.artist);
+		};
+
+		const parseModuleItems = (items: unknown) => {
+			if (!Array.isArray(items)) return;
+			for (const entry of items) {
+				if (!entry || typeof entry !== 'object') {
+					continue;
+				}
+
+				const candidate = 'item' in entry ? (entry as { item?: unknown }).item : entry;
+				if (isAlbumLike(candidate)) {
+					addAlbum(candidate as Album);
+					const normalizedAlbum = albumMap.get((candidate as Album).id);
+					recordArtist(normalizedAlbum?.artist ?? normalizedAlbum?.artists?.[0]);
+					continue;
+				}
+				if (isTrackLike(candidate)) {
+					addTrack(candidate as Track);
+					continue;
+				}
+
+				scanValue(candidate);
+			}
+		};
+
+		const scanValue = (value: unknown) => {
+			if (!value) return;
+			if (Array.isArray(value)) {
+				const trackCandidates = value.filter(isTrackLike);
+				if (trackCandidates.length > 0) {
+					for (const track of trackCandidates) {
+						addTrack(track);
+					}
+					return;
+				}
+				for (const entry of value) {
+					scanValue(entry);
+				}
+				return;
+			}
+
+			if (typeof value !== 'object') {
+				return;
+			}
+
+			const objectRef = value as Record<string, unknown>;
+			if (visited.has(objectRef)) {
+				return;
+			}
+			visited.add(objectRef);
+
+			if (isArtistLike(objectRef)) {
+				recordArtist(objectRef as Artist);
+			}
+
+			if ('modules' in objectRef && Array.isArray(objectRef.modules)) {
+				for (const moduleEntry of objectRef.modules) {
+					scanValue(moduleEntry);
+				}
+			}
+
+			if (
+				'pagedList' in objectRef &&
+				objectRef.pagedList &&
+				typeof objectRef.pagedList === 'object'
+			) {
+				const pagedList = objectRef.pagedList as { items?: unknown };
+				parseModuleItems(pagedList.items);
+			}
+
+			if ('items' in objectRef && Array.isArray(objectRef.items)) {
+				parseModuleItems(objectRef.items);
+			}
+
+			if ('rows' in objectRef && Array.isArray(objectRef.rows)) {
+				parseModuleItems(objectRef.rows);
+			}
+
+			if ('listItems' in objectRef && Array.isArray(objectRef.listItems)) {
+				parseModuleItems(objectRef.listItems);
+			}
+
+			for (const nested of Object.values(objectRef)) {
+				scanValue(nested);
+			}
+		};
+
+		for (const entry of entries) {
+			scanValue(entry);
+		}
+
+		if (!artist) {
+			const trackPrimaryArtist = Array.from(trackMap.values())
+				.map((track) => track.artist ?? track.artists?.[0])
+				.find(Boolean);
+			const albumPrimaryArtist = Array.from(albumMap.values())
+				.map((album) => album.artist ?? album.artists?.[0])
+				.find(Boolean);
+			recordArtist(trackPrimaryArtist ?? albumPrimaryArtist);
+		}
+
+		if (!artist) {
+			try {
+				const fallbackResponse = await this.fetch(`${this.baseUrl}/artist/?id=${id}`);
+				this.ensureNotRateLimited(fallbackResponse);
+				if (fallbackResponse.ok) {
+					const fallbackData = await fallbackResponse.json();
+					const baseArtist = Array.isArray(fallbackData) ? fallbackData[0] : fallbackData;
+					if (baseArtist && typeof baseArtist === 'object') {
+						recordArtist(baseArtist as Artist);
+					}
+				}
+			} catch (fallbackError) {
+				console.warn('Failed to fetch base artist details:', fallbackError);
+			}
+		}
+
+		if (!artist) {
+			throw new Error('Artist not found');
+		}
+
+		const albums = Array.from(albumMap.values()).map((album) => {
+			if (!album.artist && artist) {
+				return { ...album, artist };
+			}
+			return album;
+		});
+
+		const albumById = new Map(albums.map((album) => [album.id, album] as const));
+
+		const tracks = Array.from(trackMap.values()).map((track) => {
+			const enrichedArtist = track.artist ?? artist;
+			const album = track.album;
+			const enrichedAlbum = album
+				? (albumById.get(album.id) ?? (artist && !album.artist ? { ...album, artist } : album))
+				: undefined;
+			return {
+				...track,
+				artist: enrichedArtist ?? track.artist,
+				album: enrichedAlbum ?? album
+			};
+		});
+
+		const parseDate = (value?: string): number => {
+			if (!value) return Number.NaN;
+			const timestamp = Date.parse(value);
+			return Number.isFinite(timestamp) ? timestamp : Number.NaN;
+		};
+
+		const sortedAlbums = albums.sort((a, b) => {
+			const timeA = parseDate(a.releaseDate);
+			const timeB = parseDate(b.releaseDate);
+			if (Number.isNaN(timeA) && Number.isNaN(timeB)) {
+				return (b.popularity ?? 0) - (a.popularity ?? 0);
+			}
+			if (Number.isNaN(timeA)) return 1;
+			if (Number.isNaN(timeB)) return -1;
+			return timeB - timeA;
+		});
+
+		const sortedTracks = tracks
+			.sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+			.slice(0, 100);
+
+		return {
+			...artist,
+			albums: sortedAlbums,
+			tracks: sortedTracks
+		};
 	}
 
 	/**
@@ -484,7 +770,7 @@ class TidalAPI {
 	/**
 	 * Get cover URL
 	 */
-	getCoverUrl(coverId: string, size: '1280' | '640' | '80' = '640'): string {
+	getCoverUrl(coverId: string, size: '1280' | '640' | '320' | '160' | '80' = '640'): string {
 		return `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/${size}x${size}.jpg`;
 	}
 

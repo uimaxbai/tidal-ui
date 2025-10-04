@@ -1,17 +1,36 @@
-import adapter from '@sveltejs/adapter-auto';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import vercel from '@sveltejs/adapter-vercel';
+import node from '@sveltejs/adapter-node';
+import cloudflare from '@sveltejs/adapter-cloudflare';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	// Consult https://svelte.dev/docs/kit/integrations
-	// for more information about preprocessors
 	preprocess: vitePreprocess(),
+
 	kit: {
-		// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-		// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-		// See https://svelte.dev/docs/kit/adapters for more information about adapters.
-		adapter: adapter()
+		adapter: selectAdapter()
 	}
 };
+
+function selectAdapter() {
+	// Vercel automatically sets this
+	if (process.env.VERCEL) {
+		console.log('Using Vercel adapter');
+		return vercel();
+	}
+
+	// Cloudflare Workers environment
+	if (process.env.CF_PAGES || process.env.CF_WORKER) {
+		console.log('Using Cloudflare adapter');
+		return cloudflare();
+	}
+
+	// Docker / local / default
+	console.log('Using Node adapter (Docker/local)');
+	return node({
+		out: 'build',
+		precompress: true
+	});
+}
 
 export default config;

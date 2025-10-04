@@ -154,10 +154,10 @@ async function writeCachedResponse(
 const ensureVaryIncludesOrigin = (value: string | null): string => {
 	const entries = value
 		? value
-			.split(',')
-			.map((v) => v.trim())
-			.filter(Boolean)
-	: [];
+				.split(',')
+				.map((v) => v.trim())
+				.filter(Boolean)
+		: [];
 	if (!entries.includes('Origin')) {
 		entries.push('Origin');
 	}
@@ -201,7 +201,8 @@ async function shouldRetryInvalidToken(response: Response, targetUrl: URL): Prom
 				: typeof payload?.subStatus === 'string'
 					? Number.parseInt(payload.subStatus, 10)
 					: undefined;
-		const subStatus = typeof rawSubStatus === 'number' && Number.isFinite(rawSubStatus) ? rawSubStatus : undefined;
+		const subStatus =
+			typeof rawSubStatus === 'number' && Number.isFinite(rawSubStatus) ? rawSubStatus : undefined;
 		const combinedMessage = [payload?.userMessage, payload?.detail]
 			.filter((value): value is string => typeof value === 'string')
 			.join(' ')

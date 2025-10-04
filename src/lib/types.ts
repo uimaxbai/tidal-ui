@@ -45,6 +45,11 @@ export interface Artist {
 	mixes?: Record<string, string>;
 }
 
+export interface ArtistDetails extends Artist {
+	albums: Album[];
+	tracks: Track[];
+}
+
 export interface Album {
 	id: number;
 	title: string;
