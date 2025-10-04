@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { tidalAPI } from '$lib/api';
+	import { losslessAPI } from '$lib/api';
 	import TrackList from '$lib/components/TrackList.svelte';
 	import type { Playlist, Track } from '$lib/types';
 	import { onMount } from 'svelte';
@@ -25,7 +25,7 @@
 		try {
 			isLoading = true;
 			error = null;
-			const data = await tidalAPI.getPlaylist(id);
+			const data = await losslessAPI.getPlaylist(id);
 			playlist = data.playlist;
 			tracks = data.items.map((item) => item.item);
 		} catch (err) {
@@ -93,7 +93,7 @@
 					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-80"
 				>
 					<img
-						src={tidalAPI.getCoverUrl(playlist.image, '640')}
+						src={losslessAPI.getCoverUrl(playlist.image, '640')}
 						alt={playlist.title}
 						class="h-full w-full object-cover"
 					/>
@@ -112,7 +112,7 @@
 				<div class="mb-4 flex items-center gap-2">
 					{#if playlist.creator.picture}
 						<img
-							src={tidalAPI.getCoverUrl(playlist.creator.picture, '80')}
+							src={losslessAPI.getCoverUrl(playlist.creator.picture, '80')}
 							alt={playlist.creator.name}
 							class="h-8 w-8 rounded-full"
 						/>

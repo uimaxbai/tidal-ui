@@ -1,16 +1,32 @@
-# tidal-ui
+# lossless-ui
 
 High-fidelity music streaming UI built with SvelteKit and Tailwind.
 
 ## Features
 
 - Full-featured audio player with queue management, shuffle, seek, and volume controls.
+- Media Session API integration for lock screen controls and rich device notifications.
 - Lossless playback with runtime quality selection and optional preloading for smooth transitions.
 - Powerful search experience across tracks, albums, artists, and playlists with keyboard support.
 - Dedicated album, artist, and playlist pages with rich metadata and quick actions.
-- One-click track downloads that honor the selected audio quality.
+- One-click track downloads that honor the selected audio quality and embed rich metadata plus cover art via FFmpeg WASM.
+- Synced lyrics popup powered by YouLy+ with word-by-word karaoke highlighting, refresh, and maximized view.
+- Installable Progressive Web App with offline-ready shell, custom icon, and automatic update flow.
 - Optional Redis-backed response cache to reduce API latency and load.
 - Built-in CORS proxy routing and multi-endpoint failover for resilient API access.
+
+## Downloads
+
+- Track downloads now bundle title, album, artist, ISRC, track/disc numbers, release year, and artwork so files stay organized in local libraries.
+- Artist pages include a "Download Discography" control plus one-click album download buttons. Progress and errors surface inline while requests are processed.
+- FFmpeg WASM assets stream from the official CDN on demand. If the browser cannot load FFmpeg (for example older or restricted environments), downloads gracefully fall back to the original stream without metadata injection.
+
+## Progressive Web App
+
+- The app now ships with a standalone install experience. Visit the site in a supporting browser and use the "Install" prompt or add it to your home screen.
+- A service worker precaches the UI shell, fonts, and the offline fallback page so navigation keeps working even when the network drops.
+- When a new release is deployed the service worker self-updates and refreshes open tabs to ensure everyone runs the latest build.
+- Update the icons under `static/icons/` if you want to ship a bespoke logo. The manifest lives at `static/manifest.webmanifest`.
 
 ## Run with Docker
 
@@ -28,15 +44,6 @@ High-fidelity music streaming UI built with SvelteKit and Tailwind.
 
 `docker compose` automatically passes through the optional Redis environment variables and sets `PORT=5000` so the SvelteKit server binds correctly. Stop the stack with `docker compose down` when you are done.
 
-### Manual Docker usage
-
-Build the image and run it directly if you prefer to manage containers yourself:
-
-```bash
-docker build -t tidal-ui .
-docker run --rm -p 5000:5000 -e PORT=5000 tidal-ui
-```
-
 Pass any optional configuration (for example `TITLE`, `REDIS_URL`, or the Redis tuning knobs listed above) with additional `-e` flags.
 
 ## Development Notes
@@ -51,3 +58,5 @@ Pass any optional configuration (for example `TITLE`, `REDIS_URL`, or the Redis 
     - `REDIS_CACHE_MAX_BODY_BYTES` (default 200000)
 - Cached responses are stored only for safe GET requests without `Authorization`, `Cookie`, or `Range` headers. Responses larger than `REDIS_CACHE_MAX_BODY_BYTES`, non-text/JSON payloads, 4xx/5xx statuses, and responses with `Cache-Control: no-store|private` are never cached.
 - Install dependencies with `npm install` after updating `package.json`.
+
+## Todo

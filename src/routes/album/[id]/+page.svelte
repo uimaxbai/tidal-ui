@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { tidalAPI } from '$lib/api';
+	import { losslessAPI } from '$lib/api';
 	import TrackList from '$lib/components/TrackList.svelte';
 	import type { Album, Track } from '$lib/types';
 	import { onMount } from 'svelte';
@@ -28,7 +28,7 @@
 		try {
 			isLoading = true;
 			error = null;
-			const { album: albumData, tracks: albumTracks } = await tidalAPI.getAlbum(id);
+			const { album: albumData, tracks: albumTracks } = await losslessAPI.getAlbum(id);
 			album = albumData;
 			tracks = albumTracks;
 		} catch (err) {
@@ -75,7 +75,7 @@
 		for (const track of tracks) {
 			try {
 				const filename = `${track.artist.name} - ${track.title}.flac`;
-				await tidalAPI.downloadTrack(track.id, quality, filename);
+				await losslessAPI.downloadTrack(track.id, quality, filename);
 				downloadedCount += 1;
 			} catch (err) {
 				console.error('Failed to download album track:', err);
@@ -130,7 +130,7 @@
 					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-80"
 				>
 					<img
-						src={tidalAPI.getCoverUrl(album.cover, '640')}
+						src={losslessAPI.getCoverUrl(album.cover, '640')}
 						alt={album.title}
 						class="h-full w-full object-cover"
 					/>
@@ -167,7 +167,7 @@
 					{#if totalDuration > 0}
 						<div class="flex items-center gap-1">
 							<Clock size={16} />
-							{tidalAPI.formatDuration(totalDuration)} total
+							{losslessAPI.formatDuration(totalDuration)} total
 						</div>
 					{/if}
 					<!--

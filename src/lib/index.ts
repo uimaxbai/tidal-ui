@@ -1,7 +1,7 @@
 // place files you want to import through the `$lib` alias in this folder.
 
 // Export API and types
-export { tidalAPI } from './api';
+export { losslessAPI as tidalAPI } from './api';
 export * from './types';
 
 // Export stores

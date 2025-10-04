@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { tidalAPI } from '$lib/api';
+	import { losslessAPI } from '$lib/api';
+	import { downloadAlbum } from '$lib/downloads';
 	import { playerStore } from '$lib/stores/player';
-	import type { Track, Album, Artist, Playlist } from '$lib/types';
+	import type { Track, Album, Artist, Playlist, AudioQuality } from '$lib/types';
 	import {
 		Search,
 		Music,
@@ -10,7 +11,8 @@
 		Download,
 		Newspaper,
 		ListPlus,
-		ListVideo
+		ListVideo,
+		Loader2
 	} from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
@@ -24,12 +26,22 @@
 	let playlists = $state<Playlist[]>([]);
 	let downloadingIds = $state(new Set<number>());
 	let error = $state<string | null>(null);
+	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
+
+	type AlbumDownloadState = {
+		downloading: boolean;
+		completed: number;
+		total: number;
+		error: string | null;
+	};
+
+	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 
 	const newsItems = [
 		{
 			title: 'Initial release!',
 			description:
-				"Two Tidal APIs fetch lossless CD-quality 16/44.1kHz FLACs. No support for Hi-Res yet but I'm working on it haha. No playlist saving or logging in either but downloading and streaming work."
+				"Two APIs fetch lossless CD-quality 16/44.1kHz FLACs. No support for Hi-Res yet but I'm working on it haha. No playlist saving or logging in either but downloading and streaming work."
 		},
 		{
 			title: 'QOL changes',
@@ -77,7 +89,7 @@
 
 		try {
 			const filename = `${track.artist.name} - ${track.title}.flac`;
-			await tidalAPI.downloadTrack(track.id, $playerStore.quality, filename);
+			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename);
 		} catch (err) {
 			console.error('Failed to download track:', err);
 			const fallbackMessage = 'Failed to download track. Please try again.';
@@ -87,6 +99,66 @@
 			const updated = new Set(downloadingIds);
 			updated.delete(track.id);
 			downloadingIds = updated;
+		}
+	}
+
+	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
+		const previous = albumDownloadStates[albumId] ?? {
+			downloading: false,
+			completed: 0,
+			total: 0,
+			error: null
+		};
+		albumDownloadStates = {
+			...albumDownloadStates,
+			[albumId]: { ...previous, ...patch }
+		};
+	}
+
+	async function handleAlbumDownloadClick(album: Album, event: MouseEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+
+		if (albumDownloadStates[album.id]?.downloading) {
+			return;
+		}
+
+		patchAlbumDownloadState(album.id, {
+			downloading: true,
+			completed: 0,
+			total: album.numberOfTracks ?? 0,
+			error: null
+		});
+
+		const quality = albumDownloadQuality;
+
+		try {
+			await downloadAlbum(
+				album,
+				quality,
+				{
+					onTotalResolved: (total) => {
+						patchAlbumDownloadState(album.id, { total });
+					},
+					onTrackDownloaded: (completed, total) => {
+						patchAlbumDownloadState(album.id, { completed, total });
+					}
+				},
+				album.artist?.name
+			);
+			const finalState = albumDownloadStates[album.id];
+			patchAlbumDownloadState(album.id, {
+				downloading: false,
+				completed: finalState?.total ?? finalState?.completed ?? 0,
+				error: null
+			});
+		} catch (err) {
+			console.error('Failed to download album:', err);
+			const message =
+				err instanceof Error && err.message
+					? err.message
+					: 'Failed to download album. Please try again.';
+			patchAlbumDownloadState(album.id, { downloading: false, error: message });
 		}
 	}
 
@@ -111,6 +183,23 @@
 		}
 	}
 
+	$effect(() => {
+		const activeIds = new Set(albums.map((album) => album.id));
+		let mutated = false;
+		const nextState: Record<number, AlbumDownloadState> = {};
+		for (const [albumId, state] of Object.entries(albumDownloadStates)) {
+			const numericId = Number(albumId);
+			if (activeIds.has(numericId)) {
+				nextState[numericId] = state;
+			} else {
+				mutated = true;
+			}
+		}
+		if (mutated) {
+			albumDownloadStates = nextState;
+		}
+	});
+
 	async function handleSearch() {
 		if (!query.trim()) return;
 
@@ -120,22 +209,22 @@
 		try {
 			switch (activeTab) {
 				case 'tracks': {
-					const response = await fetchWithRetry(() => tidalAPI.searchTracks(query));
+					const response = await fetchWithRetry(() => losslessAPI.searchTracks(query));
 					tracks = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'albums': {
-					const response = await tidalAPI.searchAlbums(query);
+					const response = await losslessAPI.searchAlbums(query);
 					albums = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'artists': {
-					const response = await tidalAPI.searchArtists(query);
+					const response = await losslessAPI.searchArtists(query);
 					artists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'playlists': {
-					const response = await tidalAPI.searchPlaylists(query);
+					const response = await losslessAPI.searchPlaylists(query);
 					playlists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
@@ -288,7 +377,7 @@
 					>
 						{#if track.album.cover}
 							<img
-								src={tidalAPI.getCoverUrl(track.album.cover, '320')}
+								src={losslessAPI.getCoverUrl(track.album.cover, '320')}
 								alt={track.title}
 								class="h-12 w-12 rounded object-cover"
 							/>
@@ -337,7 +426,7 @@
 									<Download size={18} />
 								{/if}
 							</button>
-							<span>{tidalAPI.formatDuration(track.duration)}</span>
+							<span>{losslessAPI.formatDuration(track.duration)}</span>
 						</div>
 					</div>
 				{/each}
@@ -345,26 +434,67 @@
 		{:else if activeTab === 'albums' && albums.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 				{#each albums as album}
-					<button onclick={() => onAlbumSelect?.(album)} class="group text-left">
-						<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
-							{#if album.cover}
-								<img
-									src={tidalAPI.getCoverUrl(album.cover, '640')}
-									alt={album.title}
-									class="h-full w-full object-cover transition-transform group-hover:scale-105"
-								/>
+					<div class="group relative text-left">
+						<button
+							onclick={(event) => handleAlbumDownloadClick(album, event)}
+							type="button"
+							class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+							disabled={albumDownloadStates[album.id]?.downloading}
+							aria-label={`Download ${album.title}`}
+						>
+							{#if albumDownloadStates[album.id]?.downloading}
+								<Loader2 size={16} class="animate-spin" />
+							{:else}
+								<Download size={16} />
 							{/if}
-						</div>
-						<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
-							{album.title}
-						</h3>
-						{#if album.artist}
-							<p class="truncate text-sm text-gray-400">{album.artist.name}</p>
+						</button>
+						<button
+							onclick={() => onAlbumSelect?.(album)}
+							type="button"
+							class="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
+						>
+							<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
+								{#if album.cover}
+									<img
+										src={losslessAPI.getCoverUrl(album.cover, '640')}
+										alt={album.title}
+										class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+									/>
+								{:else}
+									<div
+										class="flex h-full w-full items-center justify-center bg-gray-800 text-sm text-gray-500"
+									>
+										No artwork
+									</div>
+								{/if}
+							</div>
+							<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+								{album.title}
+							</h3>
+							{#if album.artist}
+								<p class="truncate text-sm text-gray-400">{album.artist.name}</p>
+							{/if}
+							{#if album.releaseDate}
+								<p class="text-xs text-gray-500">{album.releaseDate.split('-')[0]}</p>
+							{/if}
+						</button>
+						{#if albumDownloadStates[album.id]?.downloading}
+							<p class="mt-2 text-xs text-blue-300">
+								Downloading
+								{#if albumDownloadStates[album.id]?.total}
+									{albumDownloadStates[album.id]?.completed ?? 0}/{albumDownloadStates[album.id]
+										?.total}
+								{:else}
+									{albumDownloadStates[album.id]?.completed ?? 0}
+								{/if}
+								tracks…
+							</p>
+						{:else if albumDownloadStates[album.id]?.error}
+							<p class="mt-2 text-xs text-red-400" role="alert">
+								{albumDownloadStates[album.id]?.error}
+							</p>
 						{/if}
-						{#if album.releaseDate}
-							<p class="text-xs text-gray-500">{album.releaseDate.split('-')[0]}</p>
-						{/if}
-					</button>
+					</div>
 				{/each}
 			</div>
 		{:else if activeTab === 'artists' && artists.length > 0}
@@ -374,7 +504,7 @@
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-full">
 							{#if artist.picture}
 								<img
-									src={tidalAPI.getArtistPictureUrl(artist.picture)}
+									src={losslessAPI.getArtistPictureUrl(artist.picture)}
 									alt={artist.name}
 									class="h-full w-full object-cover transition-transform group-hover:scale-105"
 								/>
@@ -398,7 +528,7 @@
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
 							{#if playlist.image}
 								<img
-									src={tidalAPI.getCoverUrl(playlist.image, '640')}
+									src={losslessAPI.getCoverUrl(playlist.image, '640')}
 									alt={playlist.title}
 									class="h-full w-full object-cover transition-transform group-hover:scale-105"
 								/>

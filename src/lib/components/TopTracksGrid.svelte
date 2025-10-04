@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Track } from '$lib/types';
-	import { tidalAPI } from '$lib/api';
+	import { losslessAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
@@ -91,7 +91,7 @@
 
 		try {
 			const filename = `${track.artist.name} - ${track.title}.flac`;
-			await tidalAPI.downloadTrack(track.id, $playerStore.quality, filename);
+			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename);
 		} catch (error) {
 			console.error('Failed to download track:', error);
 			const fallbackMessage = 'Failed to download track. Please try again.';
@@ -157,7 +157,7 @@
 
 					{#if track.album.cover}
 						<img
-							src={tidalAPI.getCoverUrl(track.album.cover, '320')}
+							src={losslessAPI.getCoverUrl(track.album.cover, '320')}
 							alt={track.title}
 							class="h-20 w-20 flex-shrink-0 rounded-lg object-cover shadow-lg"
 						/>
@@ -229,7 +229,7 @@
 					</div>
 					<div class="flex items-center gap-1 text-xs text-gray-400">
 						<Clock size={14} />
-						<span>{tidalAPI.formatDuration(track.duration)}</span>
+						<span>{losslessAPI.formatDuration(track.duration)}</span>
 					</div>
 				</div>
 			</div>

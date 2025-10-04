@@ -4,6 +4,7 @@
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
+	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
 	import { navigating } from '$app/stores';
 	import type { Navigation } from '@sveltejs/kit';
 
@@ -39,6 +40,8 @@
 		playerHeight = height;
 	};
 
+	let controllerChangeHandler: (() => void) | null = null;
+
 	onMount(() => {
 		const updateViewportHeight = () => {
 			viewportHeight = window.innerHeight;
@@ -48,9 +51,51 @@
 		const unsubscribe = navigating.subscribe((value) => {
 			navigationState = value;
 		});
+
+		if ('serviceWorker' in navigator) {
+			const registerServiceWorker = async () => {
+				try {
+					const registration = await navigator.serviceWorker.register('/service-worker.js');
+					const sendSkipWaiting = () => {
+						if (registration.waiting) {
+							registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+						}
+					};
+
+					if (registration.waiting) {
+						sendSkipWaiting();
+					}
+
+					registration.addEventListener('updatefound', () => {
+						const newWorker = registration.installing;
+						if (!newWorker) return;
+						newWorker.addEventListener('statechange', () => {
+							if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+								sendSkipWaiting();
+							}
+						});
+					});
+				} catch (error) {
+					console.error('Service worker registration failed', error);
+				}
+			};
+
+			registerServiceWorker();
+
+			let refreshing = false;
+			controllerChangeHandler = () => {
+				if (refreshing) return;
+				refreshing = true;
+				window.location.reload();
+			};
+			navigator.serviceWorker.addEventListener('controllerchange', controllerChangeHandler);
+		}
 		return () => {
 			window.removeEventListener('resize', updateViewportHeight);
 			unsubscribe();
+			if (controllerChangeHandler) {
+				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
+			}
 		};
 	});
 </script>
@@ -58,6 +103,11 @@
 <svelte:head>
 	<title>{pageTitle}</title>
 	<link rel="icon" href={favicon} />
+	<link rel="manifest" href="/manifest.webmanifest" />
+	<link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+	<meta name="theme-color" content="#0f172a" />
+	<meta name="apple-mobile-web-app-capable" content="yes" />
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link
@@ -112,7 +162,7 @@
 	</header>
 
 	<!-- Main Content -->
-	<main class="mb-32 flex-1 rounded-t-2xl bg-neutral-900">
+	<main class="mb-36 flex-1 rounded-t-2xl bg-neutral-900">
 		<div
 			class="mx-auto max-w-screen-2xl px-4 py-6"
 			style={`padding-bottom: ${contentPaddingBottom}px;`}
@@ -125,6 +175,9 @@
 	<AudioPlayer onHeightChange={handlePlayerHeight} />
 </div>
 
+<LyricsPopup />
+
+<!--
 {#if navigationState}
 	<div
 		transition:fade={{ duration: 200 }}
@@ -152,7 +205,7 @@
 		</div>
 	</div>
 {/if}
-
+-->
 <style>
 	:global(body) {
 		font-family:

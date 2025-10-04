@@ -1,4 +1,4 @@
-// API service for HIFI Tidal API
+// API service for HIFI API
 import { API_CONFIG, fetchWithCORS } from './config';
 import type {
 	Track,
@@ -18,8 +18,9 @@ import type {
 const API_BASE = API_CONFIG.baseUrl;
 const RATE_LIMIT_ERROR_MESSAGE = 'Too Many Requests. Please wait a moment and try again.';
 
-class TidalAPI {
+class LosslessAPI {
 	public baseUrl: string;
+	private metadataQueue: Promise<void> = Promise.resolve();
 
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
@@ -694,6 +695,273 @@ class TidalAPI {
 	}
 
 	/**
+	 * Attempt to embed metadata into a downloaded track using FFmpeg WASM
+	 */
+	private async embedMetadataIntoBlob(
+		blob: Blob,
+		lookup: TrackLookup,
+		filename: string,
+		contentType?: string | null
+	): Promise<Blob | null> {
+		const job = this.metadataQueue.then(() =>
+			this.runMetadataEmbedding(blob, lookup, filename, contentType ?? undefined)
+		);
+		this.metadataQueue = job.then(
+			() => undefined,
+			() => undefined
+		);
+
+		try {
+			return await job;
+		} catch (error) {
+			console.warn('Metadata embedding failed', error);
+			return null;
+		}
+	}
+
+	private inferExtensionFromFilename(filename: string): string | null {
+		const match = /\.([a-z0-9]+)(?:\?.*)?$/i.exec(filename);
+		return match ? match[1]!.toLowerCase() : null;
+	}
+
+	private inferExtensionFromMime(mime?: string | null): string | null {
+		if (!mime) return null;
+		const normalized = mime.split(';')[0]?.trim().toLowerCase();
+		switch (normalized) {
+			case 'audio/flac':
+				return 'flac';
+			case 'audio/x-flac':
+				return 'flac';
+			case 'audio/mpeg':
+				return 'mp3';
+			case 'audio/mp3':
+				return 'mp3';
+			case 'audio/mp4':
+			case 'audio/aac':
+			case 'audio/x-m4a':
+				return 'm4a';
+			case 'audio/wav':
+			case 'audio/x-wav':
+				return 'wav';
+			case 'audio/ogg':
+				return 'ogg';
+			default:
+				return null;
+		}
+	}
+
+	private inferMimeFromExtension(
+		ext: string | null | undefined,
+		fallbackType?: string
+	): string | undefined {
+		switch (ext) {
+			case 'flac':
+				return 'audio/flac';
+			case 'mp3':
+				return 'audio/mpeg';
+			case 'm4a':
+			case 'aac':
+				return 'audio/mp4';
+			case 'wav':
+				return 'audio/wav';
+			case 'ogg':
+				return 'audio/ogg';
+			default:
+				return fallbackType;
+		}
+	}
+
+	private buildMetadataEntries(lookup: TrackLookup): Array<[string, string]> {
+		const entries: Array<[string, string]> = [];
+		const { track } = lookup;
+		const album = track.album;
+		const mainArtist = track.artist?.name ?? track.artists?.[0]?.name;
+		const albumArtist =
+			album?.artist?.name ??
+			(album?.artists && album.artists.length > 0 ? album.artists[0]?.name : undefined) ??
+			mainArtist;
+
+		if (track.title) entries.push(['title', track.title]);
+		if (mainArtist) entries.push(['artist', mainArtist]);
+		if (albumArtist) entries.push(['album_artist', albumArtist]);
+		if (album?.title) entries.push(['album', album.title]);
+
+		const trackNumber = Number(track.trackNumber);
+		const totalTracks = Number(album?.numberOfTracks);
+		if (Number.isFinite(trackNumber) && trackNumber > 0) {
+			const value =
+				Number.isFinite(totalTracks) && totalTracks > 0
+					? `${trackNumber}/${totalTracks}`
+					: `${trackNumber}`;
+			entries.push(['track', value]);
+		}
+
+		const discNumber = Number(track.volumeNumber);
+		const totalDiscs = Number(album?.numberOfVolumes);
+		if (Number.isFinite(discNumber) && discNumber > 0) {
+			const value =
+				Number.isFinite(totalDiscs) && totalDiscs > 0
+					? `${discNumber}/${totalDiscs}`
+					: `${discNumber}`;
+			entries.push(['disc', value]);
+		}
+
+		const releaseDate = album?.releaseDate ?? track.streamStartDate;
+		if (releaseDate) {
+			const yearMatch = /^(\d{4})/.exec(releaseDate);
+			if (yearMatch?.[1]) {
+				entries.push(['date', yearMatch[1]]);
+				entries.push(['year', yearMatch[1]]);
+			}
+		}
+
+		const tags = track.mediaMetadata?.tags ?? album?.mediaMetadata?.tags;
+		if (tags && tags.length > 0) {
+			entries.push(['genre', tags.join('; ')]);
+		}
+
+		if (track.isrc) {
+			entries.push(['ISRC', track.isrc]);
+		}
+
+		if (album?.copyright) {
+			entries.push(['copyright', album.copyright]);
+		}
+
+		if (track.copyright && track.copyright !== album?.copyright) {
+			entries.push(['comment', track.copyright]);
+		}
+
+		return entries;
+	}
+
+	private async runMetadataEmbedding(
+		blob: Blob,
+		lookup: TrackLookup,
+		filename: string,
+		contentType?: string
+	): Promise<Blob | null> {
+		if (typeof window === 'undefined') {
+			return null;
+		}
+
+		const extension =
+			this.inferExtensionFromFilename(filename) ?? this.inferExtensionFromMime(contentType);
+
+		if (!extension) {
+			return null;
+		}
+
+		const supportedExtensions = new Set(['flac', 'mp3', 'm4a', 'aac', 'wav', 'ogg']);
+		if (!supportedExtensions.has(extension)) {
+			return null;
+		}
+
+		let ffmpegModule: typeof import('./ffmpegClient') | null = null;
+		try {
+			ffmpegModule = await import('./ffmpegClient');
+		} catch (error) {
+			console.warn('Unable to load FFmpeg client module', error);
+			return null;
+		}
+
+		if (!ffmpegModule.isFFmpegSupported()) {
+			return null;
+		}
+
+		const ffmpeg = await ffmpegModule.getFFmpeg();
+		const uniqueSuffix =
+			typeof crypto !== 'undefined' && 'randomUUID' in crypto
+				? crypto.randomUUID()
+				: `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+		const inputName = `source-${uniqueSuffix}.${extension}`;
+		const outputName = `output-${uniqueSuffix}.${extension}`;
+		const coverName = `cover-${uniqueSuffix}.jpg`;
+
+		let coverWritten = false;
+
+		try {
+			await ffmpeg.writeFile(inputName, await ffmpegModule.fetchFile(blob));
+
+			const artworkId = lookup.track.album?.cover;
+			if (artworkId) {
+				const coverUrl = this.getCoverUrl(artworkId, '640');
+				try {
+					const coverResponse = await fetch(coverUrl);
+					if (coverResponse.ok) {
+						const coverBlob = await coverResponse.blob();
+						await ffmpeg.writeFile(coverName, await ffmpegModule.fetchFile(coverBlob));
+						coverWritten = true;
+					}
+				} catch (artworkError) {
+					console.warn('Failed to fetch cover art for metadata embedding', artworkError);
+				}
+			}
+
+			const args: string[] = ['-i', inputName];
+			if (coverWritten) {
+				args.push('-i', coverName);
+			}
+
+			for (const [key, value] of this.buildMetadataEntries(lookup)) {
+				args.push('-metadata', `${key}=${value}`);
+			}
+
+			if (coverWritten) {
+				args.push('-map', '0:a:0');
+				args.push('-map', '1:v:0');
+				args.push('-c:a', 'copy');
+				args.push('-c:v', 'mjpeg');
+				args.push('-metadata:s:v', 'title=Album cover');
+				args.push('-metadata:s:v', 'comment=Cover (front)');
+				args.push('-disposition:v', 'attached_pic');
+			} else {
+				args.push('-c', 'copy');
+			}
+
+			args.push(outputName);
+
+			await ffmpeg.exec(args);
+			const outputData = await ffmpeg.readFile(outputName);
+			let outputArray: Uint8Array;
+			if (outputData instanceof Uint8Array) {
+				outputArray = outputData;
+			} else if (typeof outputData === 'string') {
+				outputArray = new TextEncoder().encode(outputData);
+			} else {
+				outputArray = new Uint8Array((outputData as unknown as ArrayBuffer) ?? new ArrayBuffer(0));
+			}
+			const blobArray = new Uint8Array(outputArray);
+			const mimeType = this.inferMimeFromExtension(
+				extension,
+				contentType ?? (blob.type && blob.type.length > 0 ? blob.type : undefined)
+			);
+			return new Blob([blobArray], { type: mimeType });
+		} catch (error) {
+			console.warn('FFmpeg execution failed', error);
+			return null;
+		} finally {
+			try {
+				await ffmpeg.deleteFile(inputName);
+			} catch (cleanupErr) {
+				console.debug('Failed to delete FFmpeg input file', cleanupErr);
+			}
+			try {
+				await ffmpeg.deleteFile(outputName);
+			} catch (cleanupErr) {
+				console.debug('Failed to delete FFmpeg output file', cleanupErr);
+			}
+			if (coverWritten) {
+				try {
+					await ffmpeg.deleteFile(coverName);
+				} catch (cleanupErr) {
+					console.debug('Failed to delete FFmpeg cover file', cleanupErr);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Download a track
 	 * Fetches the audio stream and triggers a download
 	 */
@@ -737,7 +1005,14 @@ class TidalAPI {
 			}
 
 			const blob = await response.blob();
-			const url = URL.createObjectURL(blob);
+			const processedBlob = await this.embedMetadataIntoBlob(
+				blob,
+				lookup,
+				filename,
+				response.headers.get('Content-Type')
+			);
+			const finalBlob = processedBlob ?? blob;
+			const url = URL.createObjectURL(finalBlob);
 
 			// Trigger download
 			const a = document.createElement('a');
@@ -782,4 +1057,4 @@ class TidalAPI {
 	}
 }
 
-export const tidalAPI = new TidalAPI();
+export const losslessAPI = new LosslessAPI();

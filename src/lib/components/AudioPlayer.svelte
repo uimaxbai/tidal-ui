@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
-	import { tidalAPI } from '$lib/api';
+	import { lyricsStore } from '$lib/stores/lyrics';
+	import { losslessAPI } from '$lib/api';
 	import { getProxiedUrl } from '$lib/config';
 	import type { Track, AudioQuality } from '$lib/types';
 	import {
@@ -14,24 +16,30 @@
 		ListMusic,
 		Trash2,
 		X,
-		Shuffle
+		Shuffle,
+		ScrollText
 	} from 'lucide-svelte';
 
 	let audioElement: HTMLAudioElement;
-	let streamUrl = '';
-	let isMuted = false;
+	let streamUrl = $state('');
+	let isMuted = $state(false);
 	let previousVolume = 0.8;
 	let currentTrackId: number | null = null;
 	let loadSequence = 0;
-	let bufferedPercent = 0;
-	export let onHeightChange: (height: number) => void = () => {};
+	let bufferedPercent = $state(0);
+	const { onHeightChange = () => {} } = $props<{ onHeightChange?: (height: number) => void }>();
 
 	let containerElement: HTMLDivElement | null = null;
 	let resizeObserver: ResizeObserver | null = null;
-	let showQueuePanel = false;
+	let showQueuePanel = $state(false);
 	const streamCache = new Map<string, string>();
 	let preloadingCacheKey: string | null = null;
 	const PRELOAD_THRESHOLD_SECONDS = 12;
+
+	const canUseMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
+	let mediaSessionTrackId: number | null = null;
+	let cleanupMediaSessionHandlers: (() => void) | null = null;
+	let lastKnownPlaybackState: 'none' | 'paused' | 'playing' = 'none';
 
 	function getCacheKey(trackId: number, quality: AudioQuality) {
 		return `${trackId}:${quality}`;
@@ -45,7 +53,7 @@
 			return cached;
 		}
 
-		const rawUrl = await tidalAPI.getStreamUrl(track.id, quality);
+		const rawUrl = await losslessAPI.getStreamUrl(track.id, quality);
 		const proxied = getProxiedUrl(rawUrl);
 		streamCache.set(cacheKey, proxied);
 		return proxied;
@@ -107,7 +115,7 @@
 		preloadNextTrack(nextTrack);
 	}
 
-	$: {
+	$effect(() => {
 		const current = $playerStore.currentTrack;
 		if (!audioElement || !current) {
 			if (!current) {
@@ -120,11 +128,28 @@
 			streamUrl = '';
 			loadTrack(current);
 		}
-	}
+	});
 
-	$: if (showQueuePanel && $playerStore.queue.length === 0) {
-		showQueuePanel = false;
-	}
+	$effect(() => {
+		if (showQueuePanel && $playerStore.queue.length === 0) {
+			showQueuePanel = false;
+		}
+	});
+
+	$effect(() => {
+		if (canUseMediaSession) {
+			updateMediaSessionMetadata($playerStore.currentTrack);
+		}
+	});
+
+	$effect(() => {
+		if (canUseMediaSession) {
+			const hasTrack = Boolean($playerStore.currentTrack);
+			updateMediaSessionPlaybackState(
+				hasTrack ? ($playerStore.isPlaying ? 'playing' : 'paused') : 'none'
+			);
+		}
+	});
 
 	function toggleQueuePanel() {
 		showQueuePanel = !showQueuePanel;
@@ -153,15 +178,19 @@
 		playerStore.shuffleQueue();
 	}
 
-	$: if (audioElement) {
-		audioElement.volume = $playerStore.volume;
-	}
+	$effect(() => {
+		if (audioElement) {
+			audioElement.volume = $playerStore.volume;
+		}
+	});
 
-	$: if ($playerStore.isPlaying && audioElement) {
-		audioElement.play().catch(console.error);
-	} else if (!$playerStore.isPlaying && audioElement) {
-		audioElement.pause();
-	}
+	$effect(() => {
+		if ($playerStore.isPlaying && audioElement) {
+			audioElement.play().catch(console.error);
+		} else if (!$playerStore.isPlaying && audioElement) {
+			audioElement.pause();
+		}
+	});
 
 	async function loadTrack(track: Track) {
 		const sequence = ++loadSequence;
@@ -197,6 +226,7 @@
 			updateBufferedPercent();
 			const remaining = ($playerStore.duration ?? 0) - audioElement.currentTime;
 			maybePreloadNextTrack(remaining);
+			updateMediaSessionPositionState();
 		}
 	}
 
@@ -204,6 +234,7 @@
 		if (audioElement) {
 			playerStore.setDuration(audioElement.duration);
 			updateBufferedPercent();
+			updateMediaSessionPositionState();
 		}
 	}
 
@@ -240,6 +271,7 @@
 	function handleLoadedData() {
 		playerStore.setLoading(false);
 		updateBufferedPercent();
+		updateMediaSessionPositionState();
 	}
 
 	function getPercent(current: number, total: number): number {
@@ -251,6 +283,7 @@
 
 	function handleEnded() {
 		playerStore.next();
+		updateMediaSessionPositionState();
 	}
 
 	function handleSeek(event: MouseEvent) {
@@ -262,6 +295,7 @@
 		if (audioElement) {
 			audioElement.currentTime = newTime;
 			playerStore.setCurrentTime(newTime);
+			updateMediaSessionPositionState();
 		}
 	}
 
@@ -300,6 +334,205 @@
 		return quality;
 	}
 
+	function getMediaSessionArtwork(track: Track): MediaImage[] {
+		if (!track.album?.cover) {
+			return [];
+		}
+
+		const sizes = ['80', '160', '320', '640', '1280'] as const;
+		const artwork: MediaImage[] = [];
+
+		for (const size of sizes) {
+			const src = losslessAPI.getCoverUrl(track.album.cover, size);
+			if (src) {
+				artwork.push({
+					src,
+					sizes: `${size}x${size}`,
+					type: 'image/jpeg'
+				});
+			}
+		}
+
+		return artwork;
+	}
+
+	function updateMediaSessionMetadata(track: Track | null) {
+		if (!canUseMediaSession) {
+			return;
+		}
+
+		if (!track) {
+			mediaSessionTrackId = null;
+			lastKnownPlaybackState = 'none';
+			try {
+				navigator.mediaSession.metadata = null;
+				navigator.mediaSession.playbackState = 'none';
+			} catch (error) {
+				console.debug('Media Session reset failed', error);
+			}
+			return;
+		}
+
+		if (mediaSessionTrackId === track.id) {
+			return;
+		}
+
+		mediaSessionTrackId = track.id;
+
+		try {
+			navigator.mediaSession.metadata = new MediaMetadata({
+				title: track.title,
+				artist: track.artist?.name ?? '',
+				album: track.album?.title ?? '',
+				artwork: getMediaSessionArtwork(track)
+			});
+		} catch (error) {
+			console.debug('Unable to set Media Session metadata', error);
+		}
+
+		updateMediaSessionPositionState();
+	}
+
+	function updateMediaSessionPlaybackState(state: 'playing' | 'paused' | 'none') {
+		if (!canUseMediaSession) {
+			return;
+		}
+
+		if (lastKnownPlaybackState === state) {
+			return;
+		}
+		lastKnownPlaybackState = state;
+
+		try {
+			navigator.mediaSession.playbackState = state;
+		} catch (error) {
+			console.debug('Unable to set Media Session playback state', error);
+		}
+	}
+
+	function updateMediaSessionPositionState() {
+		if (
+			!canUseMediaSession ||
+			!audioElement ||
+			typeof navigator.mediaSession.setPositionState !== 'function'
+		) {
+			return;
+		}
+
+		const durationFromAudio = audioElement.duration;
+		const storeState = get(playerStore);
+		const duration = Number.isFinite(durationFromAudio) ? durationFromAudio : storeState.duration;
+
+		try {
+			navigator.mediaSession.setPositionState({
+				duration: Number.isFinite(duration) ? duration : 0,
+				playbackRate: audioElement.playbackRate ?? 1,
+				position: audioElement.currentTime
+			});
+		} catch (error) {
+			console.debug('Unable to set Media Session position state', error);
+		}
+	}
+
+	function registerMediaSessionHandlers() {
+		if (!canUseMediaSession) {
+			return;
+		}
+
+		const safeSetActionHandler = (
+			action: MediaSessionAction,
+			handler: MediaSessionActionHandler | null
+		) => {
+			try {
+				navigator.mediaSession.setActionHandler(action, handler);
+			} catch (error) {
+				console.debug(`Media Session action ${action} unsupported`, error);
+			}
+		};
+
+		safeSetActionHandler('play', async () => {
+			playerStore.play();
+			if (!audioElement) return;
+			try {
+				await audioElement.play();
+			} catch (error) {
+				console.debug('Media Session play failed', error);
+			}
+			updateMediaSessionPlaybackState('playing');
+			updateMediaSessionPositionState();
+		});
+
+		safeSetActionHandler('pause', () => {
+			playerStore.pause();
+			audioElement?.pause();
+			updateMediaSessionPlaybackState('paused');
+			updateMediaSessionPositionState();
+		});
+
+		safeSetActionHandler('previoustrack', () => {
+			playerStore.previous();
+		});
+
+		safeSetActionHandler('nexttrack', () => {
+			playerStore.next();
+		});
+
+		const handleSeekDelta =
+			(direction: 'forward' | 'backward') => (details: MediaSessionActionDetails) => {
+				if (!audioElement) return;
+				const offset = details.seekOffset ?? 10;
+				const delta = direction === 'forward' ? offset : -offset;
+				const tentative = audioElement.currentTime + delta;
+				const duration = audioElement.duration;
+				const bounded = Number.isFinite(duration)
+					? Math.min(Math.max(0, tentative), Math.max(duration, 0))
+					: Math.max(0, tentative);
+				audioElement.currentTime = bounded;
+				playerStore.setCurrentTime(bounded);
+				updateMediaSessionPositionState();
+			};
+
+		safeSetActionHandler('seekforward', handleSeekDelta('forward'));
+		safeSetActionHandler('seekbackward', handleSeekDelta('backward'));
+
+		safeSetActionHandler('seekto', (details) => {
+			if (!audioElement || details.seekTime === undefined) return;
+			const nextTime = Math.max(0, details.seekTime);
+			audioElement.currentTime = nextTime;
+			playerStore.setCurrentTime(nextTime);
+			updateMediaSessionPositionState();
+		});
+
+		safeSetActionHandler('stop', () => {
+			playerStore.pause();
+			if (audioElement) {
+				audioElement.pause();
+				audioElement.currentTime = 0;
+			}
+			playerStore.setCurrentTime(0);
+			updateMediaSessionPlaybackState('paused');
+			updateMediaSessionPositionState();
+		});
+
+		cleanupMediaSessionHandlers = () => {
+			const actions: MediaSessionAction[] = [
+				'play',
+				'pause',
+				'previoustrack',
+				'nexttrack',
+				'seekforward',
+				'seekbackward',
+				'seekto',
+				'stop'
+			];
+			for (const action of actions) {
+				safeSetActionHandler(action, null);
+			}
+			mediaSessionTrackId = null;
+			lastKnownPlaybackState = 'none';
+		};
+	}
+
 	onMount(() => {
 		if (audioElement) {
 			audioElement.volume = $playerStore.volume;
@@ -313,8 +546,28 @@
 			resizeObserver.observe(containerElement);
 		}
 
+		if (canUseMediaSession) {
+			registerMediaSessionHandlers();
+			const state = get(playerStore);
+			updateMediaSessionMetadata(state.currentTrack);
+			updateMediaSessionPlaybackState(
+				state.currentTrack ? (state.isPlaying ? 'playing' : 'paused') : 'none'
+			);
+			updateMediaSessionPositionState();
+		}
+
 		return () => {
 			resizeObserver?.disconnect();
+			cleanupMediaSessionHandlers?.();
+			cleanupMediaSessionHandlers = null;
+			if (canUseMediaSession) {
+				try {
+					navigator.mediaSession.metadata = null;
+					navigator.mediaSession.playbackState = 'none';
+				} catch (error) {
+					console.debug('Failed to clean up Media Session', error);
+				}
+			}
 		};
 	});
 
@@ -381,7 +634,7 @@
 					<div class="flex min-w-0 flex-1 items-center gap-3">
 						{#if $playerStore.currentTrack.album.cover}
 							<img
-								src={tidalAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
+								src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
 								alt={$playerStore.currentTrack.title}
 								class="h-14 w-14 rounded object-cover shadow-lg"
 							/>
@@ -432,8 +685,22 @@
 						</button>
 					</div>
 
-					<!-- Queue Toggle -->
+					<!-- Queue & Lyrics Toggle (no lyrics for now) -->
 					<div class="flex items-center gap-2">
+						<!--
+						<button
+							onclick={() => lyricsStore.toggle()}
+							class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {$lyricsStore.open
+								? 'border-blue-500 text-white'
+								: ''}"
+							aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
+							aria-expanded={$lyricsStore.open}
+							type="button"
+						>
+						<ScrollText size={18} />
+						<span class="hidden sm:inline">Lyrics</span>
+					</button>
+					-->
 						<button
 							onclick={toggleQueuePanel}
 							class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {showQueuePanel
@@ -441,6 +708,7 @@
 								: ''}"
 							aria-label="Toggle queue panel"
 							aria-expanded={showQueuePanel}
+							type="button"
 						>
 							<ListMusic size={18} />
 							<span class="hidden sm:inline">Queue ({$playerStore.queue.length})</span>

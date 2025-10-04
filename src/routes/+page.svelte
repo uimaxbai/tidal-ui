@@ -25,7 +25,7 @@
 </script>
 
 <svelte:head>
-	<title>binitidal</title>
+	<title>{data.title}</title>
 	<meta name="description" content="Cool music streaming haha" />
 </svelte:head>
 
@@ -37,7 +37,7 @@
 		>
 			{data.title}
 		</h2>
-		<p class="mx-auto max-w-2xl text-xl text-gray-400">The easiest way to stream from Tidal.</p>
+		<p class="mx-auto max-w-2xl text-xl text-gray-400">{data.slogan}</p>
 	</div>
 
 	<!-- Search Interface -->

@@ -8,7 +8,17 @@ const config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
-		adapter: selectAdapter()
+		adapter: selectAdapter(),
+
+		experimental: {
+			tracing: {
+				server: true
+			},
+
+			instrumentation: {
+				server: true
+			}
+		}
 	}
 };
 

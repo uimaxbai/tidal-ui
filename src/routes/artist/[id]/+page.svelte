@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { tidalAPI } from '$lib/api';
-	import type { Album, ArtistDetails } from '$lib/types';
+	import { losslessAPI } from '$lib/api';
+	import { downloadAlbum } from '$lib/downloads';
+	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import { onMount } from 'svelte';
-	import { ArrowLeft, User } from 'lucide-svelte';
+	import { ArrowLeft, User, Download, Loader2 } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
+	import { playerStore } from '$lib/stores/player';
 
 	let artist = $state<ArtistDetails | null>(null);
 	let artistImage = $state<string | null>(null);
@@ -15,6 +17,19 @@
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
 	const discography = $derived(artist?.albums ?? []);
+	const downloadQuality = $derived($playerStore.quality as AudioQuality);
+
+	type AlbumDownloadState = {
+		downloading: boolean;
+		completed: number;
+		total: number;
+		error: string | null;
+	};
+
+	let isDownloadingDiscography = $state(false);
+	let discographyProgress = $state({ completed: 0, total: 0 });
+	let discographyError = $state<string | null>(null);
+	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 
 	onMount(async () => {
 		if (artistId) {
@@ -39,16 +54,136 @@
 		return parts.join(' • ');
 	}
 
+	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
+		const previous = albumDownloadStates[albumId] ?? {
+			downloading: false,
+			completed: 0,
+			total: 0,
+			error: null
+		};
+		albumDownloadStates = {
+			...albumDownloadStates,
+			[albumId]: { ...previous, ...patch }
+		};
+	}
+
+	async function handleAlbumDownload(album: Album, event?: MouseEvent) {
+		event?.preventDefault();
+		event?.stopPropagation();
+
+		if (isDownloadingDiscography || albumDownloadStates[album.id]?.downloading) {
+			return;
+		}
+
+		patchAlbumDownloadState(album.id, {
+			downloading: true,
+			completed: 0,
+			total: album.numberOfTracks ?? 0,
+			error: null
+		});
+
+		const quality = downloadQuality;
+
+		try {
+			await downloadAlbum(
+				album,
+				quality,
+				{
+					onTotalResolved: (total) => {
+						patchAlbumDownloadState(album.id, { total });
+					},
+					onTrackDownloaded: (completed, total) => {
+						patchAlbumDownloadState(album.id, { completed, total });
+					}
+				},
+				artist?.name
+			);
+			const finalState = albumDownloadStates[album.id];
+			patchAlbumDownloadState(album.id, {
+				downloading: false,
+				completed: finalState?.total ?? finalState?.completed ?? 0,
+				error: null
+			});
+		} catch (err) {
+			console.error('Failed to download album:', err);
+			const message =
+				err instanceof Error && err.message
+					? err.message
+					: 'Failed to download album. Please try again.';
+			patchAlbumDownloadState(album.id, { downloading: false, error: message });
+		}
+	}
+
+	async function handleDownloadDiscography() {
+		if (!artist || discography.length === 0 || isDownloadingDiscography) {
+			return;
+		}
+
+		isDownloadingDiscography = true;
+		discographyError = null;
+
+		let estimatedTotal = discography.reduce((sum, album) => sum + (album.numberOfTracks ?? 0), 0);
+		if (!Number.isFinite(estimatedTotal) || estimatedTotal < 0) {
+			estimatedTotal = 0;
+		}
+
+		let completed = 0;
+		let total = estimatedTotal;
+		discographyProgress = { completed, total };
+		const quality = downloadQuality;
+
+		for (const album of discography) {
+			let albumEstimate = album.numberOfTracks ?? 0;
+			try {
+				await downloadAlbum(
+					album,
+					quality,
+					{
+						onTotalResolved: (resolvedTotal) => {
+							if (resolvedTotal !== albumEstimate) {
+								total += resolvedTotal - albumEstimate;
+								albumEstimate = resolvedTotal;
+								discographyProgress = { completed, total };
+							} else if (total === 0 && resolvedTotal > 0) {
+								total += resolvedTotal;
+								discographyProgress = { completed, total };
+							}
+						},
+						onTrackDownloaded: () => {
+							completed += 1;
+							discographyProgress = { completed, total };
+						}
+					},
+					artist?.name
+				);
+			} catch (err) {
+				console.error('Failed to download discography album:', err);
+				const message =
+					err instanceof Error && err.message
+						? err.message
+						: 'Failed to download part of the discography.';
+				discographyError = message;
+				break;
+			}
+		}
+
+		isDownloadingDiscography = false;
+	}
+
 	async function loadArtist(id: number) {
 		try {
 			isLoading = true;
 			error = null;
-			const data = await tidalAPI.getArtist(id);
+			isDownloadingDiscography = false;
+			discographyProgress = { completed: 0, total: 0 };
+			discographyError = null;
+			albumDownloadStates = {};
+			const data = await losslessAPI.getArtist(id);
 			artist = data;
 
 			// Get artist picture
 			if (artist.picture) {
-				artistImage = tidalAPI.getArtistPictureUrl(artist.picture);
+				artistImage = losslessAPI.getArtistPictureUrl(artist.picture);
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load artist';
@@ -166,45 +301,106 @@
 			</section>
 
 			<section>
-				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+				<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 					<div>
 						<h2 class="text-2xl font-semibold text-white">Discography</h2>
 						<p class="text-sm text-gray-400">Albums, EPs, and more from {artist.name}.</p>
 					</div>
+					<div class="flex items-center gap-2">
+						<button
+							onclick={handleDownloadDiscography}
+							type="button"
+							class="inline-flex items-center gap-2 rounded-full border border-blue-600 bg-blue-600/10 px-4 py-2 text-sm font-semibold text-blue-100 transition-colors hover:bg-blue-600/20 disabled:cursor-not-allowed disabled:opacity-60"
+							disabled={isDownloadingDiscography || discography.length === 0}
+							aria-live="polite"
+						>
+							{#if isDownloadingDiscography}
+								<Loader2 size={16} class="animate-spin" />
+								<span class="whitespace-nowrap">
+									Downloading
+									{#if discographyProgress.total > 0}
+										{discographyProgress.completed}/{discographyProgress.total}
+									{:else}
+										{discographyProgress.completed}
+									{/if}
+									tracks
+								</span>
+							{:else}
+								<Download size={16} />
+								<span class="whitespace-nowrap">Download Discography</span>
+							{/if}
+						</button>
+					</div>
 				</div>
+				{#if discographyError}
+					<p class="mt-2 text-sm text-red-400" role="alert">{discographyError}</p>
+				{/if}
 				{#if discography.length > 0}
 					<div class="mt-6 grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
 						{#each discography as album (album.id)}
-							<a
-								href={`/album/${album.id}`}
-								class="group flex h-full flex-col items-center gap-4 rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
+							<div
+								class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
 							>
-								<div
-									class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
+								<button
+									onclick={(event) => handleAlbumDownload(album, event)}
+									type="button"
+									class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+									disabled={isDownloadingDiscography || albumDownloadStates[album.id]?.downloading}
+									aria-label={`Download ${album.title}`}
 								>
-									{#if album.cover}
-										<img
-											src={tidalAPI.getCoverUrl(album.cover, '640')}
-											alt={album.title}
-											class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-										/>
+									{#if albumDownloadStates[album.id]?.downloading}
+										<Loader2 size={16} class="animate-spin" />
 									{:else}
-										<div
-											class="flex h-full w-full items-center justify-center text-sm text-gray-500"
-										>
-											No artwork
-										</div>
+										<Download size={16} />
 									{/if}
-								</div>
-								<div class="w-full">
-									<h3 class="truncate text-lg font-semibold text-white group-hover:text-blue-400">
-										{album.title}
-									</h3>
-									{#if formatAlbumMeta(album)}
-										<p class="mt-1 text-sm text-gray-400">{formatAlbumMeta(album)}</p>
-									{/if}
-								</div>
-							</a>
+								</button>
+								<a
+									href={`/album/${album.id}`}
+									class="flex flex-1 flex-col items-center gap-4 rounded-lg text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
+								>
+									<div
+										class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
+									>
+										{#if album.cover}
+											<img
+												src={losslessAPI.getCoverUrl(album.cover, '640')}
+												alt={album.title}
+												class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+											/>
+										{:else}
+											<div
+												class="flex h-full w-full items-center justify-center text-sm text-gray-500"
+											>
+												No artwork
+											</div>
+										{/if}
+									</div>
+									<div class="w-full">
+										<h3 class="truncate text-lg font-semibold text-white group-hover:text-blue-400">
+											{album.title}
+										</h3>
+										{#if formatAlbumMeta(album)}
+											<p class="mt-1 text-sm text-gray-400">{formatAlbumMeta(album)}</p>
+										{/if}
+									</div>
+								</a>
+								{#if albumDownloadStates[album.id]?.downloading}
+									<p class="mt-3 text-xs text-blue-300">
+										Downloading
+										{#if albumDownloadStates[album.id]?.total}
+											{albumDownloadStates[album.id]?.completed ?? 0}/{albumDownloadStates[album.id]
+												?.total}
+										{:else}
+											{albumDownloadStates[album.id]?.completed ?? 0}
+										{/if}
+										tracks…
+									</p>
+								{:else if albumDownloadStates[album.id]?.error}
+									<p class="mt-3 text-xs text-red-400" role="alert">
+										{albumDownloadStates[album.id]?.error}
+									</p>
+								{/if}
+							</div>
 						{/each}
 					</div>
 				{:else}
@@ -224,7 +420,7 @@
 				rel="noopener noreferrer"
 				class="inline-block text-sm text-blue-400 transition-colors hover:text-blue-300"
 			>
-				View on TIDAL →
+				View profile →
 			</a>
 		{/if}
 	</div>

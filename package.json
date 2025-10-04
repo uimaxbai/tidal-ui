@@ -43,6 +43,8 @@
 		"vite-plugin-devtools-json": "^1.0.0"
 	},
 	"dependencies": {
+		"@ffmpeg/ffmpeg": "^0.12.6",
+		"@ffmpeg/util": "^0.12.1",
 		"ioredis": "^5.4.1",
 		"lucide-svelte": "^0.544.0"
 	}

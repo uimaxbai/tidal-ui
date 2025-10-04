@@ -10,11 +10,21 @@ export default defineConfig(({ mode }) => {
 	const parsedPort = env.PORT ? Number.parseInt(env.PORT, 10) : undefined;
 
 	return {
-		plugins: [tailwindcss(), sveltekit(), devtoolsJson()],
+		plugins: [
+			tailwindcss(),
+			sveltekit(),
+			devtoolsJson()
+		],
 		server: {
 			watch: { usePolling: true },
 			host: '0.0.0.0',
 			port: Number.isFinite(parsedPort) ? parsedPort : undefined
+		},
+		optimizeDeps: {
+			exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+		},
+		ssr: {
+			external: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
 		}
 	};
 });
