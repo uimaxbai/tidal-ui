@@ -1,19 +1,29 @@
+<!-- Literally unused because it doesn't work -->
+
 <script lang="ts">
 	import type { AudioQuality } from '$lib/types';
 	import { playerStore } from '$lib/stores/player';
 	import { Settings, Check } from 'lucide-svelte';
 
 	let isOpen = $state(false);
+	const disabledQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS', 'HI_RES']);
 
 	const qualities: { value: AudioQuality; label: string; description: string }[] = [
-		{ value: 'HI_RES_LOSSLESS', label: 'Hi-Res Lossless', description: 'Up to 24-bit, 192 kHz' },
-		{ value: 'HI_RES', label: 'Hi-Res', description: 'MQA, up to 96 kHz' },
-		{ value: 'LOSSLESS', label: 'Lossless', description: 'FLAC, 16-bit, 44.1 kHz' },
-		{ value: 'HIGH', label: 'High', description: 'AAC, 320 kbps' },
-		{ value: 'LOW', label: 'Low', description: 'AAC, 96 kbps' }
+		{ value: 'HI_RES_LOSSLESS', label: 'Hi-Res Lossless', description: '24/44.1kHz to 24/192kHz FLAC' },
+		{ value: 'HI_RES', label: 'Hi-Res', description: 'up to 96 kHz MQA' },
+		{ value: 'LOSSLESS', label: 'Lossless', description: '16-bit/44.1 kHz FLAC' },
+		{ value: 'HIGH', label: 'High', description: '320k AAC' },
+		{ value: 'LOW', label: 'Low', description: '96k AAC' }
 	];
 
+	function isQualityDisabled(quality: AudioQuality): boolean {
+		return disabledQualities.has(quality);
+	}
+
 	function selectQuality(quality: AudioQuality) {
+		if (isQualityDisabled(quality)) {
+			return;
+		}
 		playerStore.setQuality(quality);
 		isOpen = false;
 	}
@@ -54,7 +64,10 @@
 				{#each qualities as quality}
 					<button
 						onclick={() => selectQuality(quality.value)}
-						class="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-700"
+						class="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60 disabled:text-gray-500 disabled:hover:bg-gray-800"
+						disabled={isQualityDisabled(quality.value)}
+						aria-disabled={isQualityDisabled(quality.value)}
+						title={isQualityDisabled(quality.value) ? 'Not available in this build' : undefined}
 					>
 						<div class="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center">
 							{#if $playerStore.quality === quality.value}
@@ -63,7 +76,14 @@
 						</div>
 						<div class="flex-1">
 							<div class="text-sm font-medium text-white">{quality.label}</div>
-							<div class="text-xs text-gray-400">{quality.description}</div>
+							<div
+								class={`text-xs ${isQualityDisabled(quality.value) ? 'text-gray-500' : 'text-gray-400'}`}
+							>
+								{quality.description}
+								{#if isQualityDisabled(quality.value)}
+									<span class="ml-1 uppercase tracking-wide text-[10px] text-gray-500">Unavailable</span>
+								{/if}
+							</div>
 						</div>
 					</button>
 				{/each}

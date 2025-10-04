@@ -2,7 +2,7 @@
 	import { tidalAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
 	import type { Track, Album, Artist, Playlist } from '$lib/types';
-	import { Search, Music, User, Disc, ListMusic, Download } from 'lucide-svelte';
+	import { Search, Music, User, Disc, ListMusic, Download, Newspaper } from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
 
@@ -13,7 +13,19 @@
 	let albums = $state<Album[]>([]);
 	let artists = $state<Artist[]>([]);
 	let playlists = $state<Playlist[]>([]);
+	let downloadingIds = $state(new Set<number>());
 	let error = $state<string | null>(null);
+
+	const newsItems = [
+		{
+			title: 'Initial release!',
+			description:
+				'Two Tidal APIs fetch lossless CD-quality 16/44.1kHz FLACs. No support for Hi-Res yet but I\'m working on it haha. No playlist saving or logging in either but downloading and streaming work.'
+		}
+	];
+
+const trackSkeletons = Array.from({ length: 6 }, (_, index) => index);
+const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 
 	interface Props {
 		onTrackSelect?: (track: Track) => void;
@@ -41,13 +53,22 @@
 
 	async function handleDownload(track: Track, event: MouseEvent) {
 		event.stopPropagation();
+		const next = new Set(downloadingIds);
+		next.add(track.id);
+		downloadingIds = next;
 
 		try {
 			const filename = `${track.artist.name} - ${track.title}.flac`;
 			await tidalAPI.downloadTrack(track.id, $playerStore.quality, filename);
 		} catch (err) {
 			console.error('Failed to download track:', err);
-			alert('Failed to download track. Please try again.');
+			const fallbackMessage = 'Failed to download track. Please try again.';
+			const message = err instanceof Error && err.message ? err.message : fallbackMessage;
+			alert(message);
+		} finally {
+			const updated = new Set(downloadingIds);
+			updated.delete(track.id);
+			downloadingIds = updated;
 		}
 	}
 
@@ -72,22 +93,22 @@
 			switch (activeTab) {
 				case 'tracks': {
 					const response = await fetchWithRetry(() => tidalAPI.searchTracks(query));
-					tracks = response.items;
+					tracks = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'albums': {
 					const response = await tidalAPI.searchAlbums(query);
-					albums = response.items;
+					albums = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'artists': {
 					const response = await tidalAPI.searchArtists(query);
-					artists = response.items;
+					artists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'playlists': {
 					const response = await tidalAPI.searchPlaylists(query);
-					playlists = response.items;
+					playlists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 			}
@@ -111,6 +132,14 @@
 			handleSearch();
 		}
 	}
+
+	function formatQualityLabel(quality?: string | null): string {
+		if (!quality) return '—';
+		if (quality.toUpperCase() === 'LOSSLESS') {
+			return 'CD • 16/44.1kHz FLAC';
+		}
+		return quality;
+	}
 </script>
 
 <div class="w-full">
@@ -120,8 +149,8 @@
 			type="text"
 			bind:value={query}
 			onkeypress={handleKeyPress}
-			placeholder="Search for tracks, artists, albums, or playlists..."
-			class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 pl-12 text-white transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+			placeholder="Search for anything..."
+			class="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 pl-12 text-white transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 		/>
 		<Search class="absolute top-1/2 left-4 -translate-y-1/2 text-gray-400" size={20} />
 		<button
@@ -134,7 +163,7 @@
 	</div>
 
 	<!-- Tabs -->
-	<div class="mb-6 flex gap-2 border-b border-gray-700">
+	<div class="mb-6 flex gap-2 border-b border-gray-700 overflow-auto">
 		<button
 			onclick={() => handleTabChange('tracks')}
 			class="flex items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab === 'tracks'
@@ -162,23 +191,49 @@
 			<User size={18} />
 			Artists
 		</button>
-		<button
-			onclick={() => handleTabChange('playlists')}
-			class="flex items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
-			'playlists'
-				? 'border-blue-500 text-blue-500'
-				: 'border-transparent text-gray-400 hover:text-white'}"
-		>
-			<ListMusic size={18} />
-			Playlists
-		</button>
 	</div>
 
 	<!-- Loading State -->
 	{#if isLoading}
-		<div class="flex items-center justify-center py-12">
-			<div class="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
-		</div>
+		{#if activeTab === 'tracks'}
+			<div class="space-y-2">
+				{#each trackSkeletons as _}
+					<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
+						<div class="h-12 w-12 flex-shrink-0 rounded bg-gray-700/80 animate-pulse"></div>
+						<div class="flex-1 space-y-2">
+							<div class="h-4 w-2/3 rounded bg-gray-700/80 animate-pulse"></div>
+							<div class="h-3 w-1/3 rounded bg-gray-700/60 animate-pulse"></div>
+							<div class="h-3 w-1/4 rounded bg-gray-700/40 animate-pulse"></div>
+						</div>
+						<div class="h-6 w-12 rounded-full bg-gray-700/80 animate-pulse"></div>
+					</div>
+				{/each}
+			</div>
+		{:else if activeTab === 'albums' || activeTab === 'playlists'}
+			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+				{#each gridSkeletons as _}
+					<div class="space-y-3">
+						<div class="aspect-square w-full rounded-lg bg-gray-800/70 animate-pulse"></div>
+						<div class="h-4 w-3/4 rounded bg-gray-700/80 animate-pulse"></div>
+						<div class="h-3 w-1/2 rounded bg-gray-700/60 animate-pulse"></div>
+					</div>
+				{/each}
+			</div>
+		{:else if activeTab === 'artists'}
+			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+				{#each gridSkeletons as _}
+					<div class="flex flex-col items-center gap-3">
+						<div class="aspect-square w-full rounded-full bg-gray-800/70 animate-pulse"></div>
+						<div class="h-4 w-3/4 rounded bg-gray-700/80 animate-pulse"></div>
+						<div class="h-3 w-1/2 rounded bg-gray-700/60 animate-pulse"></div>
+					</div>
+				{/each}
+			</div>
+		{:else}
+			<div class="flex items-center justify-center py-12">
+				<div class="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-500"></div>
+			</div>
+		{/if}
 	{/if}
 
 	<!-- Error State -->
@@ -213,17 +268,25 @@
 							</h3>
 							<p class="truncate text-sm text-gray-400">{track.artist.name}</p>
 							<p class="text-xs text-gray-500">
-								{track.album.title} • {track.audioQuality}
+								{track.album.title} • {formatQualityLabel(track.audioQuality)}
 							</p>
 						</div>
 						<div class="flex items-center gap-2 text-sm text-gray-400">
 							<button
 								onclick={(event) => handleDownload(track, event)}
-								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
 								title="Download track"
 								aria-label={`Download ${track.title}`}
+								disabled={downloadingIds.has(track.id)}
+								aria-busy={downloadingIds.has(track.id)}
 							>
-								<Download size={18} />
+								{#if downloadingIds.has(track.id)}
+									<span class="flex h-4 w-4 items-center justify-center">
+										<span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+									</span>
+								{:else}
+									<Download size={18} />
+								{/if}
 							</button>
 							<span>{tidalAPI.formatDuration(track.duration)}</span>
 						</div>
@@ -300,9 +363,25 @@
 					</button>
 				{/each}
 			</div>
+		<!-- News Section -->
+		{:else if !query.trim()}
+			<section class="grid gap-4 border border-gray-800 rounded-lg p-4 text-left shadow-lg sm:grid-cols-2">
+				<h2 class="text-3xl font-bold">News</h2>
+				{#each newsItems as item}
+					<article class="flex flex-col gap-3 rounded-lg border border-gray-800/80 bg-gray-900/70 p-4 transition-transform hover:-translate-y-0.5">
+						<div class="flex items-center gap-3">
+							<div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-900/40 text-blue-300">
+								<Newspaper size={20} />
+							</div>
+							<h3 class="text-lg font-semibold text-white">{item.title}</h3>
+						</div>
+						<p class="text-sm text-gray-400">{item.description}</p>
+					</article>
+				{/each}
+			</section>
 		{:else if query.trim() && !isLoading}
 			<div class="py-12 text-center text-gray-400">
-				<p>No results found for "{query}"</p>
+				<p>No results found...</p>
 			</div>
 		{/if}
 	{/if}

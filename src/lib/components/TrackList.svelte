@@ -12,6 +12,7 @@
 	}
 
 	let { tracks, showAlbum = true, showArtist = true, showCover = true }: Props = $props();
+	let downloadingIds = $state(new Set<number>());
 
 	function handlePlayTrack(track: Track, index: number) {
 		playerStore.setQueue(tracks, index);
@@ -20,13 +21,22 @@
 
 	async function handleDownload(track: Track, event: MouseEvent) {
 		event.stopPropagation();
+		const next = new Set(downloadingIds);
+		next.add(track.id);
+		downloadingIds = next;
 
 		try {
 			const filename = `${track.artist.name} - ${track.title}.flac`;
 			await tidalAPI.downloadTrack(track.id, $playerStore.quality, filename);
 		} catch (error) {
 			console.error('Failed to download track:', error);
-			alert('Failed to download track. Please try again.');
+			const fallbackMessage = 'Failed to download track. Please try again.';
+			const message = error instanceof Error && error.message ? error.message : fallbackMessage;
+			alert(message);
+		} finally {
+			const updated = new Set(downloadingIds);
+			updated.delete(track.id);
+			downloadingIds = updated;
 		}
 	}
 
@@ -114,11 +124,19 @@
 					<div class="flex flex-shrink-0 items-center gap-2">
 						<button
 							onclick={(e) => handleDownload(track, e)}
-							class="p-2 text-gray-400 transition-colors hover:text-white"
+							class="p-2 text-gray-400 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
 							aria-label="Download track"
 							title="Download track"
+							disabled={downloadingIds.has(track.id)}
+							aria-busy={downloadingIds.has(track.id)}
 						>
-							<Download size={18} />
+							{#if downloadingIds.has(track.id)}
+								<span class="flex h-4 w-4 items-center justify-center">
+									<span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+								</span>
+							{:else}
+								<Download size={18} />
+							{/if}
 						</button>
 
 						<!-- Duration -->
