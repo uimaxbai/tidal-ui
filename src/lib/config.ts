@@ -24,7 +24,13 @@ const TARGETS = [
 	{
 		name: 'direct-secondary',
 		baseUrl: 'https://tidal-api.binimum.org',
-		weight: 20,
+		weight: 5,
+		requiresProxy: false
+	},
+	{
+		name: 'wardrobe',
+		baseUrl: 'https://tidal-api-3.binimum.org',
+		weight: 15,
 		requiresProxy: false
 	},
 ] satisfies ApiClusterTarget[];
