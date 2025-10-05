@@ -313,6 +313,26 @@
 		}
 	}
 
+	function handleLyricsSeekEvent(event: Event) {
+		const customEvent = event as CustomEvent<{ timeSeconds?: number }>;
+		const targetSeconds = customEvent.detail?.timeSeconds;
+		if (typeof targetSeconds !== 'number' || !audioElement) {
+			return;
+		}
+
+		const seekSeconds = Math.max(0, targetSeconds);
+		audioElement.currentTime = seekSeconds;
+		playerStore.setCurrentTime(seekSeconds);
+		updateMediaSessionPositionState();
+
+		const state = get(playerStore);
+		if (!state.isPlaying) {
+			playerStore.play();
+		}
+
+		audioElement.play().catch(() => {});
+	}
+
 	function toggleMute() {
 		if (isMuted) {
 			playerStore.setVolume(previousVolume);
@@ -571,6 +591,8 @@
 	}
 
 	onMount(() => {
+		let detachLyricsSeek: (() => void) | null = null;
+
 		if (audioElement) {
 			audioElement.volume = $playerStore.volume;
 		}
@@ -593,10 +615,19 @@
 			updateMediaSessionPositionState();
 		}
 
+		if (typeof window !== 'undefined') {
+			const listener = (event: Event) => handleLyricsSeekEvent(event);
+			window.addEventListener('lyrics:seek', listener as EventListener);
+			detachLyricsSeek = () => {
+				window.removeEventListener('lyrics:seek', listener as EventListener);
+			};
+		}
+
 		return () => {
 			resizeObserver?.disconnect();
 			cleanupMediaSessionHandlers?.();
 			cleanupMediaSessionHandlers = null;
+			detachLyricsSeek?.();
 			if (canUseMediaSession) {
 				try {
 					navigator.mediaSession.metadata = null;
@@ -820,7 +851,6 @@
 
 						<!-- Queue Toggle -->
 						<div class="flex items-center gap-2 sm:flex-none">
-							<!--
 							<button
 								onclick={() => lyricsStore.toggle()}
 								class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {$lyricsStore.open
@@ -830,10 +860,9 @@
 								aria-expanded={$lyricsStore.open}
 								type="button"
 							>
-							<ScrollText size={18} />
-							<span class="hidden sm:inline">Lyrics</span>
-						</button>
-						-->
+								<ScrollText size={18} />
+								<span class="hidden sm:inline">Lyrics</span>
+							</button>
 							<button
 								onclick={toggleQueuePanel}
 								class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {showQueuePanel
