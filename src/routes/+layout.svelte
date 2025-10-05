@@ -29,6 +29,9 @@
 	let isLegacyQueueDownloading = $state(false);
 	let downloadMenuContainer: HTMLDivElement | null = null;
 	const downloadMode = $derived($downloadPreferencesStore.mode);
+	const downloadModeLabel = $derived(
+		downloadMode === 'zip' ? 'ZIP' : downloadMode === 'csv' ? 'CSV' : 'DEFAULT'
+	);
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'
 			? Boolean(isZipDownloading || isLegacyQueueDownloading || isCsvExporting)
@@ -346,7 +349,7 @@
 <div class="flex min-h-screen flex-col bg-neutral-800 text-white">
 	<!-- Header -->
 	<header
-		class="z-50 sticky top-0 z-40 border-b border-gray-800 bg-neutral-800"
+		class="sticky top-0 z-50 border-b border-gray-800 bg-neutral-800"
 		bind:clientHeight={headerHeight}
 	>
 		<div class="mx-auto max-w-screen-2xl px-4 py-4">
@@ -363,11 +366,16 @@
 						<button
 							onclick={() => (showDownloadMenu = !showDownloadMenu)}
 							type="button"
-							class="flex items-center gap-2 rounded-lg border border-gray-800 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+							class="flex items-center gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
 							aria-haspopup="true"
 							aria-expanded={showDownloadMenu}
 						>
-							<span>Exports</span>
+							<span class="flex items-center gap-2">
+								<span>Exports</span>
+								<span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+									{downloadModeLabel}
+								</span>
+							</span>
 							<ChevronDown
 								size={16}
 								class={`transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`}
