@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { losslessAPI } from '$lib/api';
+	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
 	import { playerStore } from '$lib/stores/player';
+	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import type { Track, Album, Artist, Playlist, AudioQuality } from '$lib/types';
 	import {
 		Search,
@@ -12,7 +13,8 @@
 		Newspaper,
 		ListPlus,
 		ListVideo,
-		LoaderCircle
+		LoaderCircle,
+		X
 	} from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
@@ -25,6 +27,8 @@
 	let artists = $state<Artist[]>([]);
 	let playlists = $state<Playlist[]>([]);
 	let downloadingIds = $state(new Set<number>());
+	let downloadTaskIds = $state(new Map<number, string>());
+	let cancelledIds = $state(new Set<number>());
 	let error = $state<string | null>(null);
 	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
 
@@ -81,24 +85,93 @@
 		throw lastError instanceof Error ? lastError : new Error('Request failed');
 	}
 
+	function markCancelled(trackId: number) {
+		const next = new Set(cancelledIds);
+		next.add(trackId);
+		cancelledIds = next;
+		setTimeout(() => {
+			const updated = new Set(cancelledIds);
+			updated.delete(trackId);
+			cancelledIds = updated;
+		}, 1500);
+	}
+
+	function handleCancelDownload(trackId: number, event: MouseEvent) {
+		event.stopPropagation();
+		const taskId = downloadTaskIds.get(trackId);
+		if (taskId) {
+			downloadUiStore.cancelTrackDownload(taskId);
+		}
+		const next = new Set(downloadingIds);
+		next.delete(trackId);
+		downloadingIds = next;
+		const taskMap = new Map(downloadTaskIds);
+		taskMap.delete(trackId);
+		downloadTaskIds = taskMap;
+		markCancelled(trackId);
+	}
+
 	async function handleDownload(track: Track, event: MouseEvent) {
 		event.stopPropagation();
 		const next = new Set(downloadingIds);
 		next.add(track.id);
 		downloadingIds = next;
 
+		const filename = `${track.artist.name} - ${track.title}.flac`;
+		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+			subtitle: track.album?.title ?? track.artist?.name
+		});
+		const taskMap = new Map(downloadTaskIds);
+		taskMap.set(track.id, taskId);
+		downloadTaskIds = taskMap;
+		downloadUiStore.skipFfmpegCountdown();
+
 		try {
-			const filename = `${track.artist.name} - ${track.title}.flac`;
-			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename);
+			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename, {
+				signal: controller.signal,
+				onProgress: (progress: TrackDownloadProgress) => {
+					if (progress.stage === 'downloading') {
+						downloadUiStore.updateTrackProgress(
+							taskId,
+							progress.receivedBytes,
+							progress.totalBytes
+						);
+					} else {
+						downloadUiStore.updateTrackStage(taskId, progress.progress);
+					}
+				},
+				onFfmpegCountdown: ({ totalBytes }) => {
+					if (typeof totalBytes === 'number') {
+						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
+					} else {
+						downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
+					}
+				},
+				onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
+				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
+				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
+				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+				ffmpegAutoTriggered: false
+			});
+			downloadUiStore.completeTrackDownload(taskId);
 		} catch (err) {
-			console.error('Failed to download track:', err);
-			const fallbackMessage = 'Failed to download track. Please try again.';
-			const message = err instanceof Error && err.message ? err.message : fallbackMessage;
-			alert(message);
+			if (err instanceof DOMException && err.name === 'AbortError') {
+				downloadUiStore.completeTrackDownload(taskId);
+				markCancelled(track.id);
+			} else {
+				console.error('Failed to download track:', err);
+				const fallbackMessage = 'Failed to download track. Please try again.';
+				const message = err instanceof Error && err.message ? err.message : fallbackMessage;
+				downloadUiStore.errorTrackDownload(taskId, message);
+				alert(message);
+			}
 		} finally {
 			const updated = new Set(downloadingIds);
 			updated.delete(track.id);
 			downloadingIds = updated;
+			const ids = new Map(downloadTaskIds);
+			ids.delete(track.id);
+			downloadTaskIds = ids;
 		}
 	}
 
@@ -429,19 +502,29 @@
 								<ListPlus size={18} />
 							</button>
 							<button
-								onclick={(event) => handleDownload(track, event)}
-								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-								title="Download track"
-								aria-label={`Download ${track.title}`}
-								disabled={downloadingIds.has(track.id)}
+								onclick={(event) =>
+									downloadingIds.has(track.id)
+										? handleCancelDownload(track.id, event)
+										: handleDownload(track, event)
+								}
+								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+								title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+								aria-label={downloadingIds.has(track.id) ? `Cancel download for ${track.title}` : `Download ${track.title}`}
 								aria-busy={downloadingIds.has(track.id)}
+								aria-pressed={downloadingIds.has(track.id)}
 							>
 								{#if downloadingIds.has(track.id)}
 									<span class="flex h-4 w-4 items-center justify-center">
-										<span
-											class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-										></span>
+										{#if cancelledIds.has(track.id)}
+											<X size={14} />
+										{:else}
+											<span
+												class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+											></span>
+										{/if}
 									</span>
+								{:else if cancelledIds.has(track.id)}
+									<X size={18} />
 								{:else}
 									<Download size={18} />
 								{/if}

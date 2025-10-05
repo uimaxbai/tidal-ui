@@ -12,15 +12,21 @@ const TARGETS = [
 	{
 		name: 'proxied-primary',
 		baseUrl: 'https://tidal.401658.xyz',
-		weight: 20,
-		requiresProxy: true
+		weight: 40,
+		requiresProxy: false
+	},
+	{
+		name: 'vercel-fastapi',
+		baseUrl: 'https://tidal-api-2.binimum.org',
+		weight: 40,
+		requiresProxy: false
 	},
 	{
 		name: 'direct-secondary',
 		baseUrl: 'https://tidal-api.binimum.org',
-		weight: 80,
+		weight: 20,
 		requiresProxy: false
-	}
+	},
 ] satisfies ApiClusterTarget[];
 
 export const API_CONFIG = {

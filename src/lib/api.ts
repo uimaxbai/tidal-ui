@@ -18,6 +18,21 @@ import type {
 const API_BASE = API_CONFIG.baseUrl;
 const RATE_LIMIT_ERROR_MESSAGE = 'Too Many Requests. Please wait a moment and try again.';
 
+export type TrackDownloadProgress =
+	| { stage: 'downloading'; receivedBytes: number; totalBytes?: number }
+	| { stage: 'embedding'; progress: number };
+
+export interface DownloadTrackOptions {
+	signal?: AbortSignal;
+	onProgress?: (progress: TrackDownloadProgress) => void;
+	onFfmpegCountdown?: (options: { totalBytes?: number; autoTriggered: boolean }) => void;
+	onFfmpegStart?: () => void;
+	onFfmpegProgress?: (progress: number) => void;
+	onFfmpegComplete?: () => void;
+	onFfmpegError?: (error: unknown) => void;
+	ffmpegAutoTriggered?: boolean;
+}
+
 class LosslessAPI {
 	public baseUrl: string;
 	private metadataQueue: Promise<void> = Promise.resolve();
@@ -701,10 +716,11 @@ class LosslessAPI {
 		blob: Blob,
 		lookup: TrackLookup,
 		filename: string,
-		contentType?: string | null
+		contentType: string | null,
+		options?: DownloadTrackOptions
 	): Promise<Blob | null> {
 		const job = this.metadataQueue.then(() =>
-			this.runMetadataEmbedding(blob, lookup, filename, contentType ?? undefined)
+			this.runMetadataEmbedding(blob, lookup, filename, contentType ?? undefined, options)
 		);
 		this.metadataQueue = job.then(
 			() => undefined,
@@ -840,7 +856,8 @@ class LosslessAPI {
 		blob: Blob,
 		lookup: TrackLookup,
 		filename: string,
-		contentType?: string
+		contentType: string | undefined,
+		options?: DownloadTrackOptions
 	): Promise<Blob | null> {
 		if (typeof window === 'undefined') {
 			return null;
@@ -863,6 +880,7 @@ class LosslessAPI {
 			ffmpegModule = await import('./ffmpegClient');
 		} catch (error) {
 			console.warn('Unable to load FFmpeg client module', error);
+			options?.onFfmpegError?.(error);
 			return null;
 		}
 
@@ -870,7 +888,43 @@ class LosslessAPI {
 			return null;
 		}
 
-		const ffmpeg = await ffmpegModule.getFFmpeg();
+		if (options?.onFfmpegCountdown) {
+			try {
+				const estimatedBytes = await ffmpegModule.estimateFfmpegDownloadSize?.();
+				options.onFfmpegCountdown({
+					totalBytes: estimatedBytes,
+					autoTriggered: options.ffmpegAutoTriggered ?? false
+				});
+			} catch (estimateError) {
+				console.debug('Failed to estimate FFmpeg size', estimateError);
+				options.onFfmpegCountdown({
+					totalBytes: undefined,
+					autoTriggered: options.ffmpegAutoTriggered ?? false
+				});
+			}
+		}
+
+		options?.onFfmpegStart?.();
+
+		let ffmpeg: Awaited<ReturnType<typeof ffmpegModule.getFFmpeg>>;
+		try {
+			const loadOptions: Parameters<typeof ffmpegModule.getFFmpeg>[0] = {
+				signal: options?.signal,
+				onProgress: ({ receivedBytes, totalBytes }: { receivedBytes: number; totalBytes?: number }) => {
+					if (totalBytes && totalBytes > 0) {
+						options?.onFfmpegProgress?.(Math.max(0, Math.min(1, receivedBytes / totalBytes)));
+					} else if (receivedBytes > 0) {
+						options?.onFfmpegProgress?.(0);
+					}
+				}
+			};
+			ffmpeg = await ffmpegModule.getFFmpeg(loadOptions);
+			options?.onFfmpegProgress?.(1);
+			options?.onFfmpegComplete?.();
+		} catch (loadError) {
+			options?.onFfmpegError?.(loadError);
+			throw loadError;
+		}
 		const uniqueSuffix =
 			typeof crypto !== 'undefined' && 'randomUUID' in crypto
 				? crypto.randomUUID()
@@ -882,6 +936,20 @@ class LosslessAPI {
 		let coverWritten = false;
 
 		try {
+			const setProgress = (ffmpeg as unknown as {
+				setProgress?: (cb: (data: { ratio?: number }) => void) => void;
+			}).setProgress;
+			if (typeof setProgress === 'function') {
+				setProgress(({ ratio }) => {
+					if (ratio != null && options?.onProgress) {
+						const normalised = Math.max(0, Math.min(1, ratio));
+						options.onProgress({ stage: 'embedding', progress: normalised });
+					}
+				});
+			}
+			if (options?.onProgress) {
+				options.onProgress({ stage: 'embedding', progress: 0 });
+			}
 			await ffmpeg.writeFile(inputName, await ffmpegModule.fetchFile(blob));
 
 			const artworkId = lookup.track.album?.cover;
@@ -924,6 +992,9 @@ class LosslessAPI {
 
 			await ffmpeg.exec(args);
 			const outputData = await ffmpeg.readFile(outputName);
+			if (options?.onProgress) {
+				options.onProgress({ stage: 'embedding', progress: 1 });
+			}
 			let outputArray: Uint8Array;
 			if (outputData instanceof Uint8Array) {
 				outputArray = outputData;
@@ -940,6 +1011,7 @@ class LosslessAPI {
 			return new Blob([blobArray], { type: mimeType });
 		} catch (error) {
 			console.warn('FFmpeg execution failed', error);
+			options?.onFfmpegError?.(error);
 			return null;
 		} finally {
 			try {
@@ -969,7 +1041,8 @@ class LosslessAPI {
 	async downloadTrack(
 		trackId: number,
 		quality: AudioQuality = 'LOSSLESS',
-		filename: string
+		filename: string,
+		options?: DownloadTrackOptions
 	): Promise<void> {
 		try {
 			const lookup = await this.getTrack(trackId, quality);
@@ -977,7 +1050,7 @@ class LosslessAPI {
 			let response: Response | null = null;
 
 			if (streamUrl) {
-				response = await fetch(streamUrl);
+				response = await fetch(streamUrl, { signal: options?.signal });
 				if (response.status === 429) {
 					throw new Error(RATE_LIMIT_ERROR_MESSAGE);
 				}
@@ -996,7 +1069,7 @@ class LosslessAPI {
 				}
 
 				streamUrl = fallbackUrl;
-				response = await fetch(streamUrl);
+				response = await fetch(streamUrl, { signal: options?.signal });
 				if (response.status === 429) {
 					throw new Error(RATE_LIMIT_ERROR_MESSAGE);
 				}
@@ -1005,14 +1078,55 @@ class LosslessAPI {
 				}
 			}
 
-			const blob = await response.blob();
+			const totalHeader = Number(response.headers.get('Content-Length') ?? '0');
+			const totalBytes = Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : undefined;
+			let downloadBlob: Blob;
+			let receivedBytes = 0;
+
+			if (!response.body) {
+				downloadBlob = await response.blob();
+				receivedBytes = downloadBlob.size;
+				if (!totalBytes && receivedBytes > 0) {
+					options?.onProgress?.({ stage: 'downloading', receivedBytes, totalBytes: receivedBytes });
+				}
+			} else {
+				const reader = response.body.getReader();
+				const chunks: Uint8Array[] = [];
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+					if (value) {
+						receivedBytes += value.byteLength;
+						chunks.push(value);
+						options?.onProgress?.({
+							stage: 'downloading',
+							receivedBytes,
+							totalBytes
+						});
+					}
+				}
+				downloadBlob = new Blob(chunks as BlobPart[], {
+					type: response.headers.get('Content-Type') ?? 'application/octet-stream'
+				});
+				if (receivedBytes === 0) {
+					receivedBytes = downloadBlob.size;
+				}
+			}
+
+			options?.onProgress?.({
+				stage: 'downloading',
+				receivedBytes,
+				totalBytes: totalBytes ?? downloadBlob.size
+			});
+
 			const processedBlob = await this.embedMetadataIntoBlob(
-				blob,
+				downloadBlob,
 				lookup,
 				filename,
-				response.headers.get('Content-Type')
+				response.headers.get('Content-Type'),
+				options
 			);
-			const finalBlob = processedBlob ?? blob;
+			const finalBlob = processedBlob ?? downloadBlob;
 			const url = URL.createObjectURL(finalBlob);
 
 			// Trigger download
@@ -1024,6 +1138,9 @@ class LosslessAPI {
 			document.body.removeChild(a);
 			URL.revokeObjectURL(url);
 		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				throw error;
+			}
 			console.error('Download failed:', error);
 			if (error instanceof Error && error.message === RATE_LIMIT_ERROR_MESSAGE) {
 				throw error;

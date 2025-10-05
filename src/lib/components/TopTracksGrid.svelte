@@ -1,60 +1,36 @@
 <script lang="ts">
 	import type { Track } from '$lib/types';
-	import { losslessAPI } from '$lib/api';
+	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
-	import { onMount } from 'svelte';
-	import { browser } from '$app/environment';
-	import { Play, Pause, Download, Clock, Plus, ListPlus } from 'lucide-svelte';
-
-	type BreakpointConfig = {
-		minWidth: number;
-		limit: number;
-		columns: number;
-	};
-
-	const BREAKPOINTS: BreakpointConfig[] = [
-		{ minWidth: 0, limit: 5, columns: 1 },
-		{ minWidth: 640, limit: 10, columns: 2 },
-		{ minWidth: 1024, limit: 15, columns: 3 }
-	];
+	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { Play, Pause, Download, ListPlus, Plus, Clock, X } from 'lucide-svelte';
 
 	interface Props {
 		tracks: Track[];
+		maxTracks?: number;
+		columns?: number;
 	}
 
-	let { tracks }: Props = $props();
+	function getColumnClass(columns: number): string {
+		if (columns >= 3) {
+			return 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3';
+		}
+		if (columns === 2) {
+			return 'grid-cols-1 sm:grid-cols-2';
+		}
+		return 'grid-cols-1';
+	}
+
+	let { tracks, maxTracks = 6, columns = 3 }: Props = $props();
+
+	const columnClass = $derived(getColumnClass(columns));
+	const displayedTracks = $derived(maxTracks ? tracks.slice(0, maxTracks) : tracks);
+
 	let downloadingIds = $state(new Set<number>());
-	let activeLimit = $state(BREAKPOINTS[BREAKPOINTS.length - 1]?.limit ?? tracks.length);
-	let columnSpan = $state<number>(BREAKPOINTS[0]?.columns ?? 1);
+	let downloadTaskIds = $state(new Map<number, string>());
+	let cancelledIds = $state(new Set<number>());
 
 	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
-
-	function selectBreakpoint(width: number): BreakpointConfig {
-		let match = BREAKPOINTS[0];
-		for (const breakpoint of BREAKPOINTS) {
-			if (width >= breakpoint.minWidth) {
-				match = breakpoint;
-			}
-		}
-		return match;
-	}
-
-	function updateResponsiveState(width: number) {
-		const { limit, columns } = selectBreakpoint(width);
-		activeLimit = limit;
-		columnSpan = columns;
-	}
-
-	onMount(() => {
-		if (!browser) return;
-		updateResponsiveState(window.innerWidth);
-		const handleResize = () => updateResponsiveState(window.innerWidth);
-		window.addEventListener('resize', handleResize);
-		return () => window.removeEventListener('resize', handleResize);
-	});
-
-	const displayedTracks = $derived(tracks.slice(0, activeLimit));
-	const columnClass = $derived(getColumnClass(columnSpan));
 
 	function getDisplayTags(tags?: string[] | null): string[] {
 		if (!tags) return [];
@@ -64,13 +40,6 @@
 	function handlePlayTrack(track: Track, index: number) {
 		playerStore.setQueue(displayedTracks, index);
 		playerStore.play();
-	}
-
-	function handleCardKeydown(event: KeyboardEvent, track: Track, index: number) {
-		if (event.key === 'Enter' || event.key === ' ') {
-			event.preventDefault();
-			handlePlayTrack(track, index);
-		}
 	}
 
 	function handleAddToQueue(track: Track, event: MouseEvent) {
@@ -83,24 +52,10 @@
 		playerStore.enqueueNext(track);
 	}
 
-	async function handleDownload(track: Track, event: MouseEvent) {
-		event.stopPropagation();
-		const next = new Set(downloadingIds);
-		next.add(track.id);
-		downloadingIds = next;
-
-		try {
-			const filename = `${track.artist.name} - ${track.title}.flac`;
-			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename);
-		} catch (error) {
-			console.error('Failed to download track:', error);
-			const fallbackMessage = 'Failed to download track. Please try again.';
-			const message = error instanceof Error && error.message ? error.message : fallbackMessage;
-			alert(message);
-		} finally {
-			const updated = new Set(downloadingIds);
-			updated.delete(track.id);
-			downloadingIds = updated;
+	function handleCardKeydown(event: KeyboardEvent, track: Track, index: number) {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			handlePlayTrack(track, index);
 		}
 	}
 
@@ -112,14 +67,94 @@
 		return isCurrentTrack(track) && $playerStore.isPlaying;
 	}
 
-	function getColumnClass(columns: number): string {
-		if (columns >= 3) {
-			return 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3';
+	function markCancelled(trackId: number) {
+		const next = new Set(cancelledIds);
+		next.add(trackId);
+		cancelledIds = next;
+		setTimeout(() => {
+			const updated = new Set(cancelledIds);
+			updated.delete(trackId);
+			cancelledIds = updated;
+		}, 1500);
+	}
+
+	function handleCancelDownload(trackId: number, event: MouseEvent) {
+		event.stopPropagation();
+		const taskId = downloadTaskIds.get(trackId);
+		if (taskId) {
+			downloadUiStore.cancelTrackDownload(taskId);
 		}
-		if (columns === 2) {
-			return 'grid-cols-1 sm:grid-cols-2';
+		const next = new Set(downloadingIds);
+		next.delete(trackId);
+		downloadingIds = next;
+		const taskMap = new Map(downloadTaskIds);
+		taskMap.delete(trackId);
+		downloadTaskIds = taskMap;
+		markCancelled(trackId);
+	}
+
+	async function handleDownload(track: Track, event: MouseEvent) {
+		event.stopPropagation();
+		const next = new Set(downloadingIds);
+		next.add(track.id);
+		downloadingIds = next;
+
+		const filename = `${track.artist.name} - ${track.title}.flac`;
+		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+			subtitle: track.album?.title ?? track.artist?.name
+		});
+		const taskMap = new Map(downloadTaskIds);
+		taskMap.set(track.id, taskId);
+		downloadTaskIds = taskMap;
+		downloadUiStore.skipFfmpegCountdown();
+
+		try {
+			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename, {
+				signal: controller.signal,
+				onProgress: (progress: TrackDownloadProgress) => {
+					if (progress.stage === 'downloading') {
+						downloadUiStore.updateTrackProgress(
+							taskId,
+							progress.receivedBytes,
+							progress.totalBytes
+						);
+					} else {
+						downloadUiStore.updateTrackStage(taskId, progress.progress);
+					}
+				},
+				onFfmpegCountdown: ({ totalBytes }) => {
+					if (typeof totalBytes === 'number') {
+						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
+					} else {
+						downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
+					}
+				},
+				onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
+				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
+				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
+				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+				ffmpegAutoTriggered: false
+			});
+			downloadUiStore.completeTrackDownload(taskId);
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				downloadUiStore.completeTrackDownload(taskId);
+				markCancelled(track.id);
+			} else {
+				console.error('Failed to download track:', error);
+				const fallbackMessage = 'Failed to download track. Please try again.';
+				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
+				downloadUiStore.errorTrackDownload(taskId, message);
+				alert(message);
+			}
+		} finally {
+			const updated = new Set(downloadingIds);
+			updated.delete(track.id);
+			downloadingIds = updated;
+			const ids = new Map(downloadTaskIds);
+			ids.delete(track.id);
+			downloadTaskIds = ids;
 		}
-		return 'grid-cols-1';
 	}
 </script>
 
@@ -135,7 +170,7 @@
 				tabindex="0"
 				onclick={() => handlePlayTrack(track, index)}
 				onkeydown={(event) => handleCardKeydown(event, track, index)}
-				class="group flex h-full cursor-pointer flex-col gap-4 rounded-xl border border-gray-800 bg-gray-900/50 p-4 transition-colors hover:border-blue-700 hover:bg-gray-900/70 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+				class="group flex h-full cursor-pointer flex-col gap-4 rounded-xl border border-gray-800 bg-gray-900/50 p-4 transition-colors hover:border-blue-700 hover:bg-gray-900/70 focus:outline-none focus:ring-2 focus:ring-blue-500"
 			>
 				<div class="flex items-start gap-4">
 					<button
@@ -155,7 +190,7 @@
 						{/if}
 					</button>
 
-					{#if track.album.cover}
+					{#if track.album?.cover}
 						<img
 							src={losslessAPI.getCoverUrl(track.album.cover, '320')}
 							alt={track.title}
@@ -188,9 +223,7 @@
 					</div>
 				</div>
 
-				<div
-					class="mt-auto flex flex-wrap items-center justify-between gap-3 text-sm text-gray-400"
-				>
+				<div class="mt-auto flex flex-wrap items-center justify-between gap-3 text-sm text-gray-400">
 					<div class="flex items-center gap-2">
 						<button
 							onclick={(event) => handlePlayNext(track, event)}
@@ -209,23 +242,33 @@
 							<Plus size={18} />
 						</button>
 						<button
-							onclick={(event) => handleDownload(track, event)}
-							class="rounded-full p-2 transition-colors hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-							aria-label="Download track"
-							title="Download track"
-							disabled={downloadingIds.has(track.id)}
-							aria-busy={downloadingIds.has(track.id)}
-						>
-							{#if downloadingIds.has(track.id)}
-								<span class="flex h-4 w-4 items-center justify-center">
+							onclick={(event) =>
+								downloadingIds.has(track.id)
+								? handleCancelDownload(track.id, event)
+								: handleDownload(track, event)
+						}
+						class="rounded-full p-2 transition-colors hover:bg-gray-800 hover:text-white"
+						title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+						aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+						aria-busy={downloadingIds.has(track.id)}
+						aria-pressed={downloadingIds.has(track.id)}
+					>
+						{#if downloadingIds.has(track.id)}
+							<span class="flex h-4 w-4 items-center justify-center">
+								{#if cancelledIds.has(track.id)}
+									<X size={14} />
+								{:else}
 									<span
 										class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
 									></span>
-								</span>
-							{:else}
-								<Download size={18} />
-							{/if}
-						</button>
+								{/if}
+							</span>
+						{:else if cancelledIds.has(track.id)}
+							<X size={18} />
+						{:else}
+							<Download size={18} />
+						{/if}
+					</button>
 					</div>
 					<div class="flex items-center gap-1 text-xs text-gray-400">
 						<Clock size={14} />
