@@ -13,7 +13,14 @@
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
 	import { navigating } from '$app/stores';
 	import JSZip from 'jszip';
-	import { Archive, FileSpreadsheet, ChevronDown, LoaderCircle, Download, Check } from 'lucide-svelte';
+	import {
+		Archive,
+		FileSpreadsheet,
+		ChevronDown,
+		LoaderCircle,
+		Download,
+		Check
+	} from 'lucide-svelte';
 	import type { Navigation } from '@sveltejs/kit';
 	import type { Track, AudioQuality } from '$lib/types';
 
@@ -346,7 +353,7 @@
 <div class="flex min-h-screen flex-col bg-neutral-800 text-white">
 	<!-- Header -->
 	<header
-		class="z-50 sticky top-0 z-40 border-b border-gray-800 bg-neutral-800"
+		class="sticky top-0 z-40 z-50 border-b border-gray-800 bg-neutral-800"
 		bind:clientHeight={headerHeight}
 	>
 		<div class="mx-auto max-w-screen-2xl px-4 py-4">
@@ -374,9 +381,11 @@
 							/>
 						</button>
 						{#if showDownloadMenu}
-							<div class="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-gray-800 bg-neutral-900/95 p-3 shadow-2xl backdrop-blur">
+							<div
+								class="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-gray-800 bg-neutral-900/95 p-3 shadow-2xl backdrop-blur"
+							>
 								<div>
-									<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+									<p class="px-1 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
 										Download preference
 									</p>
 									<div class="mt-2 flex flex-col gap-2">
@@ -387,7 +396,7 @@
 												downloadMode === 'individual'
 													? 'border-blue-500 bg-blue-900/40 text-white'
 													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-												}`}
+											}`}
 											aria-pressed={downloadMode === 'individual'}
 										>
 											<span class="flex items-center gap-2">
@@ -405,7 +414,7 @@
 												downloadMode === 'zip'
 													? 'border-blue-500 bg-blue-900/40 text-white'
 													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-												}`}
+											}`}
 											aria-pressed={downloadMode === 'zip'}
 										>
 											<span class="flex items-center gap-2">
@@ -423,7 +432,7 @@
 												downloadMode === 'csv'
 													? 'border-blue-500 bg-blue-900/40 text-white'
 													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-												}`}
+											}`}
 											aria-pressed={downloadMode === 'csv'}
 										>
 											<span class="flex items-center gap-2">
@@ -473,8 +482,8 @@
 									{/if}
 								</button>
 								<p class="mt-2 px-1 text-xs text-gray-500">
-									Queue actions follow your selection above. ZIP bundles require at least two tracks, while CSV
-									exports capture the track links without downloading audio.
+									Queue actions follow your selection above. ZIP bundles require at least two
+									tracks, while CSV exports capture the track links without downloading audio.
 								</p>
 							</div>
 						{/if}
@@ -483,7 +492,7 @@
 						target="_blank"
 						rel="noopener noreferrer"
 						href="https://github.com/uimaxbai/tidal-ui"
-						class="aspect-square flex items-center gap-2 rounded-lg border border-gray-800 bg-neutral-900 p-2 text-white transition-colors hover:bg-gray-800"
+						class="flex aspect-square items-center gap-2 rounded-lg border border-gray-800 bg-neutral-900 p-2 text-white transition-colors hover:bg-gray-800"
 						aria-label="Project GitHub"
 					>
 						<!-- GitHub SVG from https://github.com/logos -->

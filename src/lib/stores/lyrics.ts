@@ -1,3 +1,4 @@
+import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
 import type { Track } from '$lib/types';
 import { currentTrack as currentTrackStore } from '$lib/stores/player';
@@ -28,7 +29,7 @@ function createLyricsStore() {
 			return {
 				...state,
 				track: currentTrack,
-				refreshToken: trackChanged && state.open ? state.refreshToken + 1 : state.refreshToken
+				refreshToken: trackChanged ? state.refreshToken + 1 : state.refreshToken
 			};
 		});
 	});
@@ -39,6 +40,8 @@ function createLyricsStore() {
 			...state,
 			open: true,
 			track: nextTrack ?? state.track,
+			maximized:
+				browser && window.matchMedia('(max-width: 640px)').matches ? true : state.maximized,
 			refreshToken:
 				nextTrack && state.track?.id !== nextTrack.id ? state.refreshToken + 1 : state.refreshToken
 		}));

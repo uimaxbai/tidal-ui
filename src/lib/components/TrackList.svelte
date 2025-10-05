@@ -5,137 +5,137 @@
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { Play, Pause, Download, Clock, Plus, ListPlus, X } from 'lucide-svelte';
 
-		interface Props {
-			tracks: Track[];
-			showAlbum?: boolean;
-			showArtist?: boolean;
-			showCover?: boolean;
+	interface Props {
+		tracks: Track[];
+		showAlbum?: boolean;
+		showArtist?: boolean;
+		showCover?: boolean;
+	}
+
+	let { tracks, showAlbum = true, showArtist = true, showCover = true }: Props = $props();
+	let downloadingIds = $state(new Set<number>());
+	let downloadTaskIds = $state(new Map<number, string>());
+	let cancelledIds = $state(new Set<number>());
+	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
+
+	function getDisplayTags(tags?: string[] | null): string[] {
+		if (!tags) return [];
+		return tags.filter((tag) => tag && !IGNORED_TAGS.has(tag));
+	}
+
+	function handlePlayTrack(track: Track, index: number) {
+		playerStore.setQueue(tracks, index);
+		playerStore.play();
+	}
+
+	function handleAddToQueue(track: Track, event: MouseEvent) {
+		event.stopPropagation();
+		playerStore.enqueue(track);
+	}
+
+	function handlePlayNext(track: Track, event: MouseEvent) {
+		event.stopPropagation();
+		playerStore.enqueueNext(track);
+	}
+
+	function markCancelled(trackId: number) {
+		const next = new Set(cancelledIds);
+		next.add(trackId);
+		cancelledIds = next;
+		setTimeout(() => {
+			const updated = new Set(cancelledIds);
+			updated.delete(trackId);
+			cancelledIds = updated;
+		}, 1500);
+	}
+
+	function handleCancelDownload(trackId: number, event: MouseEvent) {
+		event.stopPropagation();
+		const taskId = downloadTaskIds.get(trackId);
+		if (taskId) {
+			downloadUiStore.cancelTrackDownload(taskId);
 		}
+		const next = new Set(downloadingIds);
+		next.delete(trackId);
+		downloadingIds = next;
+		const nextTasks = new Map(downloadTaskIds);
+		nextTasks.delete(trackId);
+		downloadTaskIds = nextTasks;
+		markCancelled(trackId);
+	}
 
-		let { tracks, showAlbum = true, showArtist = true, showCover = true }: Props = $props();
-		let downloadingIds = $state(new Set<number>());
-		let downloadTaskIds = $state(new Map<number, string>());
-		let cancelledIds = $state(new Set<number>());
-		const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
+	async function handleDownload(track: Track, event: MouseEvent) {
+		event.stopPropagation();
+		const next = new Set(downloadingIds);
+		next.add(track.id);
+		downloadingIds = next;
 
-		function getDisplayTags(tags?: string[] | null): string[] {
-			if (!tags) return [];
-			return tags.filter((tag) => tag && !IGNORED_TAGS.has(tag));
-		}
+		const filename = `${track.artist.name} - ${track.title}.flac`;
+		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+			subtitle: showAlbum ? (track.album?.title ?? track.artist?.name) : track.artist?.name
+		});
+		const taskMap = new Map(downloadTaskIds);
+		taskMap.set(track.id, taskId);
+		downloadTaskIds = taskMap;
+		downloadUiStore.skipFfmpegCountdown();
 
-		function handlePlayTrack(track: Track, index: number) {
-			playerStore.setQueue(tracks, index);
-			playerStore.play();
-		}
-
-		function handleAddToQueue(track: Track, event: MouseEvent) {
-			event.stopPropagation();
-			playerStore.enqueue(track);
-		}
-
-		function handlePlayNext(track: Track, event: MouseEvent) {
-			event.stopPropagation();
-			playerStore.enqueueNext(track);
-		}
-
-		function markCancelled(trackId: number) {
-			const next = new Set(cancelledIds);
-			next.add(trackId);
-			cancelledIds = next;
-			setTimeout(() => {
-				const updated = new Set(cancelledIds);
-				updated.delete(trackId);
-				cancelledIds = updated;
-			}, 1500);
-		}
-
-		function handleCancelDownload(trackId: number, event: MouseEvent) {
-			event.stopPropagation();
-			const taskId = downloadTaskIds.get(trackId);
-			if (taskId) {
-				downloadUiStore.cancelTrackDownload(taskId);
-			}
-			const next = new Set(downloadingIds);
-			next.delete(trackId);
-			downloadingIds = next;
-			const nextTasks = new Map(downloadTaskIds);
-			nextTasks.delete(trackId);
-			downloadTaskIds = nextTasks;
-			markCancelled(trackId);
-		}
-
-		async function handleDownload(track: Track, event: MouseEvent) {
-			event.stopPropagation();
-			const next = new Set(downloadingIds);
-			next.add(track.id);
-			downloadingIds = next;
-
-			const filename = `${track.artist.name} - ${track.title}.flac`;
-			const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-				subtitle: showAlbum ? track.album?.title ?? track.artist?.name : track.artist?.name
+		try {
+			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename, {
+				signal: controller.signal,
+				onProgress: (progress: TrackDownloadProgress) => {
+					if (progress.stage === 'downloading') {
+						downloadUiStore.updateTrackProgress(
+							taskId,
+							progress.receivedBytes,
+							progress.totalBytes
+						);
+					} else {
+						downloadUiStore.updateTrackStage(taskId, progress.progress);
+					}
+				},
+				onFfmpegCountdown: ({ totalBytes }) => {
+					if (typeof totalBytes === 'number') {
+						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
+					} else {
+						downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
+					}
+				},
+				onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
+				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
+				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
+				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+				ffmpegAutoTriggered: false
 			});
-			const taskMap = new Map(downloadTaskIds);
-			taskMap.set(track.id, taskId);
-			downloadTaskIds = taskMap;
-			downloadUiStore.skipFfmpegCountdown();
-
-			try {
-				await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename, {
-					signal: controller.signal,
-					onProgress: (progress: TrackDownloadProgress) => {
-						if (progress.stage === 'downloading') {
-							downloadUiStore.updateTrackProgress(
-								taskId,
-								progress.receivedBytes,
-								progress.totalBytes
-							);
-						} else {
-							downloadUiStore.updateTrackStage(taskId, progress.progress);
-						}
-					},
-					onFfmpegCountdown: ({ totalBytes }) => {
-						if (typeof totalBytes === 'number') {
-							downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
-						} else {
-							downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
-						}
-					},
-					onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
-					onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
-					onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
-					onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
-					ffmpegAutoTriggered: false
-				});
+			downloadUiStore.completeTrackDownload(taskId);
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
 				downloadUiStore.completeTrackDownload(taskId);
-			} catch (error) {
-				if (error instanceof DOMException && error.name === 'AbortError') {
-					downloadUiStore.completeTrackDownload(taskId);
-					markCancelled(track.id);
-				} else {
-					console.error('Failed to download track:', error);
-					const fallbackMessage = 'Failed to download track. Please try again.';
-					const message = error instanceof Error && error.message ? error.message : fallbackMessage;
-					downloadUiStore.errorTrackDownload(taskId, message);
-					alert(message);
-				}
-			} finally {
-				const updated = new Set(downloadingIds);
-				updated.delete(track.id);
-				downloadingIds = updated;
-				const ids = new Map(downloadTaskIds);
-				ids.delete(track.id);
-				downloadTaskIds = ids;
+				markCancelled(track.id);
+			} else {
+				console.error('Failed to download track:', error);
+				const fallbackMessage = 'Failed to download track. Please try again.';
+				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
+				downloadUiStore.errorTrackDownload(taskId, message);
+				alert(message);
 			}
+		} finally {
+			const updated = new Set(downloadingIds);
+			updated.delete(track.id);
+			downloadingIds = updated;
+			const ids = new Map(downloadTaskIds);
+			ids.delete(track.id);
+			downloadTaskIds = ids;
 		}
+	}
 
-		function isCurrentTrack(track: Track): boolean {
-			return $playerStore.currentTrack?.id === track.id;
-		}
+	function isCurrentTrack(track: Track): boolean {
+		return $playerStore.currentTrack?.id === track.id;
+	}
 
-		function isPlaying(track: Track): boolean {
-			return isCurrentTrack(track) && $playerStore.isPlaying;
-		}
-	</script>
+	function isPlaying(track: Track): boolean {
+		return isCurrentTrack(track) && $playerStore.isPlaying;
+	}
+</script>
 
 <div class="w-full">
 	{#if tracks.length === 0}
@@ -241,8 +241,7 @@
 							onclick={(e) =>
 								downloadingIds.has(track.id)
 									? handleCancelDownload(track.id, e)
-									: handleDownload(track, e)
-							}
+									: handleDownload(track, e)}
 							class="p-2 text-gray-400 transition-colors hover:text-white"
 							aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
 							title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}

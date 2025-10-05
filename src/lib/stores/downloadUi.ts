@@ -149,7 +149,11 @@ export const downloadUiStore = {
 		store.set(initialState);
 		taskControllers.clear();
 	},
-	beginTrackDownload(track: Track, filename: string, options?: { subtitle?: string }): {
+	beginTrackDownload(
+		track: Track,
+		filename: string,
+		options?: { subtitle?: string }
+	): {
 		taskId: string;
 		controller: AbortController;
 	} {

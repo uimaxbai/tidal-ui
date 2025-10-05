@@ -170,7 +170,7 @@
 				tabindex="0"
 				onclick={() => handlePlayTrack(track, index)}
 				onkeydown={(event) => handleCardKeydown(event, track, index)}
-				class="group flex h-full cursor-pointer flex-col gap-4 rounded-xl border border-gray-800 bg-gray-900/50 p-4 transition-colors hover:border-blue-700 hover:bg-gray-900/70 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				class="group flex h-full cursor-pointer flex-col gap-4 rounded-xl border border-gray-800 bg-gray-900/50 p-4 transition-colors hover:border-blue-700 hover:bg-gray-900/70 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 			>
 				<div class="flex items-start gap-4">
 					<button
@@ -223,7 +223,9 @@
 					</div>
 				</div>
 
-				<div class="mt-auto flex flex-wrap items-center justify-between gap-3 text-sm text-gray-400">
+				<div
+					class="mt-auto flex flex-wrap items-center justify-between gap-3 text-sm text-gray-400"
+				>
 					<div class="flex items-center gap-2">
 						<button
 							onclick={(event) => handlePlayNext(track, event)}
@@ -244,31 +246,30 @@
 						<button
 							onclick={(event) =>
 								downloadingIds.has(track.id)
-								? handleCancelDownload(track.id, event)
-								: handleDownload(track, event)
-						}
-						class="rounded-full p-2 transition-colors hover:bg-gray-800 hover:text-white"
-						title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-						aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-						aria-busy={downloadingIds.has(track.id)}
-						aria-pressed={downloadingIds.has(track.id)}
-					>
-						{#if downloadingIds.has(track.id)}
-							<span class="flex h-4 w-4 items-center justify-center">
-								{#if cancelledIds.has(track.id)}
-									<X size={14} />
-								{:else}
-									<span
-										class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-									></span>
-								{/if}
-							</span>
-						{:else if cancelledIds.has(track.id)}
-							<X size={18} />
-						{:else}
-							<Download size={18} />
-						{/if}
-					</button>
+									? handleCancelDownload(track.id, event)
+									: handleDownload(track, event)}
+							class="rounded-full p-2 transition-colors hover:bg-gray-800 hover:text-white"
+							title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+							aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+							aria-busy={downloadingIds.has(track.id)}
+							aria-pressed={downloadingIds.has(track.id)}
+						>
+							{#if downloadingIds.has(track.id)}
+								<span class="flex h-4 w-4 items-center justify-center">
+									{#if cancelledIds.has(track.id)}
+										<X size={14} />
+									{:else}
+										<span
+											class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+										></span>
+									{/if}
+								</span>
+							{:else if cancelledIds.has(track.id)}
+								<X size={18} />
+							{:else}
+								<Download size={18} />
+							{/if}
+						</button>
 					</div>
 					<div class="flex items-center gap-1 text-xs text-gray-400">
 						<Clock size={14} />

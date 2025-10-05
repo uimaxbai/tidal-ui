@@ -32,13 +32,13 @@
 <div class="space-y-8">
 	<!-- Hero Section -->
 	<div class="py-8 text-center">
-		<div class="flex items-end gap-2 mb-4 justify-center">
+		<div class="mb-4 flex items-end justify-center gap-2">
 			<h2
 				class="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-5xl font-bold text-transparent"
 			>
 				{data.title}
 			</h2>
-			<span class="text-gray-400 text-sm">v1.5</span>
+			<span class="text-sm text-gray-400">v1.5</span>
 		</div>
 		<p class="mx-auto max-w-2xl text-xl text-gray-400">{data.slogan}</p>
 	</div>

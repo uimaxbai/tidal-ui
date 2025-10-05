@@ -8,7 +8,7 @@ const config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
-		adapter: selectAdapter(),
+		adapter: selectAdapter()
 	}
 };
 

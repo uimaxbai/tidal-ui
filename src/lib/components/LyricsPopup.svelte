@@ -6,31 +6,56 @@
 	import { Maximize2, Minimize2, RefreshCw, X } from 'lucide-svelte';
 
 	const COMPONENT_MODULE_URL =
-		'https://cdn.jsdelivr.net/npm/@uimaxbai/am-lyrics@0.5.2/dist/src/am-lyrics.min.js';
+		'https://cdn.jsdelivr.net/npm/@uimaxbai/am-lyrics@0.5.3/dist/src/am-lyrics.min.js';
+	const SEEK_FORCE_THRESHOLD_MS = 220;
 
-		type LyricsMetadata = {
-			title: string;
-			artist: string;
-			album?: string;
-			query: string;
-			durationMs?: number;
-			isrc?: string;
-		};
+	type LyricsMetadata = {
+		title: string;
+		artist: string;
+		album?: string;
+		query: string;
+		durationMs?: number;
+		isrc?: string;
+	};
 
-	let amLyricsElement = $state<HTMLElement & { currentTime: number } | null>(null);
+	type AmLyricsElement = HTMLElement & {
+		currentTime: number;
+		scrollToActiveLine?: () => void;
+		scrollToInstrumental?: (index: number) => void;
+		activeLineIndices?: number[];
+		shadowRoot: ShadowRoot | null;
+		updateComplete?: Promise<unknown>;
+		__tidalScrollPatched?: boolean;
+	};
+
+	let amLyricsElement = $state<AmLyricsElement | null>(null);
 	let scriptStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	let scriptError = $state<string | null>(null);
 	let pendingLoad: Promise<void> | null = null;
 	let hasEscapeListener = false;
 
-	let playbackTimeMs = $state(0);
+	let baseTimeMs = $state(0);
 	let lyricsKey = $state('0:none');
-		let metadata = $state<LyricsMetadata | null>(null);
+	let metadata = $state<LyricsMetadata | null>(null);
+	let animationFrameId: number | null = null;
+	let lastBaseTimestamp = 0;
+	let scrollPatchFrame: number | null = null;
+	let lastRefreshedTrackId = $state<number | null>(null);
 
 	$effect(() => {
-		playbackTimeMs = Math.max(0, ($currentTime ?? 0) * 1000);
+		const seconds = $currentTime ?? 0;
+		const playing = $playerStore.isPlaying;
+		const nextMs = Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 0;
+		baseTimeMs = nextMs;
+		if (browser) {
+			lastBaseTimestamp = performance.now();
+		}
 		if (scriptStatus === 'ready' && amLyricsElement) {
-			amLyricsElement.currentTime = playbackTimeMs;
+			const current = Number(amLyricsElement.currentTime ?? 0);
+			const delta = Math.abs(current - nextMs);
+			if (!playing || delta > SEEK_FORCE_THRESHOLD_MS) {
+				amLyricsElement.currentTime = nextMs;
+			}
 		}
 	});
 
@@ -77,14 +102,13 @@
 				scriptStatus = 'ready';
 				scriptError = null;
 				if (amLyricsElement) {
-					amLyricsElement.currentTime = playbackTimeMs;
+					amLyricsElement.currentTime = baseTimeMs;
 				}
 			})
 			.catch((error) => {
 				console.error('Failed to load Apple Music lyrics component', error);
 				scriptStatus = 'error';
-				scriptError =
-					error instanceof Error ? error.message : 'Unable to load lyrics component.';
+				scriptError = error instanceof Error ? error.message : 'Unable to load lyrics component.';
 			})
 			.finally(() => {
 				pendingLoad = null;
@@ -192,6 +216,13 @@
 		}
 	}
 
+	function stopAnimation() {
+		if (animationFrameId !== null) {
+			cancelAnimationFrame(animationFrameId);
+			animationFrameId = null;
+		}
+	}
+
 	function handleRefresh() {
 		if ($lyricsStore.track) {
 			lyricsStore.refresh();
@@ -219,6 +250,105 @@
 		window.dispatchEvent(new CustomEvent('lyrics:seek', { detail: { timeSeconds } }));
 	}
 
+	function patchLyricsAutoscroll(element: AmLyricsElement, attempt = 0) {
+		if (!browser || !element || element.__tidalScrollPatched) {
+			return;
+		}
+
+		const container = element.shadowRoot?.querySelector<HTMLElement>('.lyrics-container');
+		if (!container) {
+			if (attempt > 8) return;
+			if (scrollPatchFrame !== null) {
+				cancelAnimationFrame(scrollPatchFrame);
+			}
+			scrollPatchFrame = requestAnimationFrame(() => {
+				patchLyricsAutoscroll(element, attempt + 1);
+			});
+			return;
+		}
+
+		scrollPatchFrame = null;
+
+		element.__tidalScrollPatched = true;
+
+		const styles = getComputedStyle(container);
+		const parsedPaddingTop = parseFloat(styles.paddingTop || '0');
+		const parsedPaddingBottom = parseFloat(styles.paddingBottom || '0');
+		const preferredFraction = 0.32;
+		const comfortTopFraction = 0.18;
+		const comfortBottomFraction = 0.22;
+
+		const computeScrollTarget = (line: HTMLElement) => {
+			const containerRect = container.getBoundingClientRect();
+			const lineRect = line.getBoundingClientRect();
+			const lineTop = lineRect.top - containerRect.top + container.scrollTop;
+			const lineBottom = lineTop + lineRect.height;
+			const viewportStart = container.scrollTop;
+			const viewportEnd = viewportStart + container.clientHeight;
+			const comfortStart = viewportStart + parsedPaddingTop + container.clientHeight * comfortTopFraction;
+			const comfortEnd = viewportEnd - parsedPaddingBottom - container.clientHeight * comfortBottomFraction;
+
+			if (lineTop >= comfortStart && lineBottom <= comfortEnd) {
+				return null;
+			}
+
+			const backgroundBefore = line.querySelector<HTMLElement>('.background-text.before');
+			const backgroundOffset = backgroundBefore
+				? Math.min(backgroundBefore.clientHeight / 2, lineRect.height * 0.6)
+				: 0;
+
+			const desiredTop =
+				lineTop - parsedPaddingTop - container.clientHeight * preferredFraction - backgroundOffset;
+			const maxScroll = container.scrollHeight - container.clientHeight;
+
+			return Math.max(0, Math.min(maxScroll, desiredTop));
+		};
+
+		const applyScroll = (target: number | null) => {
+			if (target === null) return;
+			const delta = Math.abs(container.scrollTop - target);
+			if (delta < 1) return;
+			container.scrollTo({ top: target, behavior: 'smooth' });
+		};
+
+		const originalActiveScroll = element.scrollToActiveLine?.bind(element);
+		element.scrollToActiveLine = function () {
+			const indices = Array.isArray(element.activeLineIndices)
+				? (element.activeLineIndices as number[])
+				: [];
+			if (!indices.length) {
+				originalActiveScroll?.();
+				return;
+			}
+
+			const targetIndex = Math.min(...indices);
+			const line = container.querySelector<HTMLElement>(
+				`.lyrics-line:nth-child(${targetIndex + 1})`
+			);
+			if (!line) {
+				originalActiveScroll?.();
+				return;
+			}
+
+			const target = computeScrollTarget(line);
+			if (target === null) return;
+			applyScroll(target);
+		};
+
+		const originalInstrumentalScroll = element.scrollToInstrumental?.bind(element);
+		element.scrollToInstrumental = function (index: number) {
+			const line = container.querySelector<HTMLElement>(`.lyrics-line:nth-child(${index + 1})`);
+			if (!line) {
+				originalInstrumentalScroll?.(index);
+				return;
+			}
+
+			const target = computeScrollTarget(line);
+			if (target === null) return;
+			applyScroll(target);
+		};
+	}
+
 	$effect(() => {
 		if (!amLyricsElement) {
 			return;
@@ -228,6 +358,67 @@
 		amLyricsElement.addEventListener('line-click', listener as EventListener);
 		return () => {
 			amLyricsElement?.removeEventListener('line-click', listener as EventListener);
+		};
+	});
+
+	$effect(() => {
+		if (!browser) return;
+		const element = amLyricsElement as AmLyricsElement | null;
+		if (!element || scriptStatus !== 'ready') return;
+		patchLyricsAutoscroll(element);
+	});
+
+	$effect(() => {
+		const open = $lyricsStore.open;
+		const trackId = $lyricsStore.track?.id ?? null;
+
+		if (!open || !trackId) {
+			lastRefreshedTrackId = open ? trackId : null;
+			return;
+		}
+
+		if (trackId !== lastRefreshedTrackId) {
+			lastRefreshedTrackId = trackId;
+			lyricsStore.refresh();
+		}
+	});
+
+	$effect(() => {
+		if (!browser || !amLyricsElement) {
+			stopAnimation();
+			return;
+		}
+
+		if (scriptStatus !== 'ready' || !$lyricsStore.open) {
+			stopAnimation();
+			amLyricsElement.currentTime = baseTimeMs;
+			return;
+		}
+
+		if (!$playerStore.isPlaying) {
+			stopAnimation();
+			amLyricsElement.currentTime = baseTimeMs;
+			return;
+		}
+
+		const element = amLyricsElement;
+		const originBase = baseTimeMs;
+		const nowTimestamp = performance.now();
+		const originTimestamp =
+			lastBaseTimestamp && Math.abs(nowTimestamp - lastBaseTimestamp) < 1200
+				? lastBaseTimestamp
+				: nowTimestamp;
+
+		const tick = (now: number) => {
+			const elapsed = now - originTimestamp;
+			const nextMs = originBase + elapsed;
+			element.currentTime = nextMs;
+			animationFrameId = requestAnimationFrame(tick);
+		};
+
+		animationFrameId = requestAnimationFrame(tick);
+		return () => {
+			stopAnimation();
 		};
 	});
 
@@ -296,7 +487,7 @@
 					</button>
 					<button
 						type="button"
-						class="lyrics-icon-button"
+						class="lyrics-icon-button lyrics-maximize-button"
 						onclick={() => lyricsStore.toggleMaximize()}
 						aria-label={$lyricsStore.maximized ? 'Restore window' : 'Maximize window'}
 						title={$lyricsStore.maximized ? 'Restore window' : 'Maximize window'}
@@ -323,9 +514,7 @@
 				{#if scriptStatus === 'error'}
 					<div class="lyrics-placeholder">
 						<p class="lyrics-message">{scriptError ?? 'Unable to load lyrics right now.'}</p>
-						<button type="button" class="lyrics-retry" onclick={handleRetry}>
-							Try again
-						</button>
+						<button type="button" class="lyrics-retry" onclick={handleRetry}> Try again </button>
 					</div>
 				{:else if !metadata}
 					<div class="lyrics-placeholder">
@@ -350,6 +539,7 @@
 								isrc={metadata.isrc || undefined}
 								highlight-color="#93c5fd"
 								hover-background-color="rgba(59, 130, 246, 0.14)"
+								font-family="'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif"
 								autoscroll
 								interpolate
 							></am-lyrics>
@@ -475,6 +665,7 @@
 		flex: 1;
 		padding: 1rem 1.5rem 1.5rem;
 		display: flex;
+		overflow: hidden;
 	}
 
 	.lyrics-component-wrapper {
@@ -493,7 +684,21 @@
 		display: block;
 		width: 100%;
 		height: 100%;
+		overflow-y: auto;
+		overflow-x: hidden;
+		overscroll-behavior: contain;
 		color: inherit;
+	}
+
+	.am-lyrics-element::part(container) {
+		padding: 1.25rem;
+		padding-block: 2rem;
+		box-sizing: border-box;
+	}
+
+	.am-lyrics-element::part(line) {
+		scroll-margin-block-start: min(32vh, 9rem);
+		scroll-margin-block-end: min(28vh, 7rem);
 	}
 
 	.lyrics-placeholder {
@@ -541,14 +746,22 @@
 	}
 
 	@media (max-width: 640px) {
+		.lyrics-overlay {
+			padding: 0;
+			align-items: stretch;
+			justify-content: stretch;
+		}
+
 		.lyrics-panel {
-			border-radius: 1rem;
-			height: 88vh;
+			border-radius: 0;
+			border: none;
+			width: 100vw;
+			height: 100vh;
 		}
 
 		.lyrics-panel--maximized {
-			width: 100%;
-			height: 94vh;
+			width: 100vw;
+			height: 100vh;
 		}
 
 		.lyrics-header {
@@ -558,6 +771,24 @@
 
 		.lyrics-header-actions {
 			align-self: flex-end;
+		}
+
+		.lyrics-body {
+			padding: 1rem;
+		}
+
+		.lyrics-maximize-button {
+			display: none;
+		}
+
+		.am-lyrics-element::part(container) {
+			padding: 1.5rem;
+			padding-block: 2.5rem;
+		}
+
+		.am-lyrics-element::part(line) {
+			scroll-margin-block-start: min(40vh, 9rem);
+			scroll-margin-block-end: min(28vh, 6.5rem);
 		}
 	}
 </style>

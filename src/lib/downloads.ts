@@ -52,10 +52,7 @@ function escapeCsvValue(value: string): string {
 	return normalized;
 }
 
-export async function buildTrackLinksCsv(
-	tracks: Track[],
-	quality: AudioQuality
-): Promise<string> {
+export async function buildTrackLinksCsv(tracks: Track[], quality: AudioQuality): Promise<string> {
 	const header = ['Index', 'Title', 'Artist', 'Album', 'Duration', 'FLAC URL'];
 	const rows: string[][] = [];
 
@@ -101,7 +98,9 @@ export async function downloadAlbum(
 	const mode = options?.mode ?? 'individual';
 	const shouldZip = mode === 'zip' && total > 1;
 	const useCsv = mode === 'csv';
-	const artistName = sanitizeForFilename(preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist');
+	const artistName = sanitizeForFilename(
+		preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist'
+	);
 	const albumTitle = sanitizeForFilename(canonicalAlbum.title ?? 'Unknown Album');
 
 	if (useCsv) {
