@@ -910,7 +910,13 @@ class LosslessAPI {
 		try {
 			const loadOptions: Parameters<typeof ffmpegModule.getFFmpeg>[0] = {
 				signal: options?.signal,
-				onProgress: ({ receivedBytes, totalBytes }: { receivedBytes: number; totalBytes?: number }) => {
+				onProgress: ({
+					receivedBytes,
+					totalBytes
+				}: {
+					receivedBytes: number;
+					totalBytes?: number;
+				}) => {
 					if (totalBytes && totalBytes > 0) {
 						options?.onFfmpegProgress?.(Math.max(0, Math.min(1, receivedBytes / totalBytes)));
 					} else if (receivedBytes > 0) {
@@ -936,9 +942,11 @@ class LosslessAPI {
 		let coverWritten = false;
 
 		try {
-			const setProgress = (ffmpeg as unknown as {
-				setProgress?: (cb: (data: { ratio?: number }) => void) => void;
-			}).setProgress;
+			const setProgress = (
+				ffmpeg as unknown as {
+					setProgress?: (cb: (data: { ratio?: number }) => void) => void;
+				}
+			).setProgress;
 			if (typeof setProgress === 'function') {
 				setProgress(({ ratio }) => {
 					if (ratio != null && options?.onProgress) {
@@ -1141,10 +1149,7 @@ class LosslessAPI {
 		}
 	}
 
-	async getTrackStreamUrl(
-		trackId: number,
-		quality: AudioQuality = 'LOSSLESS'
-	): Promise<string> {
+	async getTrackStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
 		const lookup = await this.getTrack(trackId, quality);
 		if (lookup.originalTrackUrl) {
 			return lookup.originalTrackUrl;

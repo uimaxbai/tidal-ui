@@ -47,7 +47,7 @@
 		{
 			title: 'Even more changes!',
 			description:
-				'I\'ve stabilised the API a bit and added a few more features such as ZIP download of albums, better error handling, etc. Stay tuned for word by word lyrics!'
+				"I've stabilised the API a bit and added a few more features such as ZIP download of albums, better error handling, etc. Stay tuned for word by word lyrics!"
 		},
 		{
 			title: 'QOL changes',
@@ -58,7 +58,7 @@
 			title: 'Initial release!',
 			description:
 				"Two APIs fetch lossless CD-quality 16/44.1kHz FLACs. No support for Hi-Res yet but I'm working on it haha. No playlist saving or logging in either but downloading and streaming work."
-		},
+		}
 	];
 
 	const trackSkeletons = Array.from({ length: 6 }, (_, index) => index);
@@ -513,11 +513,12 @@
 								onclick={(event) =>
 									downloadingIds.has(track.id)
 										? handleCancelDownload(track.id, event)
-										: handleDownload(track, event)
-								}
+										: handleDownload(track, event)}
 								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
 								title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-								aria-label={downloadingIds.has(track.id) ? `Cancel download for ${track.title}` : `Download ${track.title}`}
+								aria-label={downloadingIds.has(track.id)
+									? `Cancel download for ${track.title}`
+									: `Download ${track.title}`}
 								aria-busy={downloadingIds.has(track.id)}
 								aria-pressed={downloadingIds.has(track.id)}
 							>

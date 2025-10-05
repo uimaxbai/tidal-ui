@@ -313,6 +313,26 @@
 		}
 	}
 
+	function handleLyricsSeekEvent(event: Event) {
+		const customEvent = event as CustomEvent<{ timeSeconds?: number }>;
+		const targetSeconds = customEvent.detail?.timeSeconds;
+		if (typeof targetSeconds !== 'number' || !audioElement) {
+			return;
+		}
+
+		const seekSeconds = Math.max(0, targetSeconds);
+		audioElement.currentTime = seekSeconds;
+		playerStore.setCurrentTime(seekSeconds);
+		updateMediaSessionPositionState();
+
+		const state = get(playerStore);
+		if (!state.isPlaying) {
+			playerStore.play();
+		}
+
+		audioElement.play().catch(() => {});
+	}
+
 	function toggleMute() {
 		if (isMuted) {
 			playerStore.setVolume(previousVolume);
@@ -571,6 +591,8 @@
 	}
 
 	onMount(() => {
+		let detachLyricsSeek: (() => void) | null = null;
+
 		if (audioElement) {
 			audioElement.volume = $playerStore.volume;
 		}
@@ -593,10 +615,19 @@
 			updateMediaSessionPositionState();
 		}
 
+		if (typeof window !== 'undefined') {
+			const listener = (event: Event) => handleLyricsSeekEvent(event);
+			window.addEventListener('lyrics:seek', listener as EventListener);
+			detachLyricsSeek = () => {
+				window.removeEventListener('lyrics:seek', listener as EventListener);
+			};
+		}
+
 		return () => {
 			resizeObserver?.disconnect();
 			cleanupMediaSessionHandlers?.();
 			cleanupMediaSessionHandlers = null;
+			detachLyricsSeek?.();
 			if (canUseMediaSession) {
 				try {
 					navigator.mediaSession.metadata = null;
@@ -633,363 +664,372 @@
 >
 	<div class="relative mx-auto w-full max-w-screen-2xl">
 		{#if $ffmpegBanner.phase !== 'idle' || $activeTrackDownloads.length > 0}
-			<div class="pointer-events-none absolute left-0 right-0 top-0 -translate-y-full transform pb-4">
+			<div
+				class="pointer-events-none absolute top-0 right-0 left-0 -translate-y-full transform pb-4"
+			>
 				<div class="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4">
 					{#if $ffmpegBanner.phase !== 'idle'}
-						<div class="pointer-events-auto rounded-2xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-100 shadow-xl backdrop-blur">
-						<div class="flex items-start gap-3">
-							<div class="flex-1 min-w-0">
-								<p class="font-semibold leading-5 text-blue-50">
-									Downloading FFmpeg
-									{#if formatMegabytes($ffmpegBanner.totalBytes)}
-										<span class="text-blue-100/80"> ({formatMegabytes($ffmpegBanner.totalBytes)})</span>
+						<div
+							class="pointer-events-auto rounded-2xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-100 shadow-xl backdrop-blur"
+						>
+							<div class="flex items-start gap-3">
+								<div class="min-w-0 flex-1">
+									<p class="leading-5 font-semibold text-blue-50">
+										Downloading FFmpeg
+										{#if formatMegabytes($ffmpegBanner.totalBytes)}
+											<span class="text-blue-100/80">
+												({formatMegabytes($ffmpegBanner.totalBytes)})</span
+											>
+										{/if}
+									</p>
+									{#if $ffmpegBanner.phase === 'countdown'}
+										<p class="mt-1 text-xs text-blue-100/80">
+											Starting in {$ffmpegBanner.countdownSeconds} seconds…
+										</p>
+									{:else if $ffmpegBanner.phase === 'loading'}
+										<p class="mt-1 text-xs text-blue-100/80">
+											Preparing encoder… {formatPercent($ffmpegBanner.progress)}
+										</p>
+									{:else if $ffmpegBanner.phase === 'ready'}
+										<p class="mt-1 text-xs text-blue-100/80">FFmpeg is ready to use.</p>
+									{:else if $ffmpegBanner.phase === 'error'}
+										<p class="mt-1 text-xs text-red-200">
+											{$ffmpegBanner.error ?? 'Failed to load FFmpeg.'}
+										</p>
 									{/if}
-								</p>
-								{#if $ffmpegBanner.phase === 'countdown'}
-									<p class="mt-1 text-xs text-blue-100/80">
-										Starting in {$ffmpegBanner.countdownSeconds} seconds…
-									</p>
-								{:else if $ffmpegBanner.phase === 'loading'}
-									<p class="mt-1 text-xs text-blue-100/80">
-										Preparing encoder… {formatPercent($ffmpegBanner.progress)}
-									</p>
-								{:else if $ffmpegBanner.phase === 'ready'}
-									<p class="mt-1 text-xs text-blue-100/80">FFmpeg is ready to use.</p>
-								{:else if $ffmpegBanner.phase === 'error'}
-									<p class="mt-1 text-xs text-red-200">
-										{$ffmpegBanner.error ?? 'Failed to load FFmpeg.'}
-									</p>
+								</div>
+								{#if $ffmpegBanner.dismissible}
+									<button
+										onclick={() => downloadUiStore.dismissFfmpeg()}
+										class="rounded-full p-1 text-blue-100/70 transition-colors hover:bg-blue-500/20 hover:text-blue-50"
+										aria-label="Dismiss FFmpeg download"
+									>
+										<X size={16} />
+									</button>
 								{/if}
 							</div>
-							{#if $ffmpegBanner.dismissible}
+							{#if $ffmpegBanner.phase === 'loading'}
+								<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-blue-500/20">
+									<div
+										class="h-full rounded-full bg-blue-400 transition-all duration-200"
+										style="width: {Math.min(Math.max($ffmpegBanner.progress * 100, 6), 100)}%"
+									></div>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					{#each $activeTrackDownloads as task (task.id)}
+						<div
+							class="pointer-events-auto rounded-2xl border border-gray-700/80 bg-gray-900/95 px-4 py-3 text-sm text-gray-100 shadow-xl backdrop-blur"
+						>
+							<div class="flex items-start gap-3">
+								<div class="flex min-w-0 flex-1 flex-col gap-1">
+									<p class="flex items-center gap-2 text-sm font-semibold text-gray-50">
+										{#if task.progress < 0.02}
+											<LoaderCircle size={16} class="animate-spin text-blue-300" />
+										{:else}
+											<Download size={16} class="text-blue-300" />
+										{/if}
+										<span class="truncate">{task.title}</span>
+									</p>
+									{#if task.subtitle}
+										<p class="truncate text-xs text-gray-400">{task.subtitle}</p>
+									{/if}
+									<div class="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+										<span>{formatTransferStatus(task.receivedBytes, task.totalBytes)}</span>
+										<span aria-hidden="true">•</span>
+										<span>{formatPercent(task.progress)}</span>
+									</div>
+								</div>
 								<button
-									onclick={() => downloadUiStore.dismissFfmpeg()}
-									class="rounded-full p-1 text-blue-100/70 transition-colors hover:bg-blue-500/20 hover:text-blue-50"
-									aria-label="Dismiss FFmpeg download"
+									onclick={() =>
+										task.cancellable
+											? downloadUiStore.cancelTrackDownload(task.id)
+											: downloadUiStore.dismissTrackTask(task.id)}
+									class="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+									aria-label={task.cancellable
+										? `Cancel download for ${task.title}`
+										: `Dismiss download for ${task.title}`}
 								>
 									<X size={16} />
 								</button>
-							{/if}
-						</div>
-						{#if $ffmpegBanner.phase === 'loading'}
-							<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-blue-500/20">
+							</div>
+							<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-800">
 								<div
-									class="h-full rounded-full bg-blue-400 transition-all duration-200"
-									style="width: {Math.min(Math.max($ffmpegBanner.progress * 100, 6), 100)}%"
+									class="h-full rounded-full bg-blue-500 transition-all duration-200"
+									style="width: {Math.min(Math.max(task.progress * 100, 4), 100)}%"
 								></div>
 							</div>
-						{/if}
-					</div>
-				{/if}
-
-				{#each $activeTrackDownloads as task (task.id)}
-					<div class="pointer-events-auto rounded-2xl border border-gray-700/80 bg-gray-900/95 px-4 py-3 text-sm text-gray-100 shadow-xl backdrop-blur">
-						<div class="flex items-start gap-3">
-							<div class="flex min-w-0 flex-1 flex-col gap-1">
-								<p class="flex items-center gap-2 text-sm font-semibold text-gray-50">
-									{#if task.progress < 0.02}
-										<LoaderCircle size={16} class="animate-spin text-blue-300" />
-									{:else}
-										<Download size={16} class="text-blue-300" />
-									{/if}
-									<span class="truncate">{task.title}</span>
-								</p>
-								{#if task.subtitle}
-									<p class="truncate text-xs text-gray-400">{task.subtitle}</p>
-								{/if}
-								<div class="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-									<span>{formatTransferStatus(task.receivedBytes, task.totalBytes)}</span>
-									<span aria-hidden="true">•</span>
-									<span>{formatPercent(task.progress)}</span>
-								</div>
-							</div>
-							<button
-								onclick={() =>
-									task.cancellable
-										? downloadUiStore.cancelTrackDownload(task.id)
-										: downloadUiStore.dismissTrackTask(task.id)
-								}
-								class="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
-								aria-label={task.cancellable
-									? `Cancel download for ${task.title}`
-									: `Dismiss download for ${task.title}`}
-							>
-								<X size={16} />
-							</button>
 						</div>
-						<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-800">
-							<div
-								class="h-full rounded-full bg-blue-500 transition-all duration-200"
-								style="width: {Math.min(Math.max(task.progress * 100, 4), 100)}%"
-							></div>
-						</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			</div>
-		</div>
 		{/if}
 		<div class="overflow-hidden rounded-2xl border border-gray-800 bg-zinc-900 shadow-2xl">
 			<div class="relative px-4 py-3">
-			{#if $playerStore.currentTrack}
-				<!-- Progress Bar -->
-				<div class="mb-3">
-					<button
-						onclick={handleSeek}
-						class="group relative h-1 w-full cursor-pointer overflow-hidden rounded-full bg-gray-700"
-						type="button"
-						aria-label="Seek position"
-					>
-						<div
-							class="pointer-events-none absolute inset-y-0 left-0 bg-blue-400/30 transition-all"
-							style="width: {bufferedPercent}%"
-							aria-hidden="true"
-						></div>
-						<div
-							class="pointer-events-none absolute inset-y-0 left-0 bg-blue-500 transition-all"
-							style="width: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
-							aria-hidden="true"
-						></div>
-						<div
-							class="pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-blue-500 opacity-0 transition-opacity group-hover:opacity-100"
-							style="left: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
-							aria-hidden="true"
-						></div>
-					</button>
-					<div class="mt-1 flex justify-between text-xs text-gray-400">
-						<span>{formatTime($playerStore.currentTime)}</span>
-						<span>{formatTime($playerStore.duration)}</span>
-					</div>
-				</div>
-
-				<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-					<!-- Track Info -->
-					<div class="flex min-w-0 items-center gap-3 sm:flex-1">
-						{#if $playerStore.currentTrack.album.cover}
-							<img
-								src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
-								alt={$playerStore.currentTrack.title}
-								class="h-14 w-14 rounded object-cover shadow-lg"
-							/>
-						{/if}
-						<div class="min-w-0 flex-1">
-							<h3 class="truncate font-semibold text-white">
-								{$playerStore.currentTrack.title}
-							</h3>
-							<p class="truncate text-sm text-gray-400">
-								{$playerStore.currentTrack.artist.name}
-							</p>
-							<p class="text-xs text-gray-500">
-								{formatQualityLabel($playerStore.currentTrack.audioQuality)}
-							</p>
-						</div>
-					</div>
-
-					<div class="flex flex-wrap items-center justify-between gap-3 sm:flex-nowrap sm:justify-end sm:gap-4">
-						<!-- Controls -->
-						<div class="flex w-full flex-1 items-center justify-center gap-2 sm:w-auto sm:flex-none sm:justify-center">
-							<button
-								onclick={() => playerStore.previous()}
-								class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-								disabled={$playerStore.queueIndex <= 0}
-								aria-label="Previous track"
-							>
-								<SkipBack size={20} />
-							</button>
-
-							<button
-								onclick={() => playerStore.togglePlay()}
-								class="rounded-full bg-white p-3 text-gray-900 transition-transform hover:scale-105"
-								aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
-							>
-								{#if $playerStore.isPlaying}
-									<Pause size={24} fill="currentColor" />
-								{:else}
-									<Play size={24} fill="currentColor" />
-								{/if}
-							</button>
-
-							<button
-								onclick={() => playerStore.next()}
-								class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-								disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
-								aria-label="Next track"
-							>
-								<SkipForward size={20} />
-							</button>
-						</div>
-
-						<!-- Queue Toggle -->
-						<div class="flex items-center gap-2 sm:flex-none">
-							<!--
-							<button
-								onclick={() => lyricsStore.toggle()}
-								class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {$lyricsStore.open
-									? 'border-blue-500 text-white'
-									: ''}"
-								aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
-								aria-expanded={$lyricsStore.open}
-								type="button"
-							>
-							<ScrollText size={18} />
-							<span class="hidden sm:inline">Lyrics</span>
+				{#if $playerStore.currentTrack}
+					<!-- Progress Bar -->
+					<div class="mb-3">
+						<button
+							onclick={handleSeek}
+							class="group relative h-1 w-full cursor-pointer overflow-hidden rounded-full bg-gray-700"
+							type="button"
+							aria-label="Seek position"
+						>
+							<div
+								class="pointer-events-none absolute inset-y-0 left-0 bg-blue-400/30 transition-all"
+								style="width: {bufferedPercent}%"
+								aria-hidden="true"
+							></div>
+							<div
+								class="pointer-events-none absolute inset-y-0 left-0 bg-blue-500 transition-all"
+								style="width: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
+								aria-hidden="true"
+							></div>
+							<div
+								class="pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-blue-500 opacity-0 transition-opacity group-hover:opacity-100"
+								style="left: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
+								aria-hidden="true"
+							></div>
 						</button>
-						-->
-							<button
-								onclick={toggleQueuePanel}
-								class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {showQueuePanel
-									? 'border-blue-500 text-white'
-									: ''}"
-								aria-label="Toggle queue panel"
-								aria-expanded={showQueuePanel}
-								type="button"
-							>
-								<ListMusic size={18} />
-								<span class="hidden sm:inline">Queue ({$playerStore.queue.length})</span>
-							</button>
-						</div>
-
-						<!-- Volume Control -->
-						<div class="flex items-center gap-2 sm:flex-none">
-							<button
-								onclick={toggleMute}
-								class="p-2 text-gray-400 transition-colors hover:text-white"
-								aria-label={isMuted ? 'Unmute' : 'Mute'}
-							>
-								{#if isMuted || $playerStore.volume === 0}
-									<VolumeX size={20} />
-								{:else}
-									<Volume2 size={20} />
-								{/if}
-							</button>
-							<input
-								type="range"
-								min="0"
-								max="1"
-								step="0.01"
-								value={$playerStore.volume}
-								oninput={handleVolumeChange}
-								class="hidden h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white sm:block"
-								aria-label="Volume"
-							/>
+						<div class="mt-1 flex justify-between text-xs text-gray-400">
+							<span>{formatTime($playerStore.currentTime)}</span>
+							<span>{formatTime($playerStore.duration)}</span>
 						</div>
 					</div>
-				</div>
 
-				{#if showQueuePanel}
-					<div
-						class="mt-4 space-y-3 rounded-2xl border border-gray-800/80 bg-neutral-900/90 p-4 text-sm shadow-inner"
-						transition:slide={{ duration: 220, easing: cubicOut }}
-					>
-						<div class="flex items-center justify-between gap-2">
-							<div class="flex items-center gap-2 text-gray-300">
-								<ListMusic size={18} />
-								<span class="font-medium">Playback Queue</span>
-								<span class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
-									{$playerStore.queue.length}
-								</span>
-							</div>
-							<div class="flex items-center gap-2">
-								<button
-									onclick={handleShuffleQueue}
-									class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-blue-500 hover:text-blue-200 disabled:opacity-40"
-									type="button"
-									disabled={$playerStore.queue.length <= 1}
-								>
-									<Shuffle size={14} />
-									Shuffle
-								</button>
-								<button
-									onclick={clearQueue}
-									class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-red-500 hover:text-red-400"
-									type="button"
-									disabled={$playerStore.queue.length === 0}
-								>
-									<Trash2 size={14} />
-									Clear
-								</button>
-								<button
-									onclick={closeQueuePanel}
-									class="rounded-full p-1 text-gray-400 transition-colors hover:text-white"
-									aria-label="Close queue panel"
-								>
-									<X size={16} />
-								</button>
+					<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+						<!-- Track Info -->
+						<div class="flex min-w-0 items-center gap-3 sm:flex-1">
+							{#if $playerStore.currentTrack.album.cover}
+								<img
+									src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
+									alt={$playerStore.currentTrack.title}
+									class="h-14 w-14 rounded object-cover shadow-lg"
+								/>
+							{/if}
+							<div class="min-w-0 flex-1">
+								<h3 class="truncate font-semibold text-white">
+									{$playerStore.currentTrack.title}
+								</h3>
+								<p class="truncate text-sm text-gray-400">
+									{$playerStore.currentTrack.artist.name}
+								</p>
+								<p class="text-xs text-gray-500">
+									{formatQualityLabel($playerStore.currentTrack.audioQuality)}
+								</p>
 							</div>
 						</div>
 
-						{#if $playerStore.queue.length > 0}
-							<ul class="max-h-60 space-y-2 overflow-y-auto pr-1">
-								{#each $playerStore.queue as queuedTrack, index}
-									<li>
-										<div
-											onclick={() => playFromQueue(index)}
-											onkeydown={(event) => {
-												if (event.key === 'Enter' || event.key === ' ') {
-													event.preventDefault();
-													playFromQueue(index);
-												}
-											}}
-											tabindex="0"
-											role="button"
-											class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index ===
-											$playerStore.queueIndex
-												? 'bg-blue-500/10 text-white'
-												: 'text-gray-200 hover:bg-gray-800/70'}"
-										>
-											<span
-												class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300"
+						<div
+							class="flex flex-wrap items-center justify-between gap-3 sm:flex-nowrap sm:justify-end sm:gap-4"
+						>
+							<!-- Controls -->
+							<div
+								class="flex w-full flex-1 items-center justify-center gap-2 sm:w-auto sm:flex-none sm:justify-center"
+							>
+								<button
+									onclick={() => playerStore.previous()}
+									class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+									disabled={$playerStore.queueIndex <= 0}
+									aria-label="Previous track"
+								>
+									<SkipBack size={20} />
+								</button>
+
+								<button
+									onclick={() => playerStore.togglePlay()}
+									class="rounded-full bg-white p-3 text-gray-900 transition-transform hover:scale-105"
+									aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
+								>
+									{#if $playerStore.isPlaying}
+										<Pause size={24} fill="currentColor" />
+									{:else}
+										<Play size={24} fill="currentColor" />
+									{/if}
+								</button>
+
+								<button
+									onclick={() => playerStore.next()}
+									class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+									disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
+									aria-label="Next track"
+								>
+									<SkipForward size={20} />
+								</button>
+							</div>
+
+							<!-- Queue Toggle -->
+							<div class="flex items-center gap-2 sm:flex-none">
+								<button
+									onclick={() => lyricsStore.toggle()}
+									class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {$lyricsStore.open
+										? 'border-blue-500 text-white'
+										: ''}"
+									aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
+									aria-expanded={$lyricsStore.open}
+									type="button"
+								>
+									<ScrollText size={18} />
+									<span class="hidden sm:inline">Lyrics</span>
+								</button>
+								<button
+									onclick={toggleQueuePanel}
+									class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {showQueuePanel
+										? 'border-blue-500 text-white'
+										: ''}"
+									aria-label="Toggle queue panel"
+									aria-expanded={showQueuePanel}
+									type="button"
+								>
+									<ListMusic size={18} />
+									<span class="hidden sm:inline">Queue ({$playerStore.queue.length})</span>
+								</button>
+							</div>
+
+							<!-- Volume Control -->
+							<div class="flex items-center gap-2 sm:flex-none">
+								<button
+									onclick={toggleMute}
+									class="p-2 text-gray-400 transition-colors hover:text-white"
+									aria-label={isMuted ? 'Unmute' : 'Mute'}
+								>
+									{#if isMuted || $playerStore.volume === 0}
+										<VolumeX size={20} />
+									{:else}
+										<Volume2 size={20} />
+									{/if}
+								</button>
+								<input
+									type="range"
+									min="0"
+									max="1"
+									step="0.01"
+									value={$playerStore.volume}
+									oninput={handleVolumeChange}
+									class="hidden h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white sm:block"
+									aria-label="Volume"
+								/>
+							</div>
+						</div>
+					</div>
+
+					{#if showQueuePanel}
+						<div
+							class="mt-4 space-y-3 rounded-2xl border border-gray-800/80 bg-neutral-900/90 p-4 text-sm shadow-inner"
+							transition:slide={{ duration: 220, easing: cubicOut }}
+						>
+							<div class="flex items-center justify-between gap-2">
+								<div class="flex items-center gap-2 text-gray-300">
+									<ListMusic size={18} />
+									<span class="font-medium">Playback Queue</span>
+									<span class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
+										{$playerStore.queue.length}
+									</span>
+								</div>
+								<div class="flex items-center gap-2">
+									<button
+										onclick={handleShuffleQueue}
+										class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-blue-500 hover:text-blue-200 disabled:opacity-40"
+										type="button"
+										disabled={$playerStore.queue.length <= 1}
+									>
+										<Shuffle size={14} />
+										Shuffle
+									</button>
+									<button
+										onclick={clearQueue}
+										class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-red-500 hover:text-red-400"
+										type="button"
+										disabled={$playerStore.queue.length === 0}
+									>
+										<Trash2 size={14} />
+										Clear
+									</button>
+									<button
+										onclick={closeQueuePanel}
+										class="rounded-full p-1 text-gray-400 transition-colors hover:text-white"
+										aria-label="Close queue panel"
+									>
+										<X size={16} />
+									</button>
+								</div>
+							</div>
+
+							{#if $playerStore.queue.length > 0}
+								<ul class="max-h-60 space-y-2 overflow-y-auto pr-1">
+									{#each $playerStore.queue as queuedTrack, index}
+										<li>
+											<div
+												onclick={() => playFromQueue(index)}
+												onkeydown={(event) => {
+													if (event.key === 'Enter' || event.key === ' ') {
+														event.preventDefault();
+														playFromQueue(index);
+													}
+												}}
+												tabindex="0"
+												role="button"
+												class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index ===
+												$playerStore.queueIndex
+													? 'bg-blue-500/10 text-white'
+													: 'text-gray-200 hover:bg-gray-800/70'}"
 											>
-												{index + 1}
-											</span>
-											<div class="min-w-0 flex-1">
-												<p class="truncate text-sm font-medium">
-													{queuedTrack.title}
-												</p>
-												<p class="truncate text-xs text-gray-400 group-hover:text-gray-300">
-													{queuedTrack.artist.name}
-												</p>
+												<span
+													class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300"
+												>
+													{index + 1}
+												</span>
+												<div class="min-w-0 flex-1">
+													<p class="truncate text-sm font-medium">
+														{queuedTrack.title}
+													</p>
+													<p class="truncate text-xs text-gray-400 group-hover:text-gray-300">
+														{queuedTrack.artist.name}
+													</p>
+												</div>
+												<button
+													onclick={(event) => removeFromQueue(index, event)}
+													class="rounded-full p-1 text-gray-500 transition-colors hover:text-red-400"
+													aria-label={`Remove ${queuedTrack.title} from queue`}
+													type="button"
+												>
+													<X size={14} />
+												</button>
 											</div>
-											<button
-												onclick={(event) => removeFromQueue(index, event)}
-												class="rounded-full p-1 text-gray-500 transition-colors hover:text-red-400"
-												aria-label={`Remove ${queuedTrack.title} from queue`}
-												type="button"
-											>
-												<X size={14} />
-											</button>
-										</div>
-									</li>
-								{/each}
-							</ul>
-						{:else}
-							<p
-								class="rounded-lg border border-dashed border-gray-700 bg-gray-900/70 px-3 py-8 text-center text-gray-400"
-							>
-								Queue is empty
-							</p>
-						{/if}
-					</div>
-				{/if}
-
-				{#if $playerStore.currentTrack && $playerStore.isLoading}
-					<div class="loading-overlay">
-						<div class="loading-equalizer" aria-hidden="true">
-							<span class="bar" style="animation-delay: 0ms"></span>
-							<span class="bar" style="animation-delay: 150ms"></span>
-							<span class="bar" style="animation-delay: 300ms"></span>
-							<span class="bar" style="animation-delay: 450ms"></span>
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<p
+									class="rounded-lg border border-dashed border-gray-700 bg-gray-900/70 px-3 py-8 text-center text-gray-400"
+								>
+									Queue is empty
+								</p>
+							{/if}
 						</div>
-						<p class="text-sm font-medium text-gray-200">Loading track…</p>
+					{/if}
+
+					{#if $playerStore.currentTrack && $playerStore.isLoading}
+						<div class="loading-overlay">
+							<div class="loading-equalizer" aria-hidden="true">
+								<span class="bar" style="animation-delay: 0ms"></span>
+								<span class="bar" style="animation-delay: 150ms"></span>
+								<span class="bar" style="animation-delay: 300ms"></span>
+								<span class="bar" style="animation-delay: 450ms"></span>
+							</div>
+							<p class="text-sm font-medium text-gray-200">Loading track…</p>
+						</div>
+					{/if}
+				{:else}
+					<div class="flex h-20 items-center justify-center text-sm text-gray-400">
+						Nothing is playing
 					</div>
 				{/if}
-			{:else}
-				<div class="flex h-20 items-center justify-center text-sm text-gray-400">
-					Nothing is playing
-				</div>
-			{/if}
+			</div>
 		</div>
 	</div>
-</div>
 </div>
 
 <style>

@@ -26,7 +26,7 @@ const TARGETS = [
 		baseUrl: 'https://tidal-api-3.binimum.org',
 		weight: 20,
 		requiresProxy: false
-	},
+	}
 ] satisfies ApiClusterTarget[];
 
 export const API_CONFIG = {

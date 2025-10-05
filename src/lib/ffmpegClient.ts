@@ -67,7 +67,8 @@ async function streamAsset(
 	}
 
 	const totalBytes = Number(response.headers.get('Content-Length') ?? '0');
-	const resolvedTotal = Number.isFinite(totalBytes) && totalBytes > 0 ? totalBytes : context?.zTotalKnown;
+	const resolvedTotal =
+		Number.isFinite(totalBytes) && totalBytes > 0 ? totalBytes : context?.zTotalKnown;
 
 	if (!response.body) {
 		const blob = await response.blob();
@@ -124,22 +125,14 @@ async function ensureAssets(options?: FfmpegLoadOptions) {
 			}
 		};
 
-		const { url: coreUrl, size: fetchedJsSize } = await streamAsset(
-			CORE_JS_NAME,
-			options,
-			{
-				zTotalKnown: totalKnown > 0 ? totalKnown : undefined,
-				onChunk: notify
-			}
-		);
-		const { url: wasmUrl, size: fetchedWasmSize } = await streamAsset(
-			CORE_WASM_NAME,
-			options,
-			{
-				zTotalKnown: totalKnown > 0 ? totalKnown : undefined,
-				onChunk: notify
-			}
-		);
+		const { url: coreUrl, size: fetchedJsSize } = await streamAsset(CORE_JS_NAME, options, {
+			zTotalKnown: totalKnown > 0 ? totalKnown : undefined,
+			onChunk: notify
+		});
+		const { url: wasmUrl, size: fetchedWasmSize } = await streamAsset(CORE_WASM_NAME, options, {
+			zTotalKnown: totalKnown > 0 ? totalKnown : undefined,
+			onChunk: notify
+		});
 
 		const totalBytes = [jsSize ?? fetchedJsSize, wasmSize ?? fetchedWasmSize]
 			.filter((value): value is number => Number.isFinite(value ?? NaN))
