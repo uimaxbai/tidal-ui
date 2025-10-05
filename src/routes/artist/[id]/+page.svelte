@@ -8,6 +8,7 @@
 	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 
 	let artist = $state<ArtistDetails | null>(null);
 	let artistImage = $state<string | null>(null);
@@ -18,6 +19,7 @@
 	const topTracks = $derived(artist?.tracks ?? []);
 	const discography = $derived(artist?.albums ?? []);
 	const downloadQuality = $derived($playerStore.quality as AudioQuality);
+	const downloadMode = $derived($downloadPreferencesStore.mode);
 
 	type AlbumDownloadState = {
 		downloading: boolean;
@@ -101,7 +103,8 @@
 						patchAlbumDownloadState(album.id, { completed, total });
 					}
 				},
-				artist?.name
+				artist?.name,
+				{ mode: downloadMode }
 			);
 			const finalState = albumDownloadStates[album.id];
 			patchAlbumDownloadState(album.id, {
@@ -159,7 +162,8 @@
 							discographyProgress = { completed, total };
 						}
 					},
-					artist?.name
+					artist?.name,
+					{ mode: downloadMode }
 				);
 			} catch (err) {
 				console.error('Failed to download discography album:', err);

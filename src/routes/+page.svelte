@@ -38,7 +38,7 @@
 			>
 				{data.title}
 			</h2>
-			<span class="text-gray-400 text-sm">v1.4</span>
+			<span class="text-gray-400 text-sm">v1.5</span>
 		</div>
 		<p class="mx-auto max-w-2xl text-xl text-gray-400">{data.slogan}</p>
 	</div>

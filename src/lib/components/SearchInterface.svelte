@@ -3,6 +3,7 @@
 	import { downloadAlbum } from '$lib/downloads';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import type { Track, Album, Artist, Playlist, AudioQuality } from '$lib/types';
 	import {
 		Search,
@@ -31,6 +32,7 @@
 	let cancelledIds = $state(new Set<number>());
 	let error = $state<string | null>(null);
 	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
+	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 
 	type AlbumDownloadState = {
 		downloading: boolean;
@@ -43,15 +45,20 @@
 
 	const newsItems = [
 		{
-			title: 'Initial release!',
+			title: 'Even more changes!',
 			description:
-				"Two APIs fetch lossless CD-quality 16/44.1kHz FLACs. No support for Hi-Res yet but I'm working on it haha. No playlist saving or logging in either but downloading and streaming work."
+				'I\'ve stabilised the API a bit and added a few more features such as ZIP download of albums, better error handling, etc. Stay tuned for word by word lyrics!'
 		},
 		{
 			title: 'QOL changes',
 			description:
 				'This website is still very much in beta, but queue management and album/artist pages/downloads have been added as well as some bug squashing/QOL changes such as bigger album covers and download all for albums.'
-		}
+		},
+		{
+			title: 'Initial release!',
+			description:
+				"Two APIs fetch lossless CD-quality 16/44.1kHz FLACs. No support for Hi-Res yet but I'm working on it haha. No playlist saving or logging in either but downloading and streaming work."
+		},
 	];
 
 	const trackSkeletons = Array.from({ length: 6 }, (_, index) => index);
@@ -217,7 +224,8 @@
 						patchAlbumDownloadState(album.id, { completed, total });
 					}
 				},
-				album.artist?.name
+				album.artist?.name,
+				{ mode: albumDownloadMode }
 			);
 			const finalState = albumDownloadStates[album.id];
 			patchAlbumDownloadState(album.id, {
@@ -455,7 +463,7 @@
 					>
 						{#if track.album.cover}
 							<img
-								src={losslessAPI.getCoverUrl(track.album.cover, '320')}
+								src={losslessAPI.getCoverUrl(track.album.cover, '160')}
 								alt={track.title}
 								class="h-12 w-12 rounded object-cover"
 							/>

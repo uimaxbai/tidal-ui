@@ -16,6 +16,8 @@
 	} from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
+	import { downloadAlbum } from '$lib/downloads';
 
 	let album = $state<Album | null>(null);
 	let tracks = $state<Track[]>([]);
@@ -24,6 +26,7 @@
 	let isDownloadingAll = $state(false);
 	let downloadedCount = $state(0);
 	let downloadError = $state<string | null>(null);
+	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 
 	const albumId = $derived($page.params.id);
 
@@ -72,7 +75,7 @@
 	}
 
 	async function handleDownloadAll() {
-		if (tracks.length === 0 || isDownloadingAll) {
+		if (!album || tracks.length === 0 || isDownloadingAll) {
 			return;
 		}
 
@@ -80,20 +83,32 @@
 		downloadedCount = 0;
 		downloadError = null;
 		const quality = $playerStore.quality;
+		const mode = albumDownloadMode;
 
-		for (const track of tracks) {
-			try {
-				const filename = `${track.artist.name} - ${track.title}.flac`;
-				await losslessAPI.downloadTrack(track.id, quality, filename);
-				downloadedCount += 1;
-			} catch (err) {
-				console.error('Failed to download album track:', err);
-				downloadError =
-					err instanceof Error ? err.message : 'Failed to download one or more tracks.';
-			}
+		try {
+			await downloadAlbum(
+				album,
+				quality,
+				{
+					onTotalResolved: () => {
+						downloadedCount = 0;
+					},
+					onTrackDownloaded: (completed) => {
+						downloadedCount = completed;
+					}
+				},
+				album.artist?.name,
+				{ mode }
+			);
+		} catch (err) {
+			console.error('Failed to download album:', err);
+			downloadError =
+				err instanceof Error && err.message
+					? err.message
+					: 'Failed to download one or more tracks.';
+		} finally {
+			isDownloadingAll = false;
 		}
-
-		isDownloadingAll = false;
 	}
 
 	const totalDuration = $derived(tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));

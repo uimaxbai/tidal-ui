@@ -954,7 +954,7 @@ class LosslessAPI {
 
 			const artworkId = lookup.track.album?.cover;
 			if (artworkId) {
-				const coverUrl = this.getCoverUrl(artworkId, '640');
+				const coverUrl = this.getCoverUrl(artworkId, '1280');
 				try {
 					const coverResponse = await fetch(coverUrl);
 					if (coverResponse.ok) {
@@ -1034,16 +1034,12 @@ class LosslessAPI {
 		}
 	}
 
-	/**
-	 * Download a track
-	 * Fetches the audio stream and triggers a download
-	 */
-	async downloadTrack(
+	async fetchTrackBlob(
 		trackId: number,
 		quality: AudioQuality = 'LOSSLESS',
 		filename: string,
 		options?: DownloadTrackOptions
-	): Promise<void> {
+	): Promise<{ blob: Blob; mimeType?: string }> {
 		try {
 			const lookup = await this.getTrack(trackId, quality);
 			let streamUrl = lookup.originalTrackUrl || null;
@@ -1087,7 +1083,11 @@ class LosslessAPI {
 				downloadBlob = await response.blob();
 				receivedBytes = downloadBlob.size;
 				if (!totalBytes && receivedBytes > 0) {
-					options?.onProgress?.({ stage: 'downloading', receivedBytes, totalBytes: receivedBytes });
+					options?.onProgress?.({
+						stage: 'downloading',
+						receivedBytes,
+						totalBytes: receivedBytes
+					});
 				}
 			} else {
 				const reader = response.body.getReader();
@@ -1127,7 +1127,48 @@ class LosslessAPI {
 				options
 			);
 			const finalBlob = processedBlob ?? downloadBlob;
-			const url = URL.createObjectURL(finalBlob);
+			return { blob: finalBlob, mimeType: response.headers.get('Content-Type') ?? undefined };
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				throw error;
+			}
+			if (error instanceof Error && error.message === RATE_LIMIT_ERROR_MESSAGE) {
+				throw error;
+			}
+			throw new Error(
+				'Download failed. The stream URL may require a proxy. Please try streaming instead.'
+			);
+		}
+	}
+
+	async getTrackStreamUrl(
+		trackId: number,
+		quality: AudioQuality = 'LOSSLESS'
+	): Promise<string> {
+		const lookup = await this.getTrack(trackId, quality);
+		if (lookup.originalTrackUrl) {
+			return lookup.originalTrackUrl;
+		}
+		const fallback = this.extractStreamUrlFromManifest(lookup.info.manifest);
+		if (!fallback) {
+			throw new Error('Could not resolve stream URL for track');
+		}
+		return fallback;
+	}
+
+	/**
+	 * Download a track
+	 * Fetches the audio stream and triggers a download
+	 */
+	async downloadTrack(
+		trackId: number,
+		quality: AudioQuality = 'LOSSLESS',
+		filename: string,
+		options?: DownloadTrackOptions
+	): Promise<void> {
+		try {
+			const { blob } = await this.fetchTrackBlob(trackId, quality, filename, options);
+			const url = URL.createObjectURL(blob);
 
 			// Trigger download
 			const a = document.createElement('a');

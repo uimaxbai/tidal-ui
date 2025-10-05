@@ -1,12 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { fade } from 'svelte/transition';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
+	import { playerStore } from '$lib/stores/player';
+	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { downloadPreferencesStore, type DownloadMode } from '$lib/stores/downloadPreferences';
+	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
+	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
 	import { navigating } from '$app/stores';
+	import JSZip from 'jszip';
+	import { Archive, FileSpreadsheet, ChevronDown, LoaderCircle, Download, Check } from 'lucide-svelte';
 	import type { Navigation } from '@sveltejs/kit';
+	import type { Track, AudioQuality } from '$lib/types';
 
 	let { children, data } = $props();
 	const pageTitle = $derived(data?.title ?? 'BiniTidal');
@@ -14,6 +23,19 @@
 	let playerHeight = $state(0);
 	let viewportHeight = $state(0);
 	let navigationState = $state<Navigation | null>(null);
+	let showDownloadMenu = $state(false);
+	let isZipDownloading = $state(false);
+	let isCsvExporting = $state(false);
+	let isLegacyQueueDownloading = $state(false);
+	let downloadMenuContainer: HTMLDivElement | null = null;
+	const downloadMode = $derived($downloadPreferencesStore.mode);
+	const queueActionBusy = $derived(
+		downloadMode === 'zip'
+			? Boolean(isZipDownloading || isLegacyQueueDownloading || isCsvExporting)
+			: downloadMode === 'csv'
+				? Boolean(isCsvExporting)
+				: Boolean(isLegacyQueueDownloading)
+	);
 	const mainMinHeight = $derived(() => Math.max(0, viewportHeight - headerHeight - playerHeight));
 	const contentPaddingBottom = $derived(() => Math.max(playerHeight, 24));
 	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
@@ -22,6 +44,10 @@
 		artist: 'Visiting artist',
 		playlist: 'Loading playlist'
 	};
+
+	function setDownloadMode(mode: DownloadMode): void {
+		downloadPreferencesStore.setMode(mode);
+	}
 
 	const navigationMessage = $derived(() => {
 		if (!navigationState) return '';
@@ -36,6 +62,195 @@
 		return `Loading ${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
 	});
 
+	function collectQueueState(): { tracks: Track[]; quality: AudioQuality } {
+		const state = get(playerStore);
+		const tracks = state.queue.length
+			? state.queue
+			: state.currentTrack
+				? [state.currentTrack]
+				: [];
+		return { tracks, quality: state.quality };
+	}
+
+	function buildQueueFilename(track: Track, index: number, quality: AudioQuality): string {
+		const ext = getExtensionForQuality(quality);
+		const order = `${index + 1}`.padStart(2, '0');
+		const artistName = sanitizeForFilename(track.artist?.name ?? 'Unknown Artist');
+		const titleName = sanitizeForFilename(track.title ?? `Track ${order}`);
+		return `${order} - ${artistName} - ${titleName}.${ext}`;
+	}
+
+	function triggerFileDownload(blob: Blob, filename: string): void {
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+	}
+
+	function timestampedFilename(extension: string): string {
+		const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+		return `tidal-export-${stamp}.${extension}`;
+	}
+
+	async function downloadQueueAsZip(tracks: Track[], quality: AudioQuality): Promise<void> {
+		isZipDownloading = true;
+
+		try {
+			const zip = new JSZip();
+			for (const [index, track] of tracks.entries()) {
+				const filename = buildQueueFilename(track, index, quality);
+				const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
+					ffmpegAutoTriggered: false
+				});
+				zip.file(filename, blob);
+			}
+
+			const zipBlob = await zip.generateAsync({
+				type: 'blob',
+				compression: 'DEFLATE',
+				compressionOptions: { level: 6 }
+			});
+
+			triggerFileDownload(zipBlob, timestampedFilename('zip'));
+		} catch (error) {
+			console.error('Failed to build ZIP export', error);
+			alert('Unable to build ZIP export. Please try again.');
+		} finally {
+			isZipDownloading = false;
+		}
+	}
+
+	async function exportQueueAsCsv(tracks: Track[], quality: AudioQuality): Promise<void> {
+		isCsvExporting = true;
+
+		try {
+			const csvContent = await buildTrackLinksCsv(tracks, quality);
+			const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+			triggerFileDownload(blob, timestampedFilename('csv'));
+		} catch (error) {
+			console.error('Failed to export queue as CSV', error);
+			alert('Unable to export CSV. Please try again.');
+		} finally {
+			isCsvExporting = false;
+		}
+	}
+
+	async function handleExportQueueCsv(): Promise<void> {
+		const { tracks, quality } = collectQueueState();
+		if (tracks.length === 0) {
+			showDownloadMenu = false;
+			alert('Add tracks to the queue before exporting.');
+			return;
+		}
+
+		showDownloadMenu = false;
+		await exportQueueAsCsv(tracks, quality);
+	}
+
+	async function downloadQueueIndividually(tracks: Track[], quality: AudioQuality): Promise<void> {
+		if (isLegacyQueueDownloading) {
+			return;
+		}
+
+		isLegacyQueueDownloading = true;
+		const errors: string[] = [];
+
+		try {
+			for (const [index, track] of tracks.entries()) {
+				const filename = buildQueueFilename(track, index, quality);
+				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+					subtitle: track.album?.title ?? track.artist?.name
+				});
+				downloadUiStore.skipFfmpegCountdown();
+
+				try {
+					await losslessAPI.downloadTrack(track.id, quality, filename, {
+						signal: controller.signal,
+						onProgress: (progress: TrackDownloadProgress) => {
+							if (progress.stage === 'downloading') {
+								downloadUiStore.updateTrackProgress(
+									taskId,
+									progress.receivedBytes,
+									progress.totalBytes
+								);
+							} else {
+								downloadUiStore.updateTrackStage(taskId, progress.progress);
+							}
+						},
+						onFfmpegCountdown: ({ totalBytes }) => {
+							const bytes = typeof totalBytes === 'number' ? totalBytes : 0;
+							downloadUiStore.startFfmpegCountdown(bytes, { autoTriggered: false });
+						},
+						onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
+						onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
+						onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
+						onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+						ffmpegAutoTriggered: false
+					});
+					downloadUiStore.completeTrackDownload(taskId);
+				} catch (error) {
+					if (error instanceof DOMException && error.name === 'AbortError') {
+						downloadUiStore.completeTrackDownload(taskId);
+						continue;
+					}
+					console.error('Failed to download track from queue:', error);
+					downloadUiStore.errorTrackDownload(taskId, error);
+					const label = `${track.artist?.name ?? 'Unknown Artist'} - ${track.title ?? 'Unknown Track'}`;
+					const message =
+						error instanceof Error && error.message
+							? error.message
+							: 'Failed to download track. Please try again.';
+					errors.push(`${label}: ${message}`);
+				}
+			}
+
+			if (errors.length > 0) {
+				const summary = [
+					'Unable to download some tracks individually:',
+					...errors.slice(0, 3),
+					errors.length > 3 ? `…and ${errors.length - 3} more` : undefined
+				]
+					.filter(Boolean)
+					.join('\n');
+				alert(summary);
+			}
+		} finally {
+			isLegacyQueueDownloading = false;
+		}
+	}
+
+	async function handleQueueDownload(): Promise<void> {
+		if (queueActionBusy) {
+			return;
+		}
+
+		const { tracks, quality } = collectQueueState();
+		if (tracks.length === 0) {
+			showDownloadMenu = false;
+			alert('Add tracks to the queue before downloading.');
+			return;
+		}
+
+		showDownloadMenu = false;
+
+		if (downloadMode === 'csv') {
+			await exportQueueAsCsv(tracks, quality);
+			return;
+		}
+
+		const useZip = downloadMode === 'zip' && tracks.length > 1;
+		if (useZip) {
+			await downloadQueueAsZip(tracks, quality);
+			return;
+		}
+
+		await downloadQueueIndividually(tracks, quality);
+	}
+
 	const handlePlayerHeight = (height: number) => {
 		playerHeight = height;
 	};
@@ -48,6 +263,17 @@
 		};
 		updateViewportHeight();
 		window.addEventListener('resize', updateViewportHeight);
+		const handleDocumentClick = (event: MouseEvent) => {
+			if (!showDownloadMenu) return;
+			const root = downloadMenuContainer;
+			if (!root) return;
+			const target = event.target as Node | null;
+			if (target && root.contains(target)) {
+				return;
+			}
+			showDownloadMenu = false;
+		};
+		document.addEventListener('click', handleDocumentClick);
 		const unsubscribe = navigating.subscribe((value) => {
 			navigationState = value;
 		});
@@ -92,6 +318,7 @@
 		}
 		return () => {
 			window.removeEventListener('resize', updateViewportHeight);
+			document.removeEventListener('click', handleDocumentClick);
 			unsubscribe();
 			if (controllerChangeHandler) {
 				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
@@ -119,7 +346,7 @@
 <div class="flex min-h-screen flex-col bg-neutral-800 text-white">
 	<!-- Header -->
 	<header
-		class="sticky top-0 z-40 border-b border-gray-800 bg-neutral-800"
+		class="z-50 sticky top-0 z-40 border-b border-gray-800 bg-neutral-800"
 		bind:clientHeight={headerHeight}
 	>
 		<div class="mx-auto max-w-screen-2xl px-4 py-4">
@@ -131,12 +358,132 @@
 					</div>
 				</a>
 
-				<div class="flex items-center gap-4">
+				<div class="flex items-center gap-2">
+					<div class="relative" bind:this={downloadMenuContainer}>
+						<button
+							onclick={() => (showDownloadMenu = !showDownloadMenu)}
+							type="button"
+							class="flex items-center gap-2 rounded-lg border border-gray-800 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+							aria-haspopup="true"
+							aria-expanded={showDownloadMenu}
+						>
+							<span>Exports</span>
+							<ChevronDown
+								size={16}
+								class={`transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`}
+							/>
+						</button>
+						{#if showDownloadMenu}
+							<div class="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-gray-800 bg-neutral-900/95 p-3 shadow-2xl backdrop-blur">
+								<div>
+									<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+										Download preference
+									</p>
+									<div class="mt-2 flex flex-col gap-2">
+										<button
+											type="button"
+											onclick={() => setDownloadMode('individual')}
+											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+												downloadMode === 'individual'
+													? 'border-blue-500 bg-blue-900/40 text-white'
+													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+												}`}
+											aria-pressed={downloadMode === 'individual'}
+										>
+											<span class="flex items-center gap-2">
+												<Download size={16} />
+												<span>Individual files</span>
+											</span>
+											{#if downloadMode === 'individual'}
+												<Check size={14} />
+											{/if}
+										</button>
+										<button
+											type="button"
+											onclick={() => setDownloadMode('zip')}
+											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+												downloadMode === 'zip'
+													? 'border-blue-500 bg-blue-900/40 text-white'
+													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+												}`}
+											aria-pressed={downloadMode === 'zip'}
+										>
+											<span class="flex items-center gap-2">
+												<Archive size={16} />
+												<span>ZIP archive</span>
+											</span>
+											{#if downloadMode === 'zip'}
+												<Check size={14} />
+											{/if}
+										</button>
+										<button
+											type="button"
+											onclick={() => setDownloadMode('csv')}
+											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+												downloadMode === 'csv'
+													? 'border-blue-500 bg-blue-900/40 text-white'
+													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+												}`}
+											aria-pressed={downloadMode === 'csv'}
+										>
+											<span class="flex items-center gap-2">
+												<FileSpreadsheet size={16} />
+												<span>Export links</span>
+											</span>
+											{#if downloadMode === 'csv'}
+												<Check size={14} />
+											{/if}
+										</button>
+									</div>
+								</div>
+								<button
+									onclick={handleQueueDownload}
+									type="button"
+									class="mt-3 flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+									disabled={queueActionBusy}
+								>
+									<span class="flex items-center gap-2">
+										{#if downloadMode === 'zip'}
+											<Archive size={16} />
+											<span>Download queue</span>
+										{:else if downloadMode === 'csv'}
+											<FileSpreadsheet size={16} />
+											<span>Export queue links</span>
+										{:else}
+											<Download size={16} />
+											<span>Download queue</span>
+										{/if}
+									</span>
+									{#if queueActionBusy}
+										<LoaderCircle size={16} class="animate-spin text-gray-300" />
+									{/if}
+								</button>
+								<button
+									onclick={handleExportQueueCsv}
+									type="button"
+									class="mt-2 flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+									disabled={isCsvExporting}
+								>
+									<span class="flex items-center gap-2">
+										<FileSpreadsheet size={16} />
+										<span>Export links as CSV</span>
+									</span>
+									{#if isCsvExporting}
+										<LoaderCircle size={16} class="animate-spin text-gray-300" />
+									{/if}
+								</button>
+								<p class="mt-2 px-1 text-xs text-gray-500">
+									Queue actions follow your selection above. ZIP bundles require at least two tracks, while CSV
+									exports capture the track links without downloading audio.
+								</p>
+							</div>
+						{/if}
+					</div>
 					<a
 						target="_blank"
 						rel="noopener noreferrer"
 						href="https://github.com/uimaxbai/tidal-ui"
-						class="flex items-center gap-2 rounded-lg border border-gray-800 bg-neutral-900 px-4 py-2 text-white transition-colors hover:bg-gray-800"
+						class="aspect-square flex items-center gap-2 rounded-lg border border-gray-800 bg-neutral-900 p-2 text-white transition-colors hover:bg-gray-800"
 						aria-label="Project GitHub"
 					>
 						<!-- GitHub SVG from https://github.com/logos -->
@@ -154,7 +501,6 @@
 								fill="#fff"
 							/></svg
 						>
-						GitHub
 					</a>
 				</div>
 			</div>
