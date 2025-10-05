@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	import { slide } from 'svelte/transition';
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
+	import { downloadsStore, activeDownloads, shouldShowFFmpegBanner } from '$lib/stores/downloads';
+	import { cancelFFmpegCountdown } from '$lib/ffmpegClient';
 	import { losslessAPI } from '$lib/api';
 	import { getProxiedUrl } from '$lib/config';
 	import type { Track, AudioQuality } from '$lib/types';
@@ -17,7 +20,8 @@
 		Trash2,
 		X,
 		Shuffle,
-		ScrollText
+		ScrollText,
+		Loader2
 	} from 'lucide-svelte';
 
 	let audioElement: HTMLAudioElement;
@@ -594,6 +598,96 @@
 	class="audio-player-backdrop fixed inset-x-0 bottom-0 z-50 px-4 pt-16 pb-5 sm:px-6 sm:pt-16 sm:pb-6"
 	bind:this={containerElement}
 >
+	<!-- Download Banners - Positioned above player -->
+	<div class="mx-auto w-full max-w-screen-2xl space-y-2 mb-2">
+		<!-- FFmpeg Download Banner -->
+		{#if $shouldShowFFmpegBanner}
+			<div
+				class="rounded-xl border border-blue-800/50 bg-blue-950/90 p-3 shadow-lg backdrop-blur-sm"
+			>
+				<div class="flex items-center justify-between gap-3">
+					<div class="flex min-w-0 flex-1 items-center gap-3">
+						<Loader2 size={18} class="flex-shrink-0 animate-spin text-blue-400" />
+						<div class="min-w-0 flex-1">
+							{#if $downloadsStore.ffmpeg.status === 'countdown'}
+								<p class="text-sm font-medium text-white">
+									Downloading FFmpeg ({$downloadsStore.ffmpeg.sizeEstimateMB} MB) in {$downloadsStore
+										.ffmpeg.countdown} seconds...
+								</p>
+							{:else if $downloadsStore.ffmpeg.status === 'loading'}
+								<p class="text-sm font-medium text-white">Downloading FFmpeg...</p>
+								<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-blue-900/50">
+									<div
+										class="h-full bg-blue-500 transition-all duration-300"
+										style="width: {$downloadsStore.ffmpeg.progress || 0}%"
+									></div>
+								</div>
+							{/if}
+						</div>
+					</div>
+					<button
+						onclick={() => cancelFFmpegCountdown()}
+						class="flex-shrink-0 rounded-full p-1 text-blue-300 transition-colors hover:bg-blue-900/50 hover:text-white"
+						aria-label="Cancel FFmpeg download"
+						type="button"
+					>
+						<X size={16} />
+					</button>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Track Download Banners -->
+		{#each $activeDownloads as download (download.trackId)}
+			<div
+				class="rounded-xl border border-gray-700/50 bg-gray-900/90 p-3 shadow-lg backdrop-blur-sm"
+			>
+				<div class="flex items-center justify-between gap-3">
+					<div class="flex min-w-0 flex-1 items-center gap-3">
+						{#if download.track.album.cover}
+							<img
+								src={losslessAPI.getCoverUrl(download.track.album.cover, '80')}
+								alt={download.track.title}
+								class="h-10 w-10 flex-shrink-0 rounded object-cover"
+							/>
+						{/if}
+						<div class="min-w-0 flex-1">
+							<p class="truncate text-sm font-medium text-white">
+								{download.track.title}
+							</p>
+							<p class="truncate text-xs text-gray-400">
+								{download.track.artist.name}
+							</p>
+							<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-800">
+								<div
+									class="h-full bg-blue-500 transition-all duration-300"
+									style="width: {download.progress}%"
+								></div>
+							</div>
+							<p class="mt-1 text-xs text-gray-500">
+								{#if download.status === 'pending'}
+									Starting download...
+								{:else if download.status === 'downloading'}
+									Downloading... {download.progress}%
+								{:else if download.status === 'processing'}
+									Processing metadata... {download.progress}%
+								{/if}
+							</p>
+						</div>
+					</div>
+					<button
+						onclick={() => downloadsStore.cancelTrackDownload(download.trackId)}
+						class="flex-shrink-0 rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-800 hover:text-red-400"
+						aria-label="Cancel download"
+						type="button"
+					>
+						<X size={16} />
+					</button>
+				</div>
+			</div>
+		{/each}
+	</div>
+
 	<div
 		class="mx-auto w-full max-w-screen-2xl overflow-hidden rounded-2xl border border-gray-800 bg-zinc-900 shadow-2xl"
 	>
@@ -629,14 +723,17 @@
 					</div>
 				</div>
 
-				<div class="flex flex-wrap items-center justify-between gap-4">
-					<!-- Track Info -->
+				<div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+					<!-- Mobile: Two-line layout -->
+					<!-- Desktop: Single-line layout -->
+					
+					<!-- Track Info (Mobile: Full width top line, Desktop: Left side) -->
 					<div class="flex min-w-0 flex-1 items-center gap-3">
 						{#if $playerStore.currentTrack.album.cover}
 							<img
 								src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
 								alt={$playerStore.currentTrack.title}
-								class="h-14 w-14 rounded object-cover shadow-lg"
+								class="h-14 w-14 flex-shrink-0 rounded object-cover shadow-lg"
 							/>
 						{/if}
 						<div class="min-w-0 flex-1">
@@ -652,55 +749,58 @@
 						</div>
 					</div>
 
-					<!-- Controls -->
-					<div class="flex items-center gap-2">
-						<button
-							onclick={() => playerStore.previous()}
-							class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-							disabled={$playerStore.queueIndex <= 0}
-							aria-label="Previous track"
-						>
-							<SkipBack size={20} />
-						</button>
+					<!-- Mobile: Controls row at bottom -->
+					<!-- Desktop: Inline with track info -->
+					<div class="flex items-center justify-between gap-2 sm:justify-start">
+						<!-- Controls -->
+						<div class="flex items-center gap-2">
+							<button
+								onclick={() => playerStore.previous()}
+								class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+								disabled={$playerStore.queueIndex <= 0}
+								aria-label="Previous track"
+							>
+								<SkipBack size={20} />
+							</button>
 
-						<button
-							onclick={() => playerStore.togglePlay()}
-							class="rounded-full bg-white p-3 text-gray-900 transition-transform hover:scale-105"
-							aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
-						>
-							{#if $playerStore.isPlaying}
-								<Pause size={24} fill="currentColor" />
-							{:else}
-								<Play size={24} fill="currentColor" />
-							{/if}
-						</button>
+							<button
+								onclick={() => playerStore.togglePlay()}
+								class="rounded-full bg-white p-3 text-gray-900 transition-transform hover:scale-105"
+								aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
+							>
+								{#if $playerStore.isPlaying}
+									<Pause size={24} fill="currentColor" />
+								{:else}
+									<Play size={24} fill="currentColor" />
+								{/if}
+							</button>
 
-						<button
-							onclick={() => playerStore.next()}
-							class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-							disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
-							aria-label="Next track"
-						>
-							<SkipForward size={20} />
-						</button>
-					</div>
+							<button
+								onclick={() => playerStore.next()}
+								class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+								disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
+								aria-label="Next track"
+							>
+								<SkipForward size={20} />
+							</button>
+						</div>
 
-					<!-- Queue & Lyrics Toggle (no lyrics for now) -->
-					<div class="flex items-center gap-2">
-						<!--
-						<button
-							onclick={() => lyricsStore.toggle()}
-							class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {$lyricsStore.open
-								? 'border-blue-500 text-white'
-								: ''}"
-							aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
-							aria-expanded={$lyricsStore.open}
-							type="button"
-						>
-						<ScrollText size={18} />
-						<span class="hidden sm:inline">Lyrics</span>
-					</button>
-					-->
+						<!-- Queue & Lyrics Toggle (no lyrics for now) -->
+						<div class="flex items-center gap-2">
+							<!--
+							<button
+								onclick={() => lyricsStore.toggle()}
+								class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {$lyricsStore.open
+									? 'border-blue-500 text-white'
+									: ''}"
+								aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
+								aria-expanded={$lyricsStore.open}
+								type="button"
+							>
+							<ScrollText size={18} />
+							<span class="hidden sm:inline">Lyrics</span>
+						</button>
+						-->
 						<button
 							onclick={toggleQueuePanel}
 							class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {showQueuePanel
@@ -715,8 +815,8 @@
 						</button>
 					</div>
 
-					<!-- Volume Control -->
-					<div class="flex items-center gap-2">
+					<!-- Volume Control (Desktop only visible) -->
+					<div class="hidden items-center gap-2 sm:flex">
 						<button
 							onclick={toggleMute}
 							class="p-2 text-gray-400 transition-colors hover:text-white"
@@ -735,14 +835,16 @@
 							step="0.01"
 							value={$playerStore.volume}
 							oninput={handleVolumeChange}
-							class="hidden h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white sm:block"
+							class="h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white"
 							aria-label="Volume"
 						/>
+					</div>
 					</div>
 				</div>
 
 				{#if showQueuePanel}
 					<div
+						transition:slide={{ duration: 300 }}
 						class="mt-4 space-y-3 rounded-2xl border border-gray-800/80 bg-neutral-900/90 p-4 text-sm shadow-inner"
 					>
 						<div class="flex items-center justify-between gap-2">

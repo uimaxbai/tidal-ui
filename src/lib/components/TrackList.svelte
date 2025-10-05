@@ -2,7 +2,8 @@
 	import type { Track } from '$lib/types';
 	import { losslessAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
-	import { Play, Pause, Download, Clock, Plus, ListPlus } from 'lucide-svelte';
+	import { downloadsStore } from '$lib/stores/downloads';
+	import { Play, Pause, Download, Clock, Plus, ListPlus, X } from 'lucide-svelte';
 
 	interface Props {
 		tracks: Track[];
@@ -37,18 +38,47 @@
 
 	async function handleDownload(track: Track, event: MouseEvent) {
 		event.stopPropagation();
+		
+		// Check if already downloading
+		if (downloadingIds.has(track.id)) {
+			// Cancel the download
+			downloadsStore.cancelTrackDownload(track.id);
+			const next = new Set(downloadingIds);
+			next.delete(track.id);
+			downloadingIds = next;
+			return;
+		}
+		
 		const next = new Set(downloadingIds);
 		next.add(track.id);
 		downloadingIds = next;
 
+		const abortController = new AbortController();
+		downloadsStore.addTrackDownload(track.id, track, abortController);
+
 		try {
 			const filename = `${track.artist.name} - ${track.title}.flac`;
-			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename);
+			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename, {
+				onProgress: (progress) => {
+					downloadsStore.updateTrackDownloadProgress(track.id, progress);
+				},
+				abortSignal: abortController.signal
+			});
+			downloadsStore.setTrackDownloadStatus(track.id, 'complete');
+			
+			// Remove from downloads after a delay
+			setTimeout(() => {
+				downloadsStore.removeTrackDownload(track.id);
+			}, 2000);
 		} catch (error) {
 			console.error('Failed to download track:', error);
 			const fallbackMessage = 'Failed to download track. Please try again.';
 			const message = error instanceof Error && error.message ? error.message : fallbackMessage;
-			alert(message);
+			
+			if (message !== 'Download cancelled') {
+				downloadsStore.setTrackDownloadError(track.id, message);
+				alert(message);
+			}
 		} finally {
 			const updated = new Set(downloadingIds);
 			updated.delete(track.id);
@@ -168,16 +198,13 @@
 						<button
 							onclick={(e) => handleDownload(track, e)}
 							class="p-2 text-gray-400 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-							aria-label="Download track"
-							title="Download track"
-							disabled={downloadingIds.has(track.id)}
+							aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+							title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
 							aria-busy={downloadingIds.has(track.id)}
 						>
 							{#if downloadingIds.has(track.id)}
 								<span class="flex h-4 w-4 items-center justify-center">
-									<span
-										class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-									></span>
+									<X size={18} />
 								</span>
 							{:else}
 								<Download size={18} />

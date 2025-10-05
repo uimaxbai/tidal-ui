@@ -870,7 +870,7 @@ class LosslessAPI {
 			return null;
 		}
 
-		const ffmpeg = await ffmpegModule.getFFmpeg();
+		const ffmpeg = await ffmpegModule.getFFmpegWithCountdown(true); // Skip countdown during download
 		const uniqueSuffix =
 			typeof crypto !== 'undefined' && 'randomUUID' in crypto
 				? crypto.randomUUID()
@@ -969,7 +969,11 @@ class LosslessAPI {
 	async downloadTrack(
 		trackId: number,
 		quality: AudioQuality = 'LOSSLESS',
-		filename: string
+		filename: string,
+		options?: {
+			onProgress?: (progress: number) => void;
+			abortSignal?: AbortSignal;
+		}
 	): Promise<void> {
 		try {
 			const lookup = await this.getTrack(trackId, quality);
@@ -977,7 +981,7 @@ class LosslessAPI {
 			let response: Response | null = null;
 
 			if (streamUrl) {
-				response = await fetch(streamUrl);
+				response = await fetch(streamUrl, { signal: options?.abortSignal });
 				if (response.status === 429) {
 					throw new Error(RATE_LIMIT_ERROR_MESSAGE);
 				}
@@ -996,7 +1000,7 @@ class LosslessAPI {
 				}
 
 				streamUrl = fallbackUrl;
-				response = await fetch(streamUrl);
+				response = await fetch(streamUrl, { signal: options?.abortSignal });
 				if (response.status === 429) {
 					throw new Error(RATE_LIMIT_ERROR_MESSAGE);
 				}
@@ -1005,7 +1009,37 @@ class LosslessAPI {
 				}
 			}
 
-			const blob = await response.blob();
+			// Track download progress if supported
+			const contentLength = response.headers.get('content-length');
+			const total = contentLength ? parseInt(contentLength, 10) : 0;
+			
+			let blob: Blob;
+			if (total > 0 && options?.onProgress && response.body) {
+				const reader = response.body.getReader();
+				const chunks: Uint8Array[] = [];
+				let received = 0;
+
+				while (true) {
+					const { done, value } = await reader.read();
+					
+					if (done) break;
+					
+					chunks.push(value);
+					received += value.length;
+					
+					const progress = Math.round((received / total) * 100);
+					options.onProgress(Math.min(progress, 99)); // Reserve 100 for processing
+				}
+
+				blob = new Blob(chunks as BlobPart[], { type: response.headers.get('content-type') || undefined });
+			} else {
+				blob = await response.blob();
+			}
+
+			if (options?.onProgress) {
+				options.onProgress(99); // Starting metadata processing
+			}
+
 			const processedBlob = await this.embedMetadataIntoBlob(
 				blob,
 				lookup,
@@ -1013,6 +1047,11 @@ class LosslessAPI {
 				response.headers.get('Content-Type')
 			);
 			const finalBlob = processedBlob ?? blob;
+			
+			if (options?.onProgress) {
+				options.onProgress(100);
+			}
+			
 			const url = URL.createObjectURL(finalBlob);
 
 			// Trigger download
@@ -1025,6 +1064,12 @@ class LosslessAPI {
 			URL.revokeObjectURL(url);
 		} catch (error) {
 			console.error('Download failed:', error);
+			
+			// Check if it was aborted
+			if (error instanceof Error && error.name === 'AbortError') {
+				throw new Error('Download cancelled');
+			}
+			
 			if (error instanceof Error && error.message === RATE_LIMIT_ERROR_MESSAGE) {
 				throw error;
 			}
