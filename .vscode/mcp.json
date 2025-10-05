@@ -1,8 +1,0 @@
-{
-  "servers": {
-    "Sentry": {
-      "url": "https://mcp.sentry.dev/mcp/binimum/javascript-sveltekit",
-      "type": "http"
-    }
-  }
-}
