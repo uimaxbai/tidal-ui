@@ -47,7 +47,7 @@
 		{
 			title: 'Even more changes!',
 			description:
-				"I've stabilised the API a bit and added a few more features such as ZIP download of albums, better error handling, etc. Stay tuned for word by word lyrics!"
+				"LYRICS!!! I've stabilised the API a bit and added a few more features such as ZIP download of albums, better error handling, etc. Stay tuned for word by word lyrics!"
 		},
 		{
 			title: 'QOL changes',
