@@ -9,16 +9,6 @@ const config = {
 
 	kit: {
 		adapter: selectAdapter(),
-
-		experimental: {
-			tracing: {
-				server: true
-			},
-
-			instrumentation: {
-				server: true
-			}
-		}
 	}
 };
 
