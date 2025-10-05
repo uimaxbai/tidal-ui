@@ -4,7 +4,16 @@
 	import TrackList from '$lib/components/TrackList.svelte';
 	import type { Album, Track } from '$lib/types';
 	import { onMount } from 'svelte';
-	import { ArrowLeft, Play, Calendar, Disc, Clock, Download, Shuffle } from 'lucide-svelte';
+	import {
+		ArrowLeft,
+		Play,
+		Calendar,
+		Disc,
+		Clock,
+		Download,
+		Shuffle,
+		LoaderCircle
+	} from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
 
@@ -96,7 +105,7 @@
 
 {#if isLoading}
 	<div class="flex items-center justify-center py-24">
-		<div class="h-16 w-16 animate-spin rounded-full border-b-2 border-blue-500"></div>
+		<LoaderCircle size={16} class="h-16 w-16 animate-spin text-blue-500" />
 	</div>
 {:else if error}
 	<div class="mx-auto max-w-2xl py-12">
@@ -141,15 +150,31 @@
 			<div class="flex flex-1 flex-col justify-end">
 				<p class="mb-2 text-sm text-gray-400">ALBUM</p>
 				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{album.title}</h1>
-
-				{#if album.artist}
-					<button
-						onclick={() => album?.artist && goto(`/artist/${album.artist.id}`)}
-						class="mb-4 text-left text-xl text-gray-300 hover:text-white hover:underline"
-					>
-						{album.artist.name}
-					</button>
-				{/if}
+				<div class="mb-4 flex items-center gap-1">
+					{#if album.explicit}
+						<svg
+							class="inline h-4 w-4 flex-shrink-0 align-middle"
+							xmlns="http://www.w3.org/2000/svg"
+							fill="currentColor"
+							height="24"
+							viewBox="0 0 24 24"
+							width="24"
+							focusable="false"
+							aria-hidden="true"
+							><path
+								d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
+							></path></svg
+						>
+					{/if}
+					{#if album.artist}
+						<button
+							onclick={() => album?.artist && goto(`/artist/${album.artist.id}`)}
+							class="text-left text-xl text-gray-300 hover:text-white hover:underline"
+						>
+							{album.artist.name}
+						</button>
+					{/if}
+				</div>
 
 				<div class="mb-6 flex flex-wrap items-center gap-4 text-sm text-gray-400">
 					{#if album.releaseDate}

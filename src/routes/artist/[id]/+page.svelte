@@ -5,7 +5,7 @@
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import { onMount } from 'svelte';
-	import { ArrowLeft, User, Download, Loader2 } from 'lucide-svelte';
+	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
 
@@ -52,6 +52,11 @@
 		if (album.numberOfTracks) parts.push(`${album.numberOfTracks} tracks`);
 		if (parts.length === 0) return null;
 		return parts.join(' • ');
+	}
+
+	function displayTrackTotal(total?: number | null): number {
+		if (!Number.isFinite(total)) return 0;
+		return total && total > 0 ? total + 1 : (total ?? 0);
 	}
 
 	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
@@ -200,7 +205,7 @@
 
 {#if isLoading}
 	<div class="flex items-center justify-center py-24">
-		<div class="h-16 w-16 animate-spin rounded-full border-b-2 border-blue-500"></div>
+		<LoaderCircle size={16} class="h-16 w-16 animate-spin text-blue-500" />
 	</div>
 {:else if error}
 	<div class="mx-auto max-w-2xl py-12">
@@ -315,11 +320,11 @@
 							aria-live="polite"
 						>
 							{#if isDownloadingDiscography}
-								<Loader2 size={16} class="animate-spin" />
+								<LoaderCircle size={16} class="animate-spin" />
 								<span class="whitespace-nowrap">
 									Downloading
 									{#if discographyProgress.total > 0}
-										{discographyProgress.completed}/{discographyProgress.total}
+										{discographyProgress.completed}/{displayTrackTotal(discographyProgress.total)}
 									{:else}
 										{discographyProgress.completed}
 									{/if}
@@ -349,7 +354,7 @@
 									aria-label={`Download ${album.title}`}
 								>
 									{#if albumDownloadStates[album.id]?.downloading}
-										<Loader2 size={16} class="animate-spin" />
+										<LoaderCircle size={16} class="animate-spin" />
 									{:else}
 										<Download size={16} />
 									{/if}
@@ -388,8 +393,9 @@
 									<p class="mt-3 text-xs text-blue-300">
 										Downloading
 										{#if albumDownloadStates[album.id]?.total}
-											{albumDownloadStates[album.id]?.completed ?? 0}/{albumDownloadStates[album.id]
-												?.total}
+											{albumDownloadStates[album.id]?.completed ?? 0}/{displayTrackTotal(
+												albumDownloadStates[album.id]?.total ?? 0
+											)}
 										{:else}
 											{albumDownloadStates[album.id]?.completed ?? 0}
 										{/if}

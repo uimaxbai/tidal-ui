@@ -10,11 +10,7 @@ export default defineConfig(({ mode }) => {
 	const parsedPort = env.PORT ? Number.parseInt(env.PORT, 10) : undefined;
 
 	return {
-		plugins: [
-			tailwindcss(),
-			sveltekit(),
-			devtoolsJson()
-		],
+		plugins: [tailwindcss(), sveltekit(), devtoolsJson()],
 		server: {
 			watch: { usePolling: true },
 			host: '0.0.0.0',

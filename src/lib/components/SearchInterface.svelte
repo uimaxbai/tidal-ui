@@ -12,7 +12,7 @@
 		Newspaper,
 		ListPlus,
 		ListVideo,
-		Loader2
+		LoaderCircle
 	} from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
@@ -250,6 +250,11 @@
 		}
 	}
 
+	function displayTrackTotal(total?: number | null): number {
+		if (!Number.isFinite(total)) return 0;
+		return total && total > 0 ? total + 1 : (total ?? 0);
+	}
+
 	function formatQualityLabel(quality?: string | null): string {
 		if (!quality) return '—';
 		if (quality.toUpperCase() === 'LOSSLESS') {
@@ -385,6 +390,21 @@
 						<div class="min-w-0 flex-1">
 							<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
 								{track.title}
+								{#if track.explicit}
+									<svg
+										class="inline h-4 w-4 flex-shrink-0 align-middle"
+										xmlns="http://www.w3.org/2000/svg"
+										fill="currentColor"
+										height="24"
+										viewBox="0 0 24 24"
+										width="24"
+										focusable="false"
+										aria-hidden="true"
+										><path
+											d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
+										></path></svg
+									>
+								{/if}
 							</h3>
 							<p class="truncate text-sm text-gray-400">{track.artist.name}</p>
 							<p class="text-xs text-gray-500">
@@ -443,7 +463,7 @@
 							aria-label={`Download ${album.title}`}
 						>
 							{#if albumDownloadStates[album.id]?.downloading}
-								<Loader2 size={16} class="animate-spin" />
+								<LoaderCircle size={16} class="animate-spin" />
 							{:else}
 								<Download size={16} />
 							{/if}
@@ -470,6 +490,21 @@
 							</div>
 							<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
 								{album.title}
+								{#if album.explicit}
+									<svg
+										class="inline h-4 w-4 flex-shrink-0 align-middle"
+										xmlns="http://www.w3.org/2000/svg"
+										fill="currentColor"
+										height="24"
+										viewBox="0 0 24 24"
+										width="24"
+										focusable="false"
+										aria-hidden="true"
+										><path
+											d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
+										></path></svg
+									>
+								{/if}
 							</h3>
 							{#if album.artist}
 								<p class="truncate text-sm text-gray-400">{album.artist.name}</p>
@@ -482,8 +517,9 @@
 							<p class="mt-2 text-xs text-blue-300">
 								Downloading
 								{#if albumDownloadStates[album.id]?.total}
-									{albumDownloadStates[album.id]?.completed ?? 0}/{albumDownloadStates[album.id]
-										?.total}
+									{albumDownloadStates[album.id]?.completed ?? 0}/{displayTrackTotal(
+										albumDownloadStates[album.id]?.total ?? 0
+									)}
 								{:else}
 									{albumDownloadStates[album.id]?.completed ?? 0}
 								{/if}

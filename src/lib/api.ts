@@ -815,10 +815,13 @@ class LosslessAPI {
 			}
 		}
 
+		// API does not include genre
+		/*
 		const tags = track.mediaMetadata?.tags ?? album?.mediaMetadata?.tags;
 		if (tags && tags.length > 0) {
 			entries.push(['genre', tags.join('; ')]);
 		}
+		*/
 
 		if (track.isrc) {
 			entries.push(['ISRC', track.isrc]);
@@ -828,9 +831,7 @@ class LosslessAPI {
 			entries.push(['copyright', album.copyright]);
 		}
 
-		if (track.copyright && track.copyright !== album?.copyright) {
-			entries.push(['comment', track.copyright]);
-		}
+		entries.push(['comment', 'Downloaded from music.binimum.org/tidal.squid.wtf']);
 
 		return entries;
 	}

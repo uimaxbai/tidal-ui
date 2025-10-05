@@ -1,7 +1,6 @@
 import { browser } from '$app/environment';
 
-const CORE_VERSION = '0.12.6';
-const CORE_BASE_URL = `https://unpkg.com/@ffmpeg/core@${CORE_VERSION}/dist`;
+const CORE_BASE_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm`;
 
 type FFmpegClass = (typeof import('@ffmpeg/ffmpeg'))['FFmpeg'];
 type FFmpegInstance = InstanceType<FFmpegClass>;
@@ -24,7 +23,7 @@ async function ensureFetchFile(): Promise<FetchFileFn> {
 }
 
 export function isFFmpegSupported(): boolean {
-	return browser && typeof Worker !== 'undefined' && typeof ReadableStream !== 'undefined';
+	return browser && typeof ReadableStream !== 'undefined' && typeof WebAssembly !== 'undefined';
 }
 
 export async function getFFmpeg(): Promise<FFmpegInstance> {
@@ -42,8 +41,7 @@ export async function getFFmpeg(): Promise<FFmpegInstance> {
 			const instance = new FFmpegConstructor();
 			await instance.load({
 				coreURL: `${CORE_BASE_URL}/ffmpeg-core.js`,
-				wasmURL: `${CORE_BASE_URL}/ffmpeg-core.wasm`,
-				workerURL: `${CORE_BASE_URL}/ffmpeg-core.worker.js`
+				wasmURL: `${CORE_BASE_URL}/ffmpeg-core.wasm`
 			});
 			ffmpegInstance = instance;
 			return instance;

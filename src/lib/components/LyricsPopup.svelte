@@ -42,9 +42,9 @@
 	let lastScrolledIndex = -1;
 	let playbackPosition = $state(0);
 
-		$effect(() => {
-			playbackPosition = $currentTime ?? 0;
-		});
+	$effect(() => {
+		playbackPosition = $currentTime ?? 0;
+	});
 
 	function handleOverlayClick(event: MouseEvent) {
 		if (event.target === event.currentTarget) {
