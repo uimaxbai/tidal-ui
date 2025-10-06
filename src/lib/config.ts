@@ -12,19 +12,25 @@ const TARGETS = [
 	{
 		name: 'proxied-primary',
 		baseUrl: 'https://tidal.401658.xyz',
-		weight: 40,
+		weight: 20,
 		requiresProxy: false
 	},
 	{
 		name: 'vercel-fastapi',
 		baseUrl: 'https://tidal-api-2.binimum.org',
-		weight: 40,
+		weight: 20,
+		requiresProxy: false
+	},
+	{
+		name: 'squid-api',
+		baseUrl: 'https://triton.squid.wtf',
+		weight: 50,
 		requiresProxy: false
 	},
 	{
 		name: 'wardrobe',
 		baseUrl: 'https://tidal-api-3.binimum.org',
-		weight: 20,
+		weight: 10,
 		requiresProxy: false
 	}
 ] satisfies ApiClusterTarget[];
