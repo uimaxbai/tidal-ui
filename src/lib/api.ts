@@ -1214,6 +1214,13 @@ class LosslessAPI {
 	}
 
 	/**
+	 * Get video cover URL
+	 */
+	getVideoCoverUrl(videoCoverId: string, size: '1280' | '640' | '320' | '160' | '80' = '640'): string {
+		return `https://resources.tidal.com/videos/${videoCoverId.replace(/-/g, '/')}/${size}x${size}.mp4`;
+	}
+
+	/**
 	 * Get artist picture URL
 	 */
 	getArtistPictureUrl(pictureId: string, size: '750' = '750'): string {

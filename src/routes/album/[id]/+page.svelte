@@ -149,15 +149,29 @@
 		<!-- Album Header -->
 		<div class="flex flex-col gap-8 md:flex-row">
 			<!-- Album Cover -->
-			{#if album.cover}
+			{#if album.videoCover || album.cover}
 				<div
 					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-80"
 				>
-					<img
-						src={losslessAPI.getCoverUrl(album.cover, '640')}
-						alt={album.title}
-						class="h-full w-full object-cover"
-					/>
+					{#if album.videoCover}
+						<video
+							src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
+							poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
+							aria-label={album.title}
+							class="h-full w-full object-cover"
+							autoplay
+							loop
+							muted
+							playsinline
+							preload="metadata"
+						></video>
+					{:else}
+						<img
+							src={losslessAPI.getCoverUrl(album.cover!, '640')}
+							alt={album.title}
+							class="h-full w-full object-cover"
+						/>
+					{/if}
 				</div>
 			{/if}
 

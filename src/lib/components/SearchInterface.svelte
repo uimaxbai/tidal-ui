@@ -566,7 +566,19 @@
 							class="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
 						>
 							<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
-								{#if album.cover}
+								{#if album.videoCover}
+									<video
+										src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
+										poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
+										aria-label={album.title}
+										class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+										autoplay
+										loop
+										muted
+										playsinline
+										preload="metadata"
+									></video>
+								{:else if album.cover}
 									<img
 										src={losslessAPI.getCoverUrl(album.cover, '640')}
 										alt={album.title}

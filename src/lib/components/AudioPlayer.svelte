@@ -802,7 +802,21 @@
 					<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 						<!-- Track Info -->
 						<div class="flex min-w-0 items-center gap-3 sm:flex-1">
-							{#if $playerStore.currentTrack.album.cover}
+							{#if $playerStore.currentTrack.album.videoCover}
+								<video
+									src={losslessAPI.getVideoCoverUrl($playerStore.currentTrack.album.videoCover, '640')}
+									poster={$playerStore.currentTrack.album.cover
+										? losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')
+										: undefined}
+									aria-label={$playerStore.currentTrack.title}
+									class="h-14 w-14 rounded object-cover shadow-lg"
+									autoplay
+									loop
+									muted
+									playsinline
+									preload="metadata"
+								></video>
+							{:else if $playerStore.currentTrack.album.cover}
 								<img
 									src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
 									alt={$playerStore.currentTrack.title}
