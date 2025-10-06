@@ -2,6 +2,8 @@
 
 High-fidelity music streaming UI built with SvelteKit and Tailwind.
 
+## API: [https://github.com/sachinsenal0x64/hifi](https://github.com/sachinsenal0x64/hifi)
+
 ## Features
 
 - Full-featured audio player with queue management, shuffle, seek, and volume controls.

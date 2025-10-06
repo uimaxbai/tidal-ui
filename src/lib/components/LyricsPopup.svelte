@@ -701,6 +701,18 @@
 		scroll-margin-block-end: min(28vh, 7rem);
 	}
 
+	@media (min-width: 640px) {
+		.lyrics-panel--maximized .am-lyrics-element {
+			font-size: clamp(1.05rem, 0.85rem + 1.2vw, 1.85rem);
+			line-height: 1.6;
+			letter-spacing: 0.01em;
+		}
+
+		.lyrics-panel--maximized .am-lyrics-element::part(line) {
+			padding-block: clamp(0.65rem, 0.45rem + 0.8vw, 1.2rem);
+		}
+	}
+
 	.lyrics-placeholder {
 		flex: 1;
 		display: flex;
