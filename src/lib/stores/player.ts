@@ -1,6 +1,7 @@
 // Audio player store for managing playback state
 import { writable, derived } from 'svelte/store';
 import type { Track, AudioQuality } from '$lib/types';
+import { deriveTrackQuality } from '$lib/utils/audioQuality';
 
 interface PlayerState {
 	currentTrack: Track | null;
@@ -9,9 +10,11 @@ interface PlayerState {
 	duration: number;
 	volume: number;
 	quality: AudioQuality;
+	qualitySource: 'auto' | 'manual';
 	isLoading: boolean;
 	queue: Track[];
 	queueIndex: number;
+	sampleRate: number | null;
 }
 
 const initialState: PlayerState = {
@@ -21,46 +24,97 @@ const initialState: PlayerState = {
 	duration: 0,
 	volume: 0.8,
 	quality: 'LOSSLESS',
+	qualitySource: 'auto',
 	isLoading: false,
 	queue: [],
-	queueIndex: -1
+	queueIndex: -1,
+	sampleRate: null
 };
 
 function createPlayerStore() {
 	const { subscribe, set, update } = writable<PlayerState>(initialState);
 
+	const applyAutoQuality = (state: PlayerState, track: Track | null): PlayerState => {
+		if (state.qualitySource === 'manual') {
+			return state;
+		}
+		const derived = deriveTrackQuality(track);
+		const nextQuality: AudioQuality = derived ?? 'LOSSLESS';
+		if (state.quality === nextQuality) {
+			return state;
+		}
+		return { ...state, quality: nextQuality };
+	};
+
+	const resolveSampleRate = (state: PlayerState, track: Track | null): number | null => {
+		if (state.currentTrack && track && state.currentTrack.id === track.id) {
+			return state.sampleRate;
+		}
+		return null;
+	};
+
 	return {
 		subscribe,
 		setTrack: (track: Track) =>
-			update((state) => ({
-				...state,
-				currentTrack: track,
-				duration: track.duration,
-				isLoading: true
-			})),
+			update((state) => {
+				const next: PlayerState = {
+					...state,
+					currentTrack: track,
+					duration: track.duration,
+					isLoading: true,
+					sampleRate: resolveSampleRate(state, track)
+				};
+				return applyAutoQuality(next, track);
+			}),
 		play: () => update((state) => ({ ...state, isPlaying: true })),
 		pause: () => update((state) => ({ ...state, isPlaying: false })),
 		togglePlay: () => update((state) => ({ ...state, isPlaying: !state.isPlaying })),
 		setCurrentTime: (time: number) => update((state) => ({ ...state, currentTime: time })),
 		setDuration: (duration: number) => update((state) => ({ ...state, duration })),
+		setSampleRate: (sampleRate: number | null) => update((state) => ({ ...state, sampleRate })),
 		setVolume: (volume: number) => update((state) => ({ ...state, volume })),
-		setQuality: (quality: AudioQuality) => update((state) => ({ ...state, quality })),
+		setQuality: (quality: AudioQuality) =>
+			update((state) => ({ ...state, quality, qualitySource: 'manual' })),
 		setLoading: (isLoading: boolean) => update((state) => ({ ...state, isLoading })),
 		setQueue: (queue: Track[], startIndex: number = 0) =>
-			update((state) => ({
-				...state,
-				queue,
-				queueIndex: startIndex,
-				currentTrack: queue[startIndex] || null,
-				isPlaying: queue.length > 0 ? state.isPlaying : false,
-				isLoading: queue.length > 0,
-				currentTime: queue.length > 0 ? state.currentTime : 0
-			})),
+			update((state) => {
+				const hasTracks = queue.length > 0;
+				const clampedIndex = hasTracks
+					? Math.min(Math.max(startIndex, 0), queue.length - 1)
+					: -1;
+				const nextTrack = hasTracks ? queue[clampedIndex]! : null;
+				let next: PlayerState = {
+					...state,
+					queue,
+					queueIndex: clampedIndex,
+					currentTrack: nextTrack,
+					isPlaying: hasTracks ? state.isPlaying : false,
+					isLoading: hasTracks,
+					currentTime: hasTracks ? state.currentTime : 0,
+					duration: nextTrack?.duration ?? 0,
+					sampleRate: resolveSampleRate(state, nextTrack)
+				};
+
+				if (!hasTracks) {
+					next = {
+						...next,
+						queueIndex: -1,
+						currentTrack: null,
+						isPlaying: false,
+						isLoading: false,
+						currentTime: 0,
+						duration: 0,
+						sampleRate: null
+					};
+				}
+
+				return applyAutoQuality(next, next.currentTrack);
+			}),
 		enqueue: (track: Track) =>
 			update((state) => {
 				const queue = state.queue.slice();
 				if (queue.length === 0) {
-					return {
+					const next: PlayerState = {
 						...state,
 						queue: [track],
 						queueIndex: 0,
@@ -68,8 +122,10 @@ function createPlayerStore() {
 						isPlaying: true,
 						isLoading: true,
 						currentTime: 0,
-						duration: track.duration
+						duration: track.duration,
+						sampleRate: resolveSampleRate(state, track)
 					};
+					return applyAutoQuality(next, track);
 				}
 
 				queue.push(track);
@@ -83,7 +139,7 @@ function createPlayerStore() {
 				const queue = state.queue.slice();
 				let queueIndex = state.queueIndex;
 				if (queue.length === 0 || queueIndex === -1) {
-					return {
+					const next: PlayerState = {
 						...state,
 						queue: [track],
 						queueIndex: 0,
@@ -91,8 +147,10 @@ function createPlayerStore() {
 						isPlaying: true,
 						isLoading: true,
 						currentTime: 0,
-						duration: track.duration
+						duration: track.duration,
+						sampleRate: resolveSampleRate(state, track)
 					};
+					return applyAutoQuality(next, track);
 				}
 
 				const insertIndex = Math.min(queueIndex + 1, queue.length);
@@ -110,12 +168,16 @@ function createPlayerStore() {
 			update((state) => {
 				if (state.queueIndex < state.queue.length - 1) {
 					const newIndex = state.queueIndex + 1;
-					return {
+					const nextTrack = state.queue[newIndex] ?? null;
+					const nextState: PlayerState = {
 						...state,
 						queueIndex: newIndex,
-						currentTrack: state.queue[newIndex],
-						currentTime: 0
+						currentTrack: nextTrack,
+						currentTime: 0,
+						duration: nextTrack?.duration ?? 0,
+						sampleRate: resolveSampleRate(state, nextTrack)
 					};
+					return applyAutoQuality(nextState, nextTrack);
 				}
 				return state;
 			}),
@@ -123,12 +185,16 @@ function createPlayerStore() {
 			update((state) => {
 				if (state.queueIndex > 0) {
 					const newIndex = state.queueIndex - 1;
-					return {
+					const nextTrack = state.queue[newIndex] ?? null;
+					const nextState: PlayerState = {
 						...state,
 						queueIndex: newIndex,
-						currentTrack: state.queue[newIndex],
-						currentTime: 0
+						currentTrack: nextTrack,
+						currentTime: 0,
+						duration: nextTrack?.duration ?? 0,
+						sampleRate: resolveSampleRate(state, nextTrack)
 					};
+					return applyAutoQuality(nextState, nextTrack);
 				}
 				return state;
 			}),
@@ -174,12 +240,27 @@ function createPlayerStore() {
 				const nextQueueIndex = queue.length > 0 ? 0 : -1;
 				const nextCurrentTrack = queue.length > 0 ? (queue[0] ?? null) : null;
 
-				return {
+				let nextState: PlayerState = {
 					...state,
 					queue,
 					queueIndex: nextQueueIndex,
-					currentTrack: nextCurrentTrack
+					currentTrack: nextCurrentTrack,
+					currentTime: 0,
+					duration: nextCurrentTrack?.duration ?? 0,
+					sampleRate: resolveSampleRate(state, nextCurrentTrack)
 				};
+
+				if (nextQueueIndex === -1) {
+					nextState = {
+						...nextState,
+						currentTrack: null,
+						currentTime: 0,
+						duration: 0,
+						sampleRate: null
+					};
+				}
+
+				return applyAutoQuality(nextState, nextState.currentTrack);
 			}),
 		playAtIndex: (index: number) =>
 			update((state) => {
@@ -187,15 +268,18 @@ function createPlayerStore() {
 					return state;
 				}
 
-				return {
+				const nextTrack = state.queue[index] ?? null;
+				const nextState: PlayerState = {
 					...state,
 					queueIndex: index,
-					currentTrack: state.queue[index],
+					currentTrack: nextTrack,
 					currentTime: 0,
 					isPlaying: true,
 					isLoading: true,
-					duration: state.queue[index].duration
+					duration: nextTrack?.duration ?? 0,
+					sampleRate: resolveSampleRate(state, nextTrack)
 				};
+				return applyAutoQuality(nextState, nextTrack);
 			}),
 		removeFromQueue: (index: number) =>
 			update((state) => {
@@ -213,7 +297,7 @@ function createPlayerStore() {
 				let isLoading = state.isLoading;
 
 				if (queue.length === 0) {
-					return {
+					const nextState: PlayerState = {
 						...state,
 						queue,
 						queueIndex: -1,
@@ -221,8 +305,10 @@ function createPlayerStore() {
 						isPlaying: false,
 						isLoading: false,
 						currentTime: 0,
-						duration: 0
+						duration: 0,
+						sampleRate: null
 					};
+					return applyAutoQuality(nextState, null);
 				}
 
 				if (index < queueIndex) {
@@ -241,8 +327,12 @@ function createPlayerStore() {
 						isLoading = true;
 					}
 				}
+				const nextSampleRate =
+					state.currentTrack && currentTrack && state.currentTrack.id === currentTrack.id
+						? state.sampleRate
+						: null;
 
-				return {
+				const nextState: PlayerState = {
 					...state,
 					queue,
 					queueIndex,
@@ -250,20 +340,26 @@ function createPlayerStore() {
 					isPlaying,
 					isLoading,
 					currentTime,
-					duration
+					duration,
+					sampleRate: nextSampleRate
 				};
+				return applyAutoQuality(nextState, currentTrack);
 			}),
 		clearQueue: () =>
-			update((state) => ({
-				...state,
-				queue: [],
-				queueIndex: -1,
-				currentTrack: null,
-				isPlaying: false,
-				isLoading: false,
-				currentTime: 0,
-				duration: 0
-			})),
+			update((state) => {
+				const nextState: PlayerState = {
+					...state,
+					queue: [],
+					queueIndex: -1,
+					currentTrack: null,
+					isPlaying: false,
+					isLoading: false,
+					currentTime: 0,
+					duration: 0,
+					sampleRate: null
+				};
+				return applyAutoQuality(nextState, null);
+			}),
 		reset: () => set(initialState)
 	};
 }

@@ -3,7 +3,8 @@
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
-	import { losslessAPI } from '$lib/api';
+	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE } from '$lib/api';
+	import type { DashManifestResult } from '$lib/api';
 	import { getProxiedUrl } from '$lib/config';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
 	import type { Track, AudioQuality } from '$lib/types';
@@ -25,6 +26,26 @@
 		LoaderCircle
 	} from 'lucide-svelte';
 
+	type ShakaPlayerInstance = {
+		load: (uri: string) => Promise<void>;
+		unload: () => Promise<void>;
+		destroy: () => Promise<void>;
+		getNetworkingEngine?: () => {
+			registerRequestFilter: (
+				callback: (type: unknown, request: { method: string; uris: string[] }) => void
+			) => void;
+		};
+	};
+
+	type ShakaNamespace = {
+		Player: new (mediaElement: HTMLMediaElement) => ShakaPlayerInstance;
+		polyfill?: {
+			installAll?: () => void;
+		};
+	};
+
+	type ShakaModule = { default: ShakaNamespace };
+
 	let audioElement: HTMLAudioElement;
 	let streamUrl = $state('');
 	let isMuted = $state(false);
@@ -40,6 +61,13 @@
 	const streamCache = new Map<string, string>();
 	let preloadingCacheKey: string | null = null;
 	const PRELOAD_THRESHOLD_SECONDS = 12;
+	const hiResQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS']);
+	const dashManifestCache = new Map<string, DashManifestResult>();
+	let shakaNamespace: ShakaNamespace | null = null;
+	let shakaPlayer: ShakaPlayerInstance | null = null;
+	let hiResObjectUrl: string | null = null;
+	let shakaNetworkingConfigured = false;
+	const sampleRateLabel = $derived(formatSampleRate($playerStore.sampleRate));
 
 	const canUseMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 	let mediaSessionTrackId: number | null = null;
@@ -50,8 +78,106 @@
 		return `${trackId}:${quality}`;
 	}
 
-	async function resolveStream(track: Track): Promise<string> {
-		const quality = $playerStore.quality;
+	function isHiResQuality(quality: AudioQuality | undefined): boolean {
+		return quality ? hiResQualities.has(quality) : false;
+	}
+
+	function revokeHiResObjectUrl() {
+		if (hiResObjectUrl) {
+			URL.revokeObjectURL(hiResObjectUrl);
+			hiResObjectUrl = null;
+		}
+	}
+
+	async function destroyShakaPlayer() {
+		revokeHiResObjectUrl();
+		if (shakaPlayer) {
+			try {
+				await shakaPlayer.destroy();
+			} catch (error) {
+				console.debug('Failed to destroy Shaka player', error);
+			}
+			shakaPlayer = null;
+		}
+		shakaNetworkingConfigured = false;
+	}
+
+	async function ensureShakaPlayer(): Promise<ShakaPlayerInstance> {
+		if (!audioElement) {
+			throw new Error('Audio element not ready for Shaka initialization');
+		}
+		if (!shakaNamespace) {
+			// @ts-expect-error Shaka Player's compiled bundle does not expose module typings.
+			const module = await import('shaka-player/dist/shaka-player.compiled.js');
+			const resolved = (module as ShakaModule | { default: ShakaNamespace }).default ??
+				(module as unknown as ShakaNamespace);
+			shakaNamespace = resolved;
+			if (shakaNamespace?.polyfill?.installAll) {
+				try {
+					shakaNamespace.polyfill.installAll();
+				} catch (error) {
+					console.debug('Shaka polyfill installation failed', error);
+				}
+			}
+		}
+		if (!shakaNamespace) {
+			throw new Error('Shaka namespace unavailable');
+		}
+		if (!shakaPlayer) {
+			shakaPlayer = new shakaNamespace.Player(audioElement);
+			const networking = shakaPlayer.getNetworkingEngine?.();
+			if (networking && !shakaNetworkingConfigured) {
+				networking.registerRequestFilter((type, request) => {
+					if (request.method === 'HEAD') {
+						request.method = 'GET';
+					}
+					if (Array.isArray(request.uris)) {
+						request.uris = request.uris.map((uri) => getProxiedUrl(uri));
+					}
+				});
+				shakaNetworkingConfigured = true;
+			}
+		}
+		audioElement.crossOrigin = 'anonymous';
+		return shakaPlayer!;
+	}
+
+	function pruneDashManifestCache() {
+		const keepKeys = new Set<string>();
+		const dashQuality: AudioQuality = 'HI_RES_LOSSLESS';
+		const current = $playerStore.currentTrack;
+		if (current) {
+			keepKeys.add(getCacheKey(current.id, dashQuality));
+		}
+		const { queue, queueIndex } = $playerStore;
+		const nextTrack = queue[queueIndex + 1];
+		if (nextTrack) {
+			keepKeys.add(getCacheKey(nextTrack.id, dashQuality));
+		}
+		for (const key of dashManifestCache.keys()) {
+			if (!keepKeys.has(key)) {
+				dashManifestCache.delete(key);
+			}
+		}
+	}
+
+	function cacheFlacFallback(trackId: number, result: DashManifestResult) {
+		if (result.kind !== 'flac') {
+			return;
+		}
+		const fallbackUrl = result.urls.find((candidate) => typeof candidate === 'string' && candidate.length > 0);
+		if (!fallbackUrl) {
+			return;
+		}
+		const proxied = getProxiedUrl(fallbackUrl);
+		streamCache.set(getCacheKey(trackId, 'LOSSLESS'), proxied);
+	}
+
+	async function resolveStream(track: Track, overrideQuality?: AudioQuality): Promise<string> {
+		const quality = overrideQuality ?? $playerStore.quality;
+		if (isHiResQuality(quality)) {
+			throw new Error('Attempted to resolve hi-res stream via standard resolver');
+		}
 		const cacheKey = getCacheKey(track.id, quality);
 		const cached = streamCache.get(cacheKey);
 		if (cached) {
@@ -67,14 +193,19 @@
 	function pruneStreamCache() {
 		const quality = $playerStore.quality;
 		const keepKeys = new Set<string>();
+		const baseQualities: AudioQuality[] = isHiResQuality(quality) ? ['LOSSLESS'] : [quality];
 		const current = $playerStore.currentTrack;
 		if (current) {
-			keepKeys.add(getCacheKey(current.id, quality));
+			for (const base of baseQualities) {
+				keepKeys.add(getCacheKey(current.id, base));
+			}
 		}
 		const { queue, queueIndex } = $playerStore;
 		const nextTrack = queue[queueIndex + 1];
 		if (nextTrack) {
-			keepKeys.add(getCacheKey(nextTrack.id, quality));
+			for (const base of baseQualities) {
+				keepKeys.add(getCacheKey(nextTrack.id, base));
+			}
 		}
 
 		for (const key of streamCache.keys()) {
@@ -84,19 +215,24 @@
 		}
 	}
 
-	async function preloadNextTrack(track: Track) {
-		const quality = $playerStore.quality;
-		const cacheKey = getCacheKey(track.id, quality);
-		if (streamCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
+	async function preloadDashManifest(track: Track) {
+		const cacheKey = getCacheKey(track.id, 'HI_RES_LOSSLESS');
+		if (dashManifestCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
+			const cached = dashManifestCache.get(cacheKey);
+			if (cached) {
+				cacheFlacFallback(track.id, cached);
+			}
 			return;
 		}
 
 		preloadingCacheKey = cacheKey;
 		try {
-			await resolveStream(track);
-			pruneStreamCache();
+			const result = await losslessAPI.getDashManifest(track.id, 'HI_RES_LOSSLESS');
+			dashManifestCache.set(cacheKey, result);
+			cacheFlacFallback(track.id, result);
+			pruneDashManifestCache();
 		} catch (error) {
-			console.warn('Failed to preload next track:', error);
+			console.warn('Failed to preload dash manifest:', error);
 		} finally {
 			if (preloadingCacheKey === cacheKey) {
 				preloadingCacheKey = null;
@@ -104,17 +240,25 @@
 		}
 	}
 
+	async function preloadNextTrack(track: Track) {
+		const cacheKey = getCacheKey(track.id, 'HI_RES_LOSSLESS');
+		if (dashManifestCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
+			return;
+		}
+		await preloadDashManifest(track);
+	}
+
 	function maybePreloadNextTrack(remainingSeconds: number) {
 		if (remainingSeconds > PRELOAD_THRESHOLD_SECONDS) {
 			return;
 		}
-		const { queue, queueIndex, quality } = $playerStore;
+		const { queue, queueIndex } = $playerStore;
 		const nextTrack = queue[queueIndex + 1];
 		if (!nextTrack) {
 			return;
 		}
-		const cacheKey = getCacheKey(nextTrack.id, quality);
-		if (streamCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
+		const dashKey = getCacheKey(nextTrack.id, 'HI_RES_LOSSLESS');
+		if (dashManifestCache.has(dashKey) || preloadingCacheKey === dashKey) {
 			return;
 		}
 		preloadNextTrack(nextTrack);
@@ -197,27 +341,124 @@
 		}
 	});
 
+	async function loadStandardTrack(track: Track, quality: AudioQuality, sequence: number) {
+		await destroyShakaPlayer();
+		const resolvedUrl = await resolveStream(track, quality);
+		if (sequence !== loadSequence) {
+			return;
+		}
+		streamUrl = resolvedUrl;
+		pruneStreamCache();
+		if (audioElement) {
+			audioElement.crossOrigin = 'anonymous';
+			audioElement.load();
+		}
+	}
+
+	async function loadDashTrack(
+		track: Track,
+		quality: AudioQuality,
+		sequence: number
+	): Promise<DashManifestResult> {
+		const cacheKey = getCacheKey(track.id, quality);
+		let manifestResult = dashManifestCache.get(cacheKey);
+		if (!manifestResult) {
+			manifestResult = await losslessAPI.getDashManifest(track.id, quality);
+			dashManifestCache.set(cacheKey, manifestResult);
+		}
+		cacheFlacFallback(track.id, manifestResult);
+		if (manifestResult.kind === 'flac') {
+			return manifestResult;
+		}
+		revokeHiResObjectUrl();
+		const blob = new Blob([manifestResult.manifest], {
+			type: manifestResult.contentType ?? 'application/dash+xml'
+		});
+		hiResObjectUrl = URL.createObjectURL(blob);
+		const player = await ensureShakaPlayer();
+		if (sequence !== loadSequence) {
+			return manifestResult;
+		}
+		if (audioElement) {
+			audioElement.pause();
+			audioElement.removeAttribute('src');
+			audioElement.load();
+		}
+		await player.unload();
+		await player.load(hiResObjectUrl);
+		streamUrl = '';
+		pruneDashManifestCache();
+		return manifestResult;
+	}
+
+	async function updateSampleRateForTrack(
+		track: Track,
+		quality: AudioQuality,
+		sequence: number
+	): Promise<void> {
+		try {
+			const metadata = await losslessAPI.getPreferredTrackMetadata(track.id, quality);
+			if (sequence !== loadSequence) {
+				return;
+			}
+			if (currentTrackId !== track.id) {
+				return;
+			}
+			const rate = metadata.info?.sampleRate;
+			const normalized =
+				typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? Math.round(rate) : null;
+			playerStore.setSampleRate(normalized ?? null);
+		} catch (error) {
+			console.debug('Failed to update track sample rate', error);
+			if (sequence === loadSequence && currentTrackId === track.id) {
+				playerStore.setSampleRate(null);
+			}
+		}
+	}
+
 	async function loadTrack(track: Track) {
 		const sequence = ++loadSequence;
 		playerStore.setLoading(true);
 		bufferedPercent = 0;
+		const requestedQuality = $playerStore.quality;
+		const scheduleSampleRateUpdate = (quality: AudioQuality) => {
+			void updateSampleRateForTrack(track, quality, sequence);
+		};
 
 		try {
-			const resolvedUrl = await resolveStream(track);
-
-			if (sequence !== loadSequence) {
+			if (isHiResQuality(requestedQuality)) {
+				try {
+					const hiResQuality: AudioQuality = 'HI_RES_LOSSLESS';
+					const result = await loadDashTrack(track, hiResQuality, sequence);
+					if (result.kind === 'dash') {
+						scheduleSampleRateUpdate(hiResQuality);
+						return;
+					}
+					console.info('Dash endpoint returned FLAC fallback. Using lossless stream.');
+				} catch (dashError) {
+					const coded = dashError as { code?: string };
+					if (coded?.code === DASH_MANIFEST_UNAVAILABLE_CODE) {
+						dashManifestCache.delete(getCacheKey(track.id, 'HI_RES_LOSSLESS'));
+					}
+					console.warn('DASH playback failed, falling back to lossless stream.', dashError);
+				}
+				scheduleSampleRateUpdate('LOSSLESS');
+				await loadStandardTrack(track, 'LOSSLESS', sequence);
 				return;
 			}
 
-			streamUrl = resolvedUrl;
-			pruneStreamCache();
-
-			if (audioElement) {
-				audioElement.crossOrigin = 'anonymous';
-				audioElement.load();
-			}
+			await loadStandardTrack(track, requestedQuality, sequence);
+			scheduleSampleRateUpdate(requestedQuality);
 		} catch (error) {
 			console.error('Failed to load track:', error);
+			if (sequence === loadSequence && requestedQuality !== 'LOSSLESS' && !isHiResQuality(requestedQuality)) {
+				try {
+					await loadStandardTrack(track, 'LOSSLESS', sequence);
+					scheduleSampleRateUpdate('LOSSLESS');
+				} catch (fallbackError) {
+					console.error('Secondary lossless fallback failed:', fallbackError);
+				}
+			}
 		} finally {
 			if (sequence === loadSequence) {
 				playerStore.setLoading(false);
@@ -353,10 +594,24 @@
 
 	function formatQualityLabel(quality?: string): string {
 		if (!quality) return '—';
-		if (quality.toUpperCase() === 'LOSSLESS') {
+		const normalized = quality.toUpperCase();
+		if (normalized === 'LOSSLESS') {
 			return 'CD';
 		}
+		if (normalized === 'HI_RES_LOSSLESS') {
+			return 'Hi-Res';
+		}
 		return quality;
+	}
+
+	function formatSampleRate(value?: number | null): string | null {
+		if (!Number.isFinite(value ?? NaN) || !value || value <= 0) {
+			return null;
+		}
+		const kilohertz = value / 1000;
+		const precision = kilohertz >= 100 || Math.abs(kilohertz - Math.round(kilohertz)) < 0.05 ? 0 : 1;
+		const formatted = kilohertz.toFixed(precision).replace(/\.0$/, '');
+		return `${formatted} kHz`;
 	}
 
 	function formatMegabytes(bytes?: number | null): string | null {
@@ -628,6 +883,9 @@
 			cleanupMediaSessionHandlers?.();
 			cleanupMediaSessionHandlers = null;
 			detachLyricsSeek?.();
+			destroyShakaPlayer().catch((error) => {
+				console.debug('Shaka cleanup failed', error);
+			});
 			if (canUseMediaSession) {
 				try {
 					navigator.mediaSession.metadata = null;
@@ -831,7 +1089,11 @@
 									{$playerStore.currentTrack.artist.name}
 								</p>
 								<p class="text-xs text-gray-500">
-									{formatQualityLabel($playerStore.currentTrack.audioQuality)}
+									<span>{formatQualityLabel($playerStore.currentTrack.audioQuality)}</span>
+									{#if sampleRateLabel}
+										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+										<span>{sampleRateLabel}</span>
+									{/if}
 								</p>
 							</div>
 						</div>
