@@ -10,26 +10,26 @@ export interface ApiClusterTarget {
 
 const TARGETS = [
 	{
-		name: 'proxied-primary',
-		baseUrl: 'https://tidal.401658.xyz',
-		weight: 20,
-		requiresProxy: false
-	},
-	{
-		name: 'vercel-fastapi',
-		baseUrl: 'https://tidal-api-2.binimum.org',
-		weight: 20,
+		name: 'new-squid',
+		baseUrl: 'https://kraken.squid.wtf',
+		weight: 45,
 		requiresProxy: false
 	},
 	{
 		name: 'squid-api',
 		baseUrl: 'https://triton.squid.wtf',
-		weight: 50,
+		weight: 40,
 		requiresProxy: false
 	},
 	{
-		name: 'wardrobe',
-		baseUrl: 'https://tidal-api-3.binimum.org',
+		name: 'proxied-primary',
+		baseUrl: 'https://tidal.401658.xyz',
+		weight: 5,
+		requiresProxy: false
+	},
+	{
+		name: 'vercel-fastapi',
+		baseUrl: 'https://tidal-api-2.binimum.org',
 		weight: 10,
 		requiresProxy: false
 	}
