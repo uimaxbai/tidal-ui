@@ -45,6 +45,10 @@
 
 	const newsItems = [
 		{
+			title: 'Hi-Res Audio',
+			description: 'Streaming for Hi-Res is now here. Stay tuned for Hi-Res downloading - I haven\'t gotten that one figured out yet. And video covers. Pretty cool.'
+		},
+		{
 			title: 'Even more changes!',
 			description:
 				"LYRICS!!! I've stabilised the API a bit and added a few more features such as ZIP download of albums, better error handling, etc. Stay tuned for word by word lyrics!"
@@ -338,8 +342,12 @@
 
 	function formatQualityLabel(quality?: string | null): string {
 		if (!quality) return '—';
-		if (quality.toUpperCase() === 'LOSSLESS') {
-			return 'CD • 16/44.1kHz FLAC';
+		const normalized = quality.toUpperCase();
+		if (normalized === 'LOSSLESS') {
+			return 'CD • 16-bit/44.1 kHz FLAC';
+		}
+		if (normalized === 'HI_RES_LOSSLESS') {
+			return 'Hi-Res • up to 24-bit/192 kHz FLAC';
 		}
 		return quality;
 	}

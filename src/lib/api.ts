@@ -1,5 +1,6 @@
 // API service for HIFI API
 import { API_CONFIG, fetchWithCORS } from './config';
+import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import type {
 	Track,
 	Artist,
@@ -17,10 +18,26 @@ import type {
 
 const API_BASE = API_CONFIG.baseUrl;
 const RATE_LIMIT_ERROR_MESSAGE = 'Too Many Requests. Please wait a moment and try again.';
+export const DASH_MANIFEST_UNAVAILABLE_CODE = 'DASH_MANIFEST_UNAVAILABLE';
+
+type CodedError = Error & { code?: string };
 
 export type TrackDownloadProgress =
 	| { stage: 'downloading'; receivedBytes: number; totalBytes?: number }
 	| { stage: 'embedding'; progress: number };
+
+export type DashManifestResult =
+	| {
+			kind: 'dash';
+			manifest: string;
+			contentType: string | null;
+		}
+	| {
+			kind: 'flac';
+			manifestText: string;
+			urls: string[];
+			contentType: string | null;
+		};
 
 export interface DownloadTrackOptions {
 	signal?: AbortSignal;
@@ -119,10 +136,17 @@ class LosslessAPI {
 	}
 
 	private prepareTrack(track: Track): Track {
+		let normalized = track;
 		if (!track.artist && Array.isArray(track.artists) && track.artists.length > 0) {
-			return { ...track, artist: track.artists[0]! };
+			normalized = { ...track, artist: track.artists[0]! };
 		}
-		return track;
+
+		const derivedQuality = deriveTrackQuality(normalized);
+		if (derivedQuality && normalized.audioQuality !== derivedQuality) {
+			normalized = { ...normalized, audioQuality: derivedQuality };
+		}
+
+		return normalized;
 	}
 
 	private prepareAlbum(album: Album): Album {
@@ -199,6 +223,73 @@ class LosslessAPI {
 			console.error('Failed to decode manifest:', error);
 			return null;
 		}
+	}
+
+	private isDashManifestPayload(payload: string, contentType: string | null): boolean {
+		const trimmed = payload.trim();
+		if (!trimmed) {
+			return false;
+		}
+		if (contentType && contentType.toLowerCase().includes('xml')) {
+			return trimmed.startsWith('<');
+		}
+		return /^<\?xml/i.test(trimmed) || /^<MPD[\s>]/i.test(trimmed) || /^<\w+/i.test(trimmed);
+	}
+
+	private parseJsonSafely<T>(payload: string): T | null {
+		try {
+			return JSON.parse(payload) as T;
+		} catch (error) {
+			console.debug('Failed to parse JSON payload from DASH response', error);
+			return null;
+		}
+	}
+
+	private createDashUnavailableError(message: string): CodedError {
+		const error = new Error(message) as CodedError;
+		error.code = DASH_MANIFEST_UNAVAILABLE_CODE;
+		return error;
+	}
+
+	private isXmlContentType(contentType: string | null): boolean {
+		if (!contentType) return false;
+		return /(application|text)\/(?:.+\+)?xml/i.test(contentType) || /dash\+xml|mpd/i.test(contentType);
+	}
+
+	private isJsonContentType(contentType: string | null): boolean {
+		if (!contentType) return false;
+		return /json/i.test(contentType) || /application\/vnd\.tidal\.bts/i.test(contentType);
+	}
+
+	private extractUrlsFromDashJsonPayload(payload: unknown): string[] {
+		if (!payload || typeof payload !== 'object') {
+			return [];
+		}
+
+		const candidate = (payload as { urls?: unknown }).urls;
+		if (!Array.isArray(candidate)) {
+			return [];
+		}
+
+		return candidate
+			.map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+			.filter((entry) => entry.length > 0);
+	}
+
+	private isHiResQuality(quality: AudioQuality | string): boolean {
+		return String(quality).toUpperCase() === 'HI_RES_LOSSLESS';
+	}
+
+	private async resolveHiResStreamFromDash(trackId: number): Promise<string> {
+		const manifest = await this.getDashManifest(trackId, 'HI_RES_LOSSLESS');
+		if (manifest.kind === 'flac') {
+			const url = manifest.urls.find((candidate) => typeof candidate === 'string' && candidate.length > 0);
+			if (url) {
+				return url;
+			}
+			throw new Error('DASH manifest did not include any FLAC URLs.');
+		}
+		throw new Error('Hi-res DASH manifest does not expose a direct FLAC URL.');
 	}
 
 	/**
@@ -318,6 +409,79 @@ class LosslessAPI {
 		}
 
 		throw lastError ?? new Error('Failed to get track');
+	}
+
+	async getDashManifest(
+		trackId: number,
+		quality: AudioQuality = 'HI_RES_LOSSLESS'
+	): Promise<DashManifestResult> {
+		const url = `${this.baseUrl}/dash/?id=${trackId}&quality=${quality}`;
+		let lastError: Error | null = null;
+
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			const response = await this.fetch(url);
+			this.ensureNotRateLimited(response);
+			const contentType = response.headers.get('content-type');
+
+			if (response.ok) {
+				const payload = await response.text();
+
+				if (this.isXmlContentType(contentType) || this.isDashManifestPayload(payload, contentType)) {
+					return { kind: 'dash', manifest: payload, contentType };
+				}
+
+				if (this.isJsonContentType(contentType) || payload.trim().startsWith('{')) {
+					const parsed = this.parseJsonSafely<{ detail?: unknown; urls?: unknown }>(payload);
+					if (
+						parsed &&
+						typeof parsed === 'object' &&
+						parsed.detail &&
+						typeof parsed.detail === 'string' &&
+						parsed.detail.toLowerCase() === 'not found'
+					) {
+						lastError = this.createDashUnavailableError('Dash manifest not found for track');
+					} else {
+						const urls = this.extractUrlsFromDashJsonPayload(parsed);
+						return { kind: 'flac', manifestText: payload, urls, contentType };
+					}
+				} else {
+					if (this.isDashManifestPayload(payload, contentType)) {
+						return { kind: 'dash', manifest: payload, contentType };
+					}
+					const parsed = this.parseJsonSafely(payload);
+					const urls = this.extractUrlsFromDashJsonPayload(parsed);
+					if (urls.length > 0) {
+						return { kind: 'flac', manifestText: payload, urls, contentType };
+					}
+					lastError = this.createDashUnavailableError('Received unexpected payload from dash endpoint.');
+				}
+			} else {
+				if (response.status === 404) {
+					let detail: string | undefined;
+					try {
+						const errorPayload = await response.clone().json();
+						if (errorPayload && typeof errorPayload.detail === 'string') {
+							detail = errorPayload.detail;
+						}
+					} catch {
+						// ignore json parse errors
+					}
+					if (detail && detail.toLowerCase() === 'not found') {
+						lastError = this.createDashUnavailableError('Dash manifest not found for track');
+					} else {
+						lastError = new Error(`Failed to load dash manifest (status ${response.status})`);
+					}
+				} else {
+					lastError = new Error(`Failed to load dash manifest (status ${response.status})`);
+				}
+			}
+
+			if (attempt < 3) {
+				await this.delay(200 * attempt);
+			}
+		}
+
+		throw lastError ?? this.createDashUnavailableError('Unable to load dash manifest for track');
 	}
 
 	/**
@@ -682,6 +846,15 @@ class LosslessAPI {
 	 * Get stream URL for a track
 	 */
 	async getStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
+		if (this.isHiResQuality(quality)) {
+			try {
+				return await this.resolveHiResStreamFromDash(trackId);
+			} catch (error) {
+				console.warn('Failed to resolve hi-res stream via DASH manifest', error);
+				quality = 'LOSSLESS';
+			}
+		}
+
 		let lastError: Error | null = null;
 
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -1042,6 +1215,29 @@ class LosslessAPI {
 		}
 	}
 
+	private async resolveTrackLookups(
+		trackId: number,
+		quality: AudioQuality
+	): Promise<{
+		manifestLookup: TrackLookup;
+		metadataLookup: TrackLookup;
+		manifestQuality: AudioQuality;
+	}> {
+		const wantsHiRes = this.isHiResQuality(quality);
+		const manifestQuality: AudioQuality = wantsHiRes ? 'LOSSLESS' : quality;
+		const manifestLookup = await this.getTrack(trackId, manifestQuality);
+		const metadataLookup = manifestLookup;
+		return { manifestLookup, metadataLookup, manifestQuality };
+	}
+
+	async getPreferredTrackMetadata(
+		trackId: number,
+		quality: AudioQuality = 'LOSSLESS'
+	): Promise<TrackLookup> {
+		const { metadataLookup } = await this.resolveTrackLookups(trackId, quality);
+		return metadataLookup;
+	}
+
 	async fetchTrackBlob(
 		trackId: number,
 		quality: AudioQuality = 'LOSSLESS',
@@ -1049,10 +1245,16 @@ class LosslessAPI {
 		options?: DownloadTrackOptions
 	): Promise<{ blob: Blob; mimeType?: string }> {
 		try {
-			const lookup = await this.getTrack(trackId, quality);
-			let streamUrl = lookup.originalTrackUrl || null;
+			const {
+				manifestLookup,
+				metadataLookup: initialMetadataLookup,
+				manifestQuality
+			} = await this.resolveTrackLookups(trackId, quality);
+			let metadataLookup = initialMetadataLookup;
 			let response: Response | null = null;
+			let streamUrl: string | null = null;
 
+			streamUrl = manifestLookup.originalTrackUrl || null;
 			if (streamUrl) {
 				response = await fetch(streamUrl, { signal: options?.signal });
 				if (response.status === 429) {
@@ -1067,19 +1269,33 @@ class LosslessAPI {
 			}
 
 			if (!response) {
-				const fallbackUrl = this.extractStreamUrlFromManifest(lookup.info.manifest);
+				let manifestSource = manifestLookup;
+				let fallbackUrl = this.extractStreamUrlFromManifest(manifestSource.info.manifest);
+				if (!fallbackUrl && manifestQuality !== 'LOSSLESS') {
+					try {
+						const losslessLookup = await this.getTrack(trackId, 'LOSSLESS');
+						const candidateUrl = this.extractStreamUrlFromManifest(losslessLookup.info.manifest);
+						if (candidateUrl) {
+							fallbackUrl = candidateUrl;
+							manifestSource = losslessLookup;
+						}
+					} catch (manifestError) {
+						console.warn('Failed to fetch lossless manifest for download fallback', manifestError);
+					}
+				}
 				if (!fallbackUrl) {
 					throw new Error('Could not extract stream URL from manifest');
 				}
 
 				streamUrl = fallbackUrl;
-				response = await fetch(streamUrl, { signal: options?.signal });
+				response = await fetch(fallbackUrl, { signal: options?.signal });
 				if (response.status === 429) {
 					throw new Error(RATE_LIMIT_ERROR_MESSAGE);
 				}
 				if (!response.ok) {
 					throw new Error('Failed to fetch audio stream');
 				}
+				metadataLookup = manifestSource;
 			}
 
 			const totalHeader = Number(response.headers.get('Content-Length') ?? '0');
@@ -1129,7 +1345,7 @@ class LosslessAPI {
 
 			const processedBlob = await this.embedMetadataIntoBlob(
 				downloadBlob,
-				lookup,
+				metadataLookup,
 				filename,
 				response.headers.get('Content-Type'),
 				options
@@ -1150,6 +1366,10 @@ class LosslessAPI {
 	}
 
 	async getTrackStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
+		if (this.isHiResQuality(quality)) {
+			quality = 'LOSSLESS';
+		}
+
 		const lookup = await this.getTrack(trackId, quality);
 		if (lookup.originalTrackUrl) {
 			return lookup.originalTrackUrl;

@@ -141,7 +141,7 @@ export interface Lyrics {
 	isRightToLeft: boolean;
 }
 
-export type AudioQuality = 'HI_RES_LOSSLESS' | 'HI_RES' | 'LOSSLESS' | 'HIGH' | 'LOW';
+export type AudioQuality = 'HI_RES_LOSSLESS' | 'LOSSLESS' | 'HIGH' | 'LOW';
 
 export interface StreamData {
 	originalTrack: string;

@@ -6,15 +6,14 @@
 	import { Settings, Check } from 'lucide-svelte';
 
 	let isOpen = $state(false);
-	const disabledQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS', 'HI_RES']);
+	const disabledQualities = new Set<AudioQuality>();
 
 	const qualities: { value: AudioQuality; label: string; description: string }[] = [
 		{
 			value: 'HI_RES_LOSSLESS',
-			label: 'Hi-Res Lossless',
-			description: '24/44.1kHz to 24/192kHz FLAC'
+			label: 'Hi-Res',
+			description: '24-bit FLAC up to 192 kHz'
 		},
-		{ value: 'HI_RES', label: 'Hi-Res', description: 'up to 96 kHz MQA' },
 		{ value: 'LOSSLESS', label: 'Lossless', description: '16-bit/44.1 kHz FLAC' },
 		{ value: 'HIGH', label: 'High', description: '320k AAC' },
 		{ value: 'LOW', label: 'Low', description: '96k AAC' }
