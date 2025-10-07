@@ -333,7 +333,7 @@
 
 	function displayTrackTotal(total?: number | null): number {
 		if (!Number.isFinite(total)) return 0;
-		return total && total > 0 ? total + 1 : (total ?? 0);
+		return total && total > 0 ? total : (total ?? 0);
 	}
 
 	function formatQualityLabel(quality?: string | null): string {
