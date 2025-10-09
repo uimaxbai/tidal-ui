@@ -1,8 +1,10 @@
 <script lang="ts">
 	import type { Track } from '$lib/types';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
+	import { getExtensionForQuality } from '$lib/downloads';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { Play, Pause, Download, Clock, Plus, ListPlus, X } from 'lucide-svelte';
 
 	interface Props {
@@ -17,6 +19,7 @@
 	let downloadTaskIds = $state(new Map<number, string>());
 	let cancelledIds = $state(new Set<number>());
 	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
+	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 
 	function getDisplayTags(tags?: string[] | null): string[] {
 		if (!tags) return [];
@@ -70,7 +73,9 @@
 		next.add(track.id);
 		downloadingIds = next;
 
-		const filename = `${track.artist.name} - ${track.title}.flac`;
+		const quality = $playerStore.quality;
+		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
+		const filename = `${track.artist.name} - ${track.title}.${extension}`;
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 			subtitle: showAlbum ? (track.album?.title ?? track.artist?.name) : track.artist?.name
 		});
@@ -80,7 +85,7 @@
 		downloadUiStore.skipFfmpegCountdown();
 
 		try {
-			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename, {
+			await losslessAPI.downloadTrack(track.id, quality, filename, {
 				signal: controller.signal,
 				onProgress: (progress: TrackDownloadProgress) => {
 					if (progress.stage === 'downloading') {
@@ -104,7 +109,8 @@
 				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
 				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
 				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
-				ffmpegAutoTriggered: false
+				ffmpegAutoTriggered: false,
+				convertAacToMp3: convertAacToMp3Preference
 			});
 			downloadUiStore.completeTrackDownload(taskId);
 		} catch (error) {

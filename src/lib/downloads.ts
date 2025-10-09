@@ -11,11 +11,11 @@ export function sanitizeForFilename(value: string | null | undefined): string {
 		.trim();
 }
 
-export function getExtensionForQuality(quality: AudioQuality): string {
+export function getExtensionForQuality(quality: AudioQuality, convertAacToMp3 = false): string {
 	switch (quality) {
 		case 'LOW':
 		case 'HIGH':
-			return 'mp3';
+			return convertAacToMp3 ? 'mp3' : 'm4a';
 		default:
 			return 'flac';
 	}
@@ -25,9 +25,10 @@ export function buildTrackFilename(
 	album: Album,
 	track: Track,
 	quality: AudioQuality,
-	artistName?: string
+	artistName?: string,
+	convertAacToMp3 = false
 ): string {
-	const extension = getExtensionForQuality(quality);
+	const extension = getExtensionForQuality(quality, convertAacToMp3);
 	const trackNumber = Number(track.trackNumber);
 	const padded =
 		Number.isFinite(trackNumber) && trackNumber > 0 ? `${trackNumber}`.padStart(2, '0') : '00';
@@ -89,7 +90,7 @@ export async function downloadAlbum(
 	quality: AudioQuality,
 	callbacks?: AlbumDownloadCallbacks,
 	preferredArtistName?: string,
-	options?: { mode?: DownloadMode }
+	options?: { mode?: DownloadMode; convertAacToMp3?: boolean }
 ): Promise<void> {
 	const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 	const canonicalAlbum = fetchedAlbum ?? album;
@@ -98,6 +99,7 @@ export async function downloadAlbum(
 	const mode = options?.mode ?? 'individual';
 	const shouldZip = mode === 'zip' && total > 1;
 	const useCsv = mode === 'csv';
+	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
 	const artistName = sanitizeForFilename(
 		preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist'
 	);
@@ -119,9 +121,16 @@ export async function downloadAlbum(
 		const zip = new JSZip();
 		let completed = 0;
 		for (const track of tracks) {
-			const filename = buildTrackFilename(canonicalAlbum, track, quality, preferredArtistName);
+			const filename = buildTrackFilename(
+				canonicalAlbum,
+				track,
+				quality,
+				preferredArtistName,
+				convertAacToMp3
+			);
 			const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
-				ffmpegAutoTriggered: false
+				ffmpegAutoTriggered: false,
+				convertAacToMp3
 			});
 			zip.file(filename, blob);
 			completed += 1;
@@ -140,8 +149,16 @@ export async function downloadAlbum(
 	let completed = 0;
 
 	for (const track of tracks) {
-		const filename = buildTrackFilename(canonicalAlbum, track, quality, preferredArtistName);
-		await losslessAPI.downloadTrack(track.id, quality, filename);
+		const filename = buildTrackFilename(
+			canonicalAlbum,
+			track,
+			quality,
+			preferredArtistName,
+			convertAacToMp3
+		);
+		await losslessAPI.downloadTrack(track.id, quality, filename, {
+			convertAacToMp3
+		});
 		completed += 1;
 		callbacks?.onTrackDownloaded?.(completed, total, track);
 	}

@@ -48,6 +48,7 @@ export interface DownloadTrackOptions {
 	onFfmpegComplete?: () => void;
 	onFfmpegError?: (error: unknown) => void;
 	ffmpegAutoTriggered?: boolean;
+	convertAacToMp3?: boolean;
 }
 
 class LosslessAPI {
@@ -890,10 +891,20 @@ class LosslessAPI {
 		lookup: TrackLookup,
 		filename: string,
 		contentType: string | null,
-		options?: DownloadTrackOptions
+		options: DownloadTrackOptions | undefined,
+		quality: AudioQuality,
+		convertToMp3: boolean
 	): Promise<Blob | null> {
 		const job = this.metadataQueue.then(() =>
-			this.runMetadataEmbedding(blob, lookup, filename, contentType ?? undefined, options)
+			this.runMetadataEmbedding(
+				blob,
+				lookup,
+				filename,
+				contentType ?? undefined,
+				options,
+				quality,
+				convertToMp3
+			)
 		);
 		this.metadataQueue = job.then(
 			() => undefined,
@@ -1030,14 +1041,17 @@ class LosslessAPI {
 		lookup: TrackLookup,
 		filename: string,
 		contentType: string | undefined,
-		options?: DownloadTrackOptions
+		options: DownloadTrackOptions | undefined,
+		quality: AudioQuality,
+		convertToMp3: boolean
 	): Promise<Blob | null> {
 		if (typeof window === 'undefined') {
 			return null;
 		}
 
-		const extension =
-			this.inferExtensionFromFilename(filename) ?? this.inferExtensionFromMime(contentType);
+		const extensionFromFilename = this.inferExtensionFromFilename(filename);
+		const extensionFromMime = this.inferExtensionFromMime(contentType);
+		const extension = extensionFromFilename ?? extensionFromMime;
 
 		if (!extension) {
 			return null;
@@ -1047,6 +1061,11 @@ class LosslessAPI {
 		if (!supportedExtensions.has(extension)) {
 			return null;
 		}
+
+		const convertibleExtensions = new Set(['m4a', 'aac', 'mp4']);
+		const shouldConvertToMp3 = convertToMp3 && convertibleExtensions.has(extension);
+		const outputExtension = shouldConvertToMp3 ? 'mp3' : extension;
+		const targetBitrate = quality === 'LOW' ? '96k' : '320k';
 
 		let ffmpegModule: typeof import('./ffmpegClient') | null = null;
 		try {
@@ -1109,7 +1128,7 @@ class LosslessAPI {
 				? crypto.randomUUID()
 				: `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 		const inputName = `source-${uniqueSuffix}.${extension}`;
-		const outputName = `output-${uniqueSuffix}.${extension}`;
+		const outputName = `output-${uniqueSuffix}.${outputExtension}`;
 		const coverName = `cover-${uniqueSuffix}.jpg`;
 
 		let coverWritten = false;
@@ -1157,16 +1176,31 @@ class LosslessAPI {
 				args.push('-metadata', `${key}=${value}`);
 			}
 
+			args.push('-map', '0:a:0');
 			if (coverWritten) {
-				args.push('-map', '0:a:0');
 				args.push('-map', '1:v:0');
-				args.push('-c:a', 'copy');
+			}
+
+			if (shouldConvertToMp3) {
+				args.push('-c:a', 'libmp3lame');
+				args.push('-b:a', targetBitrate);
+			}
+
+			if (coverWritten) {
+				if (!shouldConvertToMp3) {
+					args.push('-c:a', 'copy');
+				}
 				args.push('-c:v', 'mjpeg');
 				args.push('-metadata:s:v', 'title=Album cover');
 				args.push('-metadata:s:v', 'comment=Cover (front)');
 				args.push('-disposition:v', 'attached_pic');
-			} else {
+			} else if (!shouldConvertToMp3) {
 				args.push('-c', 'copy');
+			}
+
+			args.push('-map_metadata', '0');
+			if (shouldConvertToMp3) {
+				args.push('-id3v2_version', '3');
 			}
 
 			args.push(outputName);
@@ -1186,7 +1220,7 @@ class LosslessAPI {
 			}
 			const blobArray = new Uint8Array(outputArray);
 			const mimeType = this.inferMimeFromExtension(
-				extension,
+				outputExtension,
 				contentType ?? (blob.type && blob.type.length > 0 ? blob.type : undefined)
 			);
 			return new Blob([blobArray], { type: mimeType });
@@ -1343,12 +1377,16 @@ class LosslessAPI {
 				totalBytes: totalBytes ?? downloadBlob.size
 			});
 
+			const shouldConvertToMp3 =
+				options?.convertAacToMp3 === true && (quality === 'HIGH' || quality === 'LOW');
 			const processedBlob = await this.embedMetadataIntoBlob(
 				downloadBlob,
 				metadataLookup,
 				filename,
 				response.headers.get('Content-Type'),
-				options
+				options,
+				quality,
+				shouldConvertToMp3
 			);
 			const finalBlob = processedBlob ?? downloadBlob;
 			return { blob: finalBlob, mimeType: response.headers.get('Content-Type') ?? undefined };

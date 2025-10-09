@@ -1,7 +1,8 @@
 // Audio player store for managing playback state
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import type { Track, AudioQuality } from '$lib/types';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
+import { userPreferencesStore } from '$lib/stores/userPreferences';
 
 interface PlayerState {
 	currentTrack: Track | null;
@@ -17,14 +18,16 @@ interface PlayerState {
 	sampleRate: number | null;
 }
 
+const initialPreferences = get(userPreferencesStore);
+
 const initialState: PlayerState = {
 	currentTrack: null,
 	isPlaying: false,
 	currentTime: 0,
 	duration: 0,
 	volume: 0.8,
-	quality: 'LOSSLESS',
-	qualitySource: 'auto',
+	quality: initialPreferences.playbackQuality,
+	qualitySource: 'manual',
 	isLoading: false,
 	queue: [],
 	queueIndex: -1,
@@ -74,7 +77,10 @@ function createPlayerStore() {
 		setSampleRate: (sampleRate: number | null) => update((state) => ({ ...state, sampleRate })),
 		setVolume: (volume: number) => update((state) => ({ ...state, volume })),
 		setQuality: (quality: AudioQuality) =>
-			update((state) => ({ ...state, quality, qualitySource: 'manual' })),
+			update((state) => {
+				userPreferencesStore.setPlaybackQuality(quality);
+				return { ...state, quality, qualitySource: 'manual' };
+			}),
 		setLoading: (isLoading: boolean) => update((state) => ({ ...state, isLoading })),
 		setQueue: (queue: Track[], startIndex: number = 0) =>
 			update((state) => {

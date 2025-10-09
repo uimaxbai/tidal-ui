@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-	import { downloadAlbum } from '$lib/downloads';
+	import { downloadAlbum, getExtensionForQuality } from '$lib/downloads';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
+	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import type { Track, Album, Artist, Playlist, AudioQuality } from '$lib/types';
 	import {
 		Search,
@@ -33,6 +34,7 @@
 	let error = $state<string | null>(null);
 	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
+	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 
 	type AlbumDownloadState = {
 		downloading: boolean;
@@ -46,7 +48,7 @@
 	const newsItems = [
 		{
 			title: 'Hi-Res Audio',
-			description: 'Streaming for Hi-Res is now here. Stay tuned for Hi-Res downloading - I haven\'t gotten that one figured out yet. And video covers. Pretty cool.'
+			description: 'Streaming for Hi-Res is now here. Stay tuned for Hi-Res downloading - I haven\'t gotten that one figured out yet. And video covers/lower quality streaming. Pretty cool.'
 		},
 		{
 			title: 'Even more changes!',
@@ -128,7 +130,9 @@
 		next.add(track.id);
 		downloadingIds = next;
 
-		const filename = `${track.artist.name} - ${track.title}.flac`;
+		const quality = $playerStore.quality;
+		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
+		const filename = `${track.artist.name} - ${track.title}.${extension}`;
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 			subtitle: track.album?.title ?? track.artist?.name
 		});
@@ -138,7 +142,7 @@
 		downloadUiStore.skipFfmpegCountdown();
 
 		try {
-			await losslessAPI.downloadTrack(track.id, $playerStore.quality, filename, {
+			await losslessAPI.downloadTrack(track.id, quality, filename, {
 				signal: controller.signal,
 				onProgress: (progress: TrackDownloadProgress) => {
 					if (progress.stage === 'downloading') {
@@ -162,7 +166,8 @@
 				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
 				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
 				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
-				ffmpegAutoTriggered: false
+				ffmpegAutoTriggered: false,
+				convertAacToMp3: convertAacToMp3Preference
 			});
 			downloadUiStore.completeTrackDownload(taskId);
 		} catch (err) {
@@ -229,7 +234,7 @@
 					}
 				},
 				album.artist?.name,
-				{ mode: albumDownloadMode }
+				{ mode: albumDownloadMode, convertAacToMp3: convertAacToMp3Preference }
 			);
 			const finalState = albumDownloadStates[album.id];
 			patchAlbumDownloadState(album.id, {

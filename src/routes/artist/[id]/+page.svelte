@@ -9,6 +9,7 @@
 	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
+	import { userPreferencesStore } from '$lib/stores/userPreferences';
 
 	let artist = $state<ArtistDetails | null>(null);
 	let artistImage = $state<string | null>(null);
@@ -20,6 +21,7 @@
 	const discography = $derived(artist?.albums ?? []);
 	const downloadQuality = $derived($playerStore.quality as AudioQuality);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
+	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 
 	type AlbumDownloadState = {
 		downloading: boolean;
@@ -104,7 +106,7 @@
 					}
 				},
 				artist?.name,
-				{ mode: downloadMode }
+				{ mode: downloadMode, convertAacToMp3: convertAacToMp3Preference }
 			);
 			const finalState = albumDownloadStates[album.id];
 			patchAlbumDownloadState(album.id, {
@@ -163,7 +165,7 @@
 						}
 					},
 					artist?.name,
-					{ mode: downloadMode }
+					{ mode: downloadMode, convertAacToMp3: convertAacToMp3Preference }
 				);
 			} catch (err) {
 				console.error('Failed to download discography album:', err);

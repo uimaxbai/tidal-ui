@@ -53,6 +53,8 @@
 	let currentTrackId: number | null = null;
 	let loadSequence = 0;
 	let bufferedPercent = $state(0);
+	let lastQualityTrackId: number | null = null;
+	let lastQualityForTrack: AudioQuality | null = null;
 	const { onHeightChange = () => {} } = $props<{ onHeightChange?: (height: number) => void }>();
 
 	let containerElement: HTMLDivElement | null = null;
@@ -68,6 +70,10 @@
 	let hiResObjectUrl: string | null = null;
 	let shakaNetworkingConfigured = false;
 	const sampleRateLabel = $derived(formatSampleRate($playerStore.sampleRate));
+	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
+	let dashPlaybackActive = false;
+	let dashFallbackAttemptedTrackId: number | null = null;
+	let dashFallbackInFlight = false;
 
 	const canUseMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 	let mediaSessionTrackId: number | null = null;
@@ -100,6 +106,7 @@
 			shakaPlayer = null;
 		}
 		shakaNetworkingConfigured = false;
+		dashPlaybackActive = false;
 	}
 
 	async function ensureShakaPlayer(): Promise<ShakaPlayerInstance> {
@@ -271,12 +278,37 @@
 				currentTrackId = null;
 				streamUrl = '';
 				bufferedPercent = 0;
+				dashPlaybackActive = false;
+				dashFallbackAttemptedTrackId = null;
+				dashFallbackInFlight = false;
+				lastQualityTrackId = null;
+				lastQualityForTrack = null;
 			}
 		} else if (current.id !== currentTrackId) {
 			currentTrackId = current.id;
 			streamUrl = '';
+			bufferedPercent = 0;
+			dashPlaybackActive = false;
+			dashFallbackAttemptedTrackId = null;
+			dashFallbackInFlight = false;
+			lastQualityTrackId = current.id;
+			lastQualityForTrack = $playerStore.quality;
 			loadTrack(current);
 		}
+	});
+
+	$effect(() => {
+		const track = $playerStore.currentTrack;
+		if (!audioElement || !track) {
+			return;
+		}
+		const quality = $playerStore.quality;
+		if (lastQualityTrackId === track.id && lastQualityForTrack === quality) {
+			return;
+		}
+		lastQualityTrackId = track.id;
+		lastQualityForTrack = quality;
+		loadTrack(track);
 	});
 
 	$effect(() => {
@@ -343,6 +375,7 @@
 
 	async function loadStandardTrack(track: Track, quality: AudioQuality, sequence: number) {
 		await destroyShakaPlayer();
+		dashPlaybackActive = false;
 		const resolvedUrl = await resolveStream(track, quality);
 		if (sequence !== loadSequence) {
 			return;
@@ -368,6 +401,7 @@
 		}
 		cacheFlacFallback(track.id, manifestResult);
 		if (manifestResult.kind === 'flac') {
+			dashPlaybackActive = false;
 			return manifestResult;
 		}
 		revokeHiResObjectUrl();
@@ -386,6 +420,7 @@
 		}
 		await player.unload();
 		await player.load(hiResObjectUrl);
+		dashPlaybackActive = true;
 		streamUrl = '';
 		pruneDashManifestCache();
 		return manifestResult;
@@ -424,6 +459,9 @@
 		const scheduleSampleRateUpdate = (quality: AudioQuality) => {
 			void updateSampleRateForTrack(track, quality, sequence);
 		};
+		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== track.id) {
+			dashFallbackAttemptedTrackId = null;
+		}
 
 		try {
 			if (isHiResQuality(requestedQuality)) {
@@ -474,6 +512,52 @@
 			maybePreloadNextTrack(remaining);
 			updateMediaSessionPositionState();
 		}
+	}
+
+	async function fallbackToLosslessAfterDashError(reason: string) {
+		if (dashFallbackInFlight) {
+			return;
+		}
+		const track = $playerStore.currentTrack;
+		if (!track) {
+			return;
+		}
+		if (dashFallbackAttemptedTrackId === track.id) {
+			return;
+		}
+		dashFallbackInFlight = true;
+		dashFallbackAttemptedTrackId = track.id;
+		const sequence = ++loadSequence;
+		console.warn(`Attempting lossless fallback after DASH playback error (${reason}).`);
+		try {
+			dashPlaybackActive = false;
+			playerStore.setLoading(true);
+			bufferedPercent = 0;
+			await loadStandardTrack(track, 'LOSSLESS', sequence);
+			await updateSampleRateForTrack(track, 'LOSSLESS', sequence);
+		} catch (fallbackError) {
+			console.error('Lossless fallback after DASH playback error failed', fallbackError);
+			if (sequence === loadSequence) {
+				playerStore.setLoading(false);
+			}
+		} finally {
+			dashFallbackInFlight = false;
+		}
+	}
+
+	function handleAudioError(event: Event) {
+		if (!dashPlaybackActive || !isFirefox) {
+			return;
+		}
+		const element = event.currentTarget as HTMLAudioElement | null;
+		const mediaError = element?.error ?? null;
+		const code = mediaError?.code;
+		const decodeConstant = mediaError?.MEDIA_ERR_DECODE;
+		const isDecodeError = typeof code === 'number' && typeof decodeConstant === 'number'
+			? code === decodeConstant
+			: false;
+		const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
+		void fallbackToLosslessAfterDashError(reason);
 	}
 
 	function handleDurationChange() {
@@ -913,6 +997,7 @@
 	onloadeddata={handleLoadedData}
 	onloadedmetadata={updateBufferedPercent}
 	onprogress={handleProgress}
+	onerror={handleAudioError}
 	class="hidden"
 ></audio>
 

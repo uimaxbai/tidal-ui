@@ -17,6 +17,7 @@
 	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
+	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { downloadAlbum } from '$lib/downloads';
 
 	let album = $state<Album | null>(null);
@@ -27,6 +28,7 @@
 	let downloadedCount = $state(0);
 	let downloadError = $state<string | null>(null);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
+	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 
 	const albumId = $derived($page.params.id);
 
@@ -98,7 +100,7 @@
 					}
 				},
 				album.artist?.name,
-				{ mode }
+				{ mode, convertAacToMp3: convertAacToMp3Preference }
 			);
 		} catch (err) {
 			console.error('Failed to download album:', err);
