@@ -12,27 +12,39 @@ const TARGETS = [
 	{
 		name: 'new-squid',
 		baseUrl: 'https://kraken.squid.wtf',
-		weight: 45,
+		weight: 20,
 		requiresProxy: false
 	},
 	{
 		name: 'squid-api',
 		baseUrl: 'https://triton.squid.wtf',
-		weight: 40,
+		weight: 20,
 		requiresProxy: false
 	},
 	{
-		name: 'proxied-primary',
-		baseUrl: 'https://tidal.401658.xyz',
-		weight: 5,
+		name: 'squid-api-2',
+		baseUrl: 'https://zeus.squid.wtf',
+		weight: 19,
+		requiresProxy: false
+	},
+	{
+		name: 'squid-api-3',
+		baseUrl: 'https://aether.squid.wtf',
+		weight: 19,
 		requiresProxy: false
 	},
 	{
 		name: 'vercel-fastapi',
 		baseUrl: 'https://tidal-api-2.binimum.org',
-		weight: 10,
+		weight: 1,
 		requiresProxy: false
-	}
+	},
+	{
+		name: 'proxied-primary',
+		baseUrl: 'https://tidal.401658.xyz',
+		weight: 1,
+		requiresProxy: false
+	},
 ] satisfies ApiClusterTarget[];
 
 export const API_CONFIG = {
