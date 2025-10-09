@@ -1,9 +1,12 @@
 {
 	"name": "lossless-ui",
 	"main": ".svelte-kit/cloudflare/_worker.js",
-	"compatibility_date": "2025-01-01",
 	"assets": {
 		"binding": "ASSETS",
 		"directory": ".svelte-kit/cloudflare"
-	}
+	},
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"compatibility_date": "2024-09-23"
 }
