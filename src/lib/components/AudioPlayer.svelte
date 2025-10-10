@@ -1185,7 +1185,7 @@
 										$playerStore.currentTrack.audioQuality &&
 										currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
 										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-										<span class="text-gray-400">
+										<span class="text-gray-500">
 											({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
 										</span>
 									{/if}

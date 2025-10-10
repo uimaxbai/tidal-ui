@@ -48,6 +48,7 @@
 	const mainMinHeight = $derived(() => Math.max(0, viewportHeight - headerHeight - playerHeight));
 	const contentPaddingBottom = $derived(() => Math.max(playerHeight, 24));
 	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
+	const settingsMenuOffset = $derived(() => Math.max(0, headerHeight + 12));
 	const FRIENDLY_ROUTE_MESSAGES: Record<string, string> = {
 		album: 'Opening album',
 		artist: 'Visiting artist',
@@ -423,13 +424,14 @@
 							class="flex items-center gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
 							aria-haspopup="true"
 							aria-expanded={showSettingsMenu}
+							aria-label={`Settings menu (${playbackQualityLabel()})`}
 						>
 							<span class="flex items-center gap-2">
 								<Settings size={16} />
-								<span>Settings</span>
+								<span class="hidden sm:inline">Settings</span>
 							</span>
 							<span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-								{playbackQualityLabel}
+								{playbackQualityLabel()}
 							</span>
 							<ChevronDown
 								size={16}
@@ -438,168 +440,178 @@
 						</button>
 						{#if showSettingsMenu}
 							<div
-								class="absolute right-0 z-40 mt-2 w-[24rem] max-w-full rounded-xl border border-gray-800 bg-neutral-900/95 p-4 shadow-2xl backdrop-blur"
+								class="settings-menu z-40 rounded-2xl border border-gray-800 bg-neutral-900/95 p-5 shadow-2xl backdrop-blur md:rounded-xl"
+								style={`--settings-menu-offset: ${settingsMenuOffset()}px;`}
 							>
-								<div>
-									<p class="px-1 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
-										Streaming & Downloads
-									</p>
-									<div class="mt-3 flex flex-col gap-2">
-										{#each QUALITY_OPTIONS as option}
+								<div class="flex flex-col gap-6 md:grid md:grid-cols-2 md:gap-6">
+									<section class="md:col-span-2">
+										<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+											Streaming & Downloads
+										</p>
+										<div class="mt-3 grid gap-2 md:grid-cols-2">
+											{#each QUALITY_OPTIONS as option}
+												<button
+													type="button"
+													onclick={() => selectPlaybackQuality(option.value)}
+													class={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+														option.value === $playerStore.quality
+															? 'border-blue-500 bg-blue-900/40 text-white'
+														: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+													}`}
+													aria-pressed={option.value === $playerStore.quality}
+												>
+													<div class="flex flex-1 flex-col">
+														<span class="font-semibold">{option.label}</span>
+														<span class="mt-1 text-xs text-gray-400">{option.description}</span>
+													</div>
+													{#if option.value === $playerStore.quality}
+														<Check size={16} class="text-blue-400" />
+													{/if}
+												</button>
+											{/each}
+										</div>
+									</section>
+									<section class="settings-menu-pane mt-5 md:mt-0">
+										<div>
+											<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+												Conversions
+											</p>
 											<button
 												type="button"
-												onclick={() => selectPlaybackQuality(option.value)}
-												class={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-													option.value === $playerStore.quality
+												onclick={toggleAacConversion}
+												class={`mt-2 flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors ${
+													convertAacToMp3
 														? 'border-blue-500 bg-blue-900/40 text-white'
-													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+														: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
 												}`}
-												aria-pressed={option.value === $playerStore.quality}
+												aria-pressed={convertAacToMp3}
 											>
-												<div class="flex flex-1 flex-col">
-													<span class="font-semibold">{option.label}</span>
-													<span class="mt-1 text-xs text-gray-400">{option.description}</span>
-												</div>
-												{#if option.value === $playerStore.quality}
-													<Check size={16} class="text-blue-400" />
+												<span class="text-left">
+													Convert AAC downloads to MP3
+												</span>
+												<span
+													class={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+														convertAacToMp3
+															? 'border-blue-400 text-blue-300'
+														: 'border-gray-700 text-gray-400'
+													}`}
+												>
+													{convertAacToMp3 ? 'On' : 'Off'}
+												</span>
+											</button>
+											<p class="mt-1 px-1 text-xs text-gray-500">
+												Applies to 320kbps and 96kbps downloads.
+											</p>
+										</div>
+										<div class="mt-5">
+											<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+												Queue exports
+											</p>
+											<div class="mt-2 grid gap-2">
+												<button
+													type="button"
+													onclick={() => setDownloadMode('individual')}
+													class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+														downloadMode === 'individual'
+															? 'border-blue-500 bg-blue-900/40 text-white'
+															: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+													}`}
+													aria-pressed={downloadMode === 'individual'}
+												>
+													<span class="flex items-center gap-2">
+														<Download size={16} />
+														<span>Individual files</span>
+													</span>
+													{#if downloadMode === 'individual'}
+														<Check size={14} />
+													{/if}
+												</button>
+												<button
+													type="button"
+													onclick={() => setDownloadMode('zip')}
+													class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+														downloadMode === 'zip'
+															? 'border-blue-500 bg-blue-900/40 text-white'
+															: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+													}`}
+													aria-pressed={downloadMode === 'zip'}
+												>
+													<span class="flex items-center gap-2">
+														<Archive size={16} />
+														<span>ZIP archive</span>
+													</span>
+													{#if downloadMode === 'zip'}
+														<Check size={14} />
+													{/if}
+												</button>
+												<button
+													type="button"
+													onclick={() => setDownloadMode('csv')}
+													class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+														downloadMode === 'csv'
+															? 'border-blue-500 bg-blue-900/40 text-white'
+															: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+													}`}
+													aria-pressed={downloadMode === 'csv'}
+												>
+													<span class="flex items-center gap-2">
+														<FileSpreadsheet size={16} />
+														<span>Export links</span>
+													</span>
+													{#if downloadMode === 'csv'}
+														<Check size={14} />
+													{/if}
+												</button>
+											</div>
+										</div>
+									</section>
+									<section class="settings-menu-pane mt-5 md:col-span-1 md:mt-0 md:border-l md:pl-6 border-gray-500">
+										<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+											Queue actions
+										</p>
+										<div class="mt-2 flex flex-col gap-2">
+											<button
+												onclick={handleQueueDownload}
+												type="button"
+												class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+												disabled={queueActionBusy}
+											>
+												<span class="flex items-center gap-2">
+													{#if downloadMode === 'zip'}
+														<Archive size={16} />
+														<span>Download queue</span>
+													{:else if downloadMode === 'csv'}
+														<FileSpreadsheet size={16} />
+														<span>Export queue links</span>
+													{:else}
+														<Download size={16} />
+														<span>Download queue</span>
+													{/if}
+												</span>
+												{#if queueActionBusy}
+													<LoaderCircle size={16} class="animate-spin text-gray-300" />
 												{/if}
 											</button>
-										{/each}
-									</div>
-								</div>
-								<div class="mt-4 border-t border-gray-800 pt-3">
-									<p class="px-1 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
-										Conversions
-									</p>
-									<button
-										type="button"
-										onclick={toggleAacConversion}
-										class={`mt-2 flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors ${
-											convertAacToMp3
-												? 'border-blue-500 bg-blue-900/40 text-white'
-												: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-										}`}
-										aria-pressed={convertAacToMp3}
-									>
-										<span class="text-left">
-											Convert AAC downloads to MP3
-										</span>
-										<span
-											class={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-												convertAacToMp3
-													? 'border-blue-400 text-blue-300'
-												: 'border-gray-700 text-gray-400'
-											}`}
-										>
-											{convertAacToMp3 ? 'On' : 'Off'}
-										</span>
-									</button>
-									<p class="mt-1 px-1 text-xs text-gray-500">
-										Applies to 320kbps and 96kbps downloads. Requires FFmpeg.
-									</p>
-								</div>
-								<div class="mt-4 border-t border-gray-800 pt-3">
-									<p class="px-1 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
-										Queue exports
-									</p>
-									<div class="mt-2 flex flex-col gap-2">
-										<button
-											type="button"
-											onclick={() => setDownloadMode('individual')}
-											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-												downloadMode === 'individual'
-													? 'border-blue-500 bg-blue-900/40 text-white'
-												: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-											}`}
-											aria-pressed={downloadMode === 'individual'}
-										>
-											<span class="flex items-center gap-2">
-												<Download size={16} />
-												<span>Individual files</span>
-											</span>
-											{#if downloadMode === 'individual'}
-												<Check size={14} />
-											{/if}
-										</button>
-										<button
-											type="button"
-											onclick={() => setDownloadMode('zip')}
-											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-												downloadMode === 'zip'
-													? 'border-blue-500 bg-blue-900/40 text-white'
-												: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-											}`}
-											aria-pressed={downloadMode === 'zip'}
-										>
-											<span class="flex items-center gap-2">
-												<Archive size={16} />
-												<span>ZIP archive</span>
-											</span>
-											{#if downloadMode === 'zip'}
-												<Check size={14} />
-											{/if}
-										</button>
-										<button
-											type="button"
-											onclick={() => setDownloadMode('csv')}
-											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-												downloadMode === 'csv'
-													? 'border-blue-500 bg-blue-900/40 text-white'
-												: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-											}`}
-											aria-pressed={downloadMode === 'csv'}
-										>
-											<span class="flex items-center gap-2">
-												<FileSpreadsheet size={16} />
-												<span>Export links</span>
-											</span>
-											{#if downloadMode === 'csv'}
-												<Check size={14} />
-											{/if}
-										</button>
-									</div>
-									<div class="mt-3 flex flex-col gap-2">
-										<button
-											onclick={handleQueueDownload}
-											type="button"
-											class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-											disabled={queueActionBusy}
-										>
-											<span class="flex items-center gap-2">
-												{#if downloadMode === 'zip'}
-													<Archive size={16} />
-													<span>Download queue</span>
-												{:else if downloadMode === 'csv'}
+											<button
+												onclick={handleExportQueueCsv}
+												type="button"
+												class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+												disabled={isCsvExporting}
+											>
+												<span class="flex items-center gap-2">
 													<FileSpreadsheet size={16} />
-													<span>Export queue links</span>
-												{:else}
-													<Download size={16} />
-													<span>Download queue</span>
+													<span>Export links as CSV</span>
+												</span>
+												{#if isCsvExporting}
+													<LoaderCircle size={16} class="animate-spin text-gray-300" />
 												{/if}
-											</span>
-											{#if queueActionBusy}
-												<LoaderCircle size={16} class="animate-spin text-gray-300" />
-											{/if}
-										</button>
-										<button
-											onclick={handleExportQueueCsv}
-											type="button"
-											class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-											disabled={isCsvExporting}
-										>
-											<span class="flex items-center gap-2">
-												<FileSpreadsheet size={16} />
-												<span>Export links as CSV</span>
-											</span>
-											{#if isCsvExporting}
-												<LoaderCircle size={16} class="animate-spin text-gray-300" />
-											{/if}
-										</button>
-									</div>
-									<p class="mt-2 px-1 text-xs text-gray-500">
-										Queue actions follow your selection above. ZIP bundles require at least two tracks,
-										while CSV exports capture the track links without downloading audio.
-									</p>
+											</button>
+										</div>
+										<p class="mt-3 px-1 text-xs text-gray-500">
+											Queue actions follow your selection above. ZIP bundles require at least two tracks,
+											while CSV exports capture the track links without downloading audio.
+										</p>
+									</section>
 								</div>
 							</div>
 						{/if}
@@ -633,7 +645,7 @@
 	</header>
 
 	<!-- Main Content -->
-	<main class="mb-36 flex-1 rounded-t-2xl bg-neutral-900">
+	<main class="pb-56 sm:pb-48 flex-1 rounded-t-2xl bg-neutral-900">
 		<div
 			class="mx-auto max-w-screen-2xl px-4 py-6"
 			style={`padding-bottom: ${contentPaddingBottom}px;`}
@@ -717,6 +729,46 @@
 
 	:global(.animate-spin-slower) {
 		animation: spin-slower 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+	}
+
+	:global(.settings-menu) {
+		position: fixed;
+		top: var(--settings-menu-offset, 88px);
+		left: calc(env(safe-area-inset-left, 0px) + 1rem);
+		right: calc(env(safe-area-inset-right, 0px) + 1rem);
+		margin: 0;
+		width: auto;
+		max-height: calc(100vh - var(--settings-menu-offset, 88px) - 24px - 10rem);
+		overflow-y: auto;
+		overflow-x: hidden;
+		padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+		padding-top: 1.25rem;
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior: contain;
+	}
+
+	:global(.settings-menu-pane) {
+		border-top: 1px solid rgba(31, 41, 55, 1);
+		padding-top: 1.25rem;
+	}
+
+	@media (min-width: 768px) {
+		:global(.settings-menu) {
+			position: absolute;
+			top: calc(100% + 0.5rem);
+			right: 0;
+			left: auto;
+			width: 32rem;
+			max-height: none;
+			overflow: visible;
+			padding-top: 1.25rem;
+			padding-bottom: 1.25rem;
+		}
+
+		:global(.settings-menu-pane) {
+			border-top: none;
+			padding-top: 0;
+		}
 	}
 
 	@keyframes spin-slower {
