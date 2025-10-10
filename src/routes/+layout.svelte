@@ -32,17 +32,12 @@
 	let playerHeight = $state(0);
 	let viewportHeight = $state(0);
 	let navigationState = $state<Navigation | null>(null);
-	let showDownloadMenu = $state(false);
 	let showSettingsMenu = $state(false);
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
-	let downloadMenuContainer: HTMLDivElement | null = null;
 	let settingsMenuContainer: HTMLDivElement | null = null;
 	const downloadMode = $derived($downloadPreferencesStore.mode);
-	const downloadModeLabel = $derived(
-		downloadMode === 'zip' ? 'ZIP' : downloadMode === 'csv' ? 'CSV' : 'DEFAULT'
-	);
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'
 			? Boolean(isZipDownloading || isLegacyQueueDownloading || isCsvExporting)
@@ -82,9 +77,16 @@
 		}
 	];
 
-	const playbackQualityLabel = $derived(
-		QUALITY_OPTIONS.find((option) => option.value === $playerStore.quality)?.label ?? 'Quality'
-	);
+	const playbackQualityLabel = $derived(() => {
+		const quality = $playerStore.quality;
+		if (quality === 'HI_RES_LOSSLESS') {
+			return 'Hi-Res';
+		}
+		if (quality === 'LOSSLESS') {
+			return 'CD';
+		}
+		return QUALITY_OPTIONS.find((option) => option.value === quality)?.label ?? 'Quality';
+	});
 
 	const convertAacToMp3 = $derived($userPreferencesStore.convertAacToMp3);
 
@@ -195,12 +197,12 @@
 	async function handleExportQueueCsv(): Promise<void> {
 		const { tracks, quality } = collectQueueState();
 		if (tracks.length === 0) {
-			showDownloadMenu = false;
+			showSettingsMenu = false;
 			alert('Add tracks to the queue before exporting.');
 			return;
 		}
 
-		showDownloadMenu = false;
+		showSettingsMenu = false;
 		await exportQueueAsCsv(tracks, quality);
 	}
 
@@ -284,12 +286,12 @@
 
 		const { tracks, quality } = collectQueueState();
 		if (tracks.length === 0) {
-			showDownloadMenu = false;
+			showSettingsMenu = false;
 			alert('Add tracks to the queue before downloading.');
 			return;
 		}
 
-		showDownloadMenu = false;
+		showSettingsMenu = false;
 
 		if (downloadMode === 'csv') {
 			await exportQueueAsCsv(tracks, quality);
@@ -319,12 +321,6 @@
 		window.addEventListener('resize', updateViewportHeight);
 		const handleDocumentClick = (event: MouseEvent) => {
 			const target = event.target as Node | null;
-			if (showDownloadMenu) {
-				const root = downloadMenuContainer;
-				if (!root || !target || !root.contains(target)) {
-					showDownloadMenu = false;
-				}
-			}
 			if (showSettingsMenu) {
 				const root = settingsMenuContainer;
 				if (!root || !target || !root.contains(target)) {
@@ -418,146 +414,11 @@
 				</a>
 
 				<div class="flex items-center gap-2">
-					<div class="relative" bind:this={downloadMenuContainer}>
-						<button
-							onclick={() => {
-								showDownloadMenu = !showDownloadMenu;
-								if (showDownloadMenu) {
-									showSettingsMenu = false;
-								}
-							}}
-							type="button"
-							class="flex items-center gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
-							aria-haspopup="true"
-							aria-expanded={showDownloadMenu}
-						>
-							<span class="flex items-center gap-2">
-								<span>Exports</span>
-								<span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-									{downloadModeLabel}
-								</span>
-							</span>
-							<ChevronDown
-								size={16}
-								class={`transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`}
-							/>
-						</button>
-						{#if showDownloadMenu}
-							<div
-								class="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-gray-800 bg-neutral-900/95 p-3 shadow-2xl backdrop-blur"
-							>
-								<div>
-									<p class="px-1 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
-										Download preference
-									</p>
-									<div class="mt-2 flex flex-col gap-2">
-										<button
-											type="button"
-											onclick={() => setDownloadMode('individual')}
-											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-												downloadMode === 'individual'
-													? 'border-blue-500 bg-blue-900/40 text-white'
-													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-											}`}
-											aria-pressed={downloadMode === 'individual'}
-										>
-											<span class="flex items-center gap-2">
-												<Download size={16} />
-												<span>Individual files</span>
-											</span>
-											{#if downloadMode === 'individual'}
-												<Check size={14} />
-											{/if}
-										</button>
-										<button
-											type="button"
-											onclick={() => setDownloadMode('zip')}
-											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-												downloadMode === 'zip'
-													? 'border-blue-500 bg-blue-900/40 text-white'
-													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-											}`}
-											aria-pressed={downloadMode === 'zip'}
-										>
-											<span class="flex items-center gap-2">
-												<Archive size={16} />
-												<span>ZIP archive</span>
-											</span>
-											{#if downloadMode === 'zip'}
-												<Check size={14} />
-											{/if}
-										</button>
-										<button
-											type="button"
-											onclick={() => setDownloadMode('csv')}
-											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-												downloadMode === 'csv'
-													? 'border-blue-500 bg-blue-900/40 text-white'
-													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-											}`}
-											aria-pressed={downloadMode === 'csv'}
-										>
-											<span class="flex items-center gap-2">
-												<FileSpreadsheet size={16} />
-												<span>Export links</span>
-											</span>
-											{#if downloadMode === 'csv'}
-												<Check size={14} />
-											{/if}
-										</button>
-									</div>
-								</div>
-								<button
-									onclick={handleQueueDownload}
-									type="button"
-									class="mt-3 flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-									disabled={queueActionBusy}
-								>
-									<span class="flex items-center gap-2">
-										{#if downloadMode === 'zip'}
-											<Archive size={16} />
-											<span>Download queue</span>
-										{:else if downloadMode === 'csv'}
-											<FileSpreadsheet size={16} />
-											<span>Export queue links</span>
-										{:else}
-											<Download size={16} />
-											<span>Download queue</span>
-										{/if}
-									</span>
-									{#if queueActionBusy}
-										<LoaderCircle size={16} class="animate-spin text-gray-300" />
-									{/if}
-								</button>
-								<button
-									onclick={handleExportQueueCsv}
-									type="button"
-									class="mt-2 flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-									disabled={isCsvExporting}
-								>
-									<span class="flex items-center gap-2">
-										<FileSpreadsheet size={16} />
-										<span>Export links as CSV</span>
-									</span>
-									{#if isCsvExporting}
-										<LoaderCircle size={16} class="animate-spin text-gray-300" />
-									{/if}
-								</button>
-								<p class="mt-2 px-1 text-xs text-gray-500">
-									Queue actions follow your selection above. ZIP bundles require at least two
-									tracks, while CSV exports capture the track links without downloading audio.
-								</p>
-							</div>
-						{/if}
-					</div>
 					<div class="relative" bind:this={settingsMenuContainer}>
 						<button
 							onclick={() => {
 								showSettingsMenu = !showSettingsMenu;
-								if (showSettingsMenu) {
-									showDownloadMenu = false;
-								}
-							}}
+						}}
 							type="button"
 							class="flex items-center gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
 							aria-haspopup="true"
@@ -577,7 +438,7 @@
 						</button>
 						{#if showSettingsMenu}
 							<div
-								class="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-gray-800 bg-neutral-900/95 p-4 shadow-2xl backdrop-blur"
+								class="absolute right-0 z-40 mt-2 w-[24rem] max-w-full rounded-xl border border-gray-800 bg-neutral-900/95 p-4 shadow-2xl backdrop-blur"
 							>
 								<div>
 									<p class="px-1 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
@@ -591,7 +452,7 @@
 												class={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
 													option.value === $playerStore.quality
 														? 'border-blue-500 bg-blue-900/40 text-white'
-														: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+													: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
 												}`}
 												aria-pressed={option.value === $playerStore.quality}
 											>
@@ -627,7 +488,7 @@
 											class={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
 												convertAacToMp3
 													? 'border-blue-400 text-blue-300'
-													: 'border-gray-700 text-gray-400'
+												: 'border-gray-700 text-gray-400'
 											}`}
 										>
 											{convertAacToMp3 ? 'On' : 'Off'}
@@ -635,6 +496,109 @@
 									</button>
 									<p class="mt-1 px-1 text-xs text-gray-500">
 										Applies to 320kbps and 96kbps downloads. Requires FFmpeg.
+									</p>
+								</div>
+								<div class="mt-4 border-t border-gray-800 pt-3">
+									<p class="px-1 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
+										Queue exports
+									</p>
+									<div class="mt-2 flex flex-col gap-2">
+										<button
+											type="button"
+											onclick={() => setDownloadMode('individual')}
+											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+												downloadMode === 'individual'
+													? 'border-blue-500 bg-blue-900/40 text-white'
+												: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+											}`}
+											aria-pressed={downloadMode === 'individual'}
+										>
+											<span class="flex items-center gap-2">
+												<Download size={16} />
+												<span>Individual files</span>
+											</span>
+											{#if downloadMode === 'individual'}
+												<Check size={14} />
+											{/if}
+										</button>
+										<button
+											type="button"
+											onclick={() => setDownloadMode('zip')}
+											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+												downloadMode === 'zip'
+													? 'border-blue-500 bg-blue-900/40 text-white'
+												: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+											}`}
+											aria-pressed={downloadMode === 'zip'}
+										>
+											<span class="flex items-center gap-2">
+												<Archive size={16} />
+												<span>ZIP archive</span>
+											</span>
+											{#if downloadMode === 'zip'}
+												<Check size={14} />
+											{/if}
+										</button>
+										<button
+											type="button"
+											onclick={() => setDownloadMode('csv')}
+											class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+												downloadMode === 'csv'
+													? 'border-blue-500 bg-blue-900/40 text-white'
+												: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
+											}`}
+											aria-pressed={downloadMode === 'csv'}
+										>
+											<span class="flex items-center gap-2">
+												<FileSpreadsheet size={16} />
+												<span>Export links</span>
+											</span>
+											{#if downloadMode === 'csv'}
+												<Check size={14} />
+											{/if}
+										</button>
+									</div>
+									<div class="mt-3 flex flex-col gap-2">
+										<button
+											onclick={handleQueueDownload}
+											type="button"
+											class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+											disabled={queueActionBusy}
+										>
+											<span class="flex items-center gap-2">
+												{#if downloadMode === 'zip'}
+													<Archive size={16} />
+													<span>Download queue</span>
+												{:else if downloadMode === 'csv'}
+													<FileSpreadsheet size={16} />
+													<span>Export queue links</span>
+												{:else}
+													<Download size={16} />
+													<span>Download queue</span>
+												{/if}
+											</span>
+											{#if queueActionBusy}
+												<LoaderCircle size={16} class="animate-spin text-gray-300" />
+											{/if}
+										</button>
+										<button
+											onclick={handleExportQueueCsv}
+											type="button"
+											class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+											disabled={isCsvExporting}
+										>
+											<span class="flex items-center gap-2">
+												<FileSpreadsheet size={16} />
+												<span>Export links as CSV</span>
+											</span>
+											{#if isCsvExporting}
+												<LoaderCircle size={16} class="animate-spin text-gray-300" />
+											{/if}
+										</button>
+									</div>
+									<p class="mt-2 px-1 text-xs text-gray-500">
+										Queue actions follow your selection above. ZIP bundles require at least two tracks,
+										while CSV exports capture the track links without downloading audio.
 									</p>
 								</div>
 							</div>

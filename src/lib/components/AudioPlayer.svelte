@@ -55,6 +55,7 @@
 	let bufferedPercent = $state(0);
 	let lastQualityTrackId: number | null = null;
 	let lastQualityForTrack: AudioQuality | null = null;
+	let currentPlaybackQuality = $state<AudioQuality | null>(null);
 	const { onHeightChange = () => {} } = $props<{ onHeightChange?: (height: number) => void }>();
 
 	let containerElement: HTMLDivElement | null = null;
@@ -283,6 +284,7 @@
 				dashFallbackInFlight = false;
 				lastQualityTrackId = null;
 				lastQualityForTrack = null;
+				currentPlaybackQuality = null;
 			}
 		} else if (current.id !== currentTrackId) {
 			currentTrackId = current.id;
@@ -293,6 +295,7 @@
 			dashFallbackInFlight = false;
 			lastQualityTrackId = current.id;
 			lastQualityForTrack = $playerStore.quality;
+			currentPlaybackQuality = null;
 			loadTrack(current);
 		}
 	});
@@ -381,6 +384,7 @@
 			return;
 		}
 		streamUrl = resolvedUrl;
+		currentPlaybackQuality = quality;
 		pruneStreamCache();
 		if (audioElement) {
 			audioElement.crossOrigin = 'anonymous';
@@ -422,6 +426,7 @@
 		await player.load(hiResObjectUrl);
 		dashPlaybackActive = true;
 		streamUrl = '';
+		currentPlaybackQuality = 'HI_RES_LOSSLESS';
 		pruneDashManifestCache();
 		return manifestResult;
 	}
@@ -455,6 +460,7 @@
 		const sequence = ++loadSequence;
 		playerStore.setLoading(true);
 		bufferedPercent = 0;
+		currentPlaybackQuality = null;
 		const requestedQuality = $playerStore.quality;
 		const scheduleSampleRateUpdate = (quality: AudioQuality) => {
 			void updateSampleRateForTrack(track, quality, sequence);
@@ -1174,7 +1180,15 @@
 									{$playerStore.currentTrack.artist.name}
 								</p>
 								<p class="text-xs text-gray-500">
-									<span>{formatQualityLabel($playerStore.currentTrack.audioQuality)}</span>
+									<span>{formatQualityLabel(currentPlaybackQuality ?? undefined)}</span>
+									{#if currentPlaybackQuality &&
+										$playerStore.currentTrack.audioQuality &&
+										currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
+										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+										<span class="text-gray-400">
+											({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
+										</span>
+									{/if}
 									{#if sampleRateLabel}
 										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
 										<span>{sampleRateLabel}</span>

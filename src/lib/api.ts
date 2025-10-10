@@ -1049,9 +1049,9 @@ class LosslessAPI {
 			return null;
 		}
 
-		const extensionFromFilename = this.inferExtensionFromFilename(filename);
 		const extensionFromMime = this.inferExtensionFromMime(contentType);
-		const extension = extensionFromFilename ?? extensionFromMime;
+		const extensionFromFilename = this.inferExtensionFromFilename(filename);
+		const extension = extensionFromMime ?? extensionFromFilename;
 
 		if (!extension) {
 			return null;
