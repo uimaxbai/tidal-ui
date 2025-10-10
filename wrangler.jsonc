@@ -1,5 +1,5 @@
 {
-	"name": "lossless-ui",
+	"name": "tidal-ui",
 	"main": ".svelte-kit/cloudflare/_worker.js",
 	"assets": {
 		"binding": "ASSETS",
