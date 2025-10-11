@@ -570,13 +570,21 @@
 		display: flex;
 		flex-direction: column;
 		border-radius: 1.25rem;
-		background: rgba(15, 23, 42, 0.92);
-		border: 1px solid rgba(59, 73, 99, 0.6);
-		box-shadow: 0 30px 60px rgba(2, 6, 23, 0.55);
+		background: var(--surface-color, rgba(15, 23, 42, 0.68));
+		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
+		backdrop-filter: blur(32px) saturate(160%);
+		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		box-shadow: 
+			0 30px 80px rgba(2, 6, 23, 0.55),
+			0 4px 18px rgba(15, 23, 42, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
 		overflow: hidden;
 		transition:
 			width 180ms ease,
-			height 180ms ease;
+			height 180ms ease,
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
 	}
 
 	.lyrics-panel--maximized {

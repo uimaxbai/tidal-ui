@@ -1019,7 +1019,7 @@
 				<div class="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4">
 					{#if $ffmpegBanner.phase !== 'idle'}
 						<div
-							class="pointer-events-auto rounded-2xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-100 shadow-xl backdrop-blur"
+							class="ffmpeg-banner pointer-events-auto rounded-2xl border px-4 py-3 text-sm text-blue-100 shadow-xl"
 						>
 							<div class="flex items-start gap-3">
 								<div class="min-w-0 flex-1">
@@ -1070,7 +1070,7 @@
 
 					{#each $activeTrackDownloads as task (task.id)}
 						<div
-							class="pointer-events-auto rounded-2xl border border-gray-700/80 bg-gray-900/95 px-4 py-3 text-sm text-gray-100 shadow-xl backdrop-blur"
+							class="download-popup pointer-events-auto rounded-2xl border px-4 py-3 text-sm text-gray-100 shadow-xl"
 						>
 							<div class="flex items-start gap-3">
 								<div class="flex min-w-0 flex-1 flex-col gap-1">
@@ -1115,7 +1115,7 @@
 				</div>
 			</div>
 		{/if}
-		<div class="overflow-hidden rounded-2xl border border-gray-800 bg-zinc-900 shadow-2xl">
+		<div class="audio-player-glass overflow-hidden rounded-2xl border shadow-2xl">
 			<div class="relative px-4 py-3">
 				{#if $playerStore.currentTrack}
 					<!-- Progress Bar -->
@@ -1292,7 +1292,7 @@
 
 					{#if showQueuePanel}
 						<div
-							class="mt-4 space-y-3 rounded-2xl border border-gray-800/80 bg-neutral-900/90 p-4 text-sm shadow-inner"
+							class="queue-panel mt-4 space-y-3 rounded-2xl border p-4 text-sm shadow-inner"
 							transition:slide={{ duration: 220, easing: cubicOut }}
 						>
 							<div class="flex items-center justify-between gap-2">
@@ -1408,6 +1408,65 @@
 </div>
 
 <style>
+	.audio-player-glass {
+		background: var(--surface-color, rgba(15, 23, 42, 0.68));
+		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
+		backdrop-filter: blur(32px) saturate(160%);
+		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		box-shadow: 
+			0 30px 80px rgba(2, 6, 23, 0.55),
+			0 4px 18px rgba(15, 23, 42, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
+	.queue-panel {
+		background: var(--surface-color, rgba(15, 23, 42, 0.68));
+		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
+		backdrop-filter: blur(28px) saturate(155%);
+		-webkit-backdrop-filter: blur(28px) saturate(155%);
+		box-shadow: 
+			0 8px 24px rgba(2, 6, 23, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
+	.ffmpeg-banner {
+		background: var(--surface-color, rgba(15, 23, 42, 0.68));
+		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.6));
+		backdrop-filter: blur(36px) saturate(165%);
+		-webkit-backdrop-filter: blur(36px) saturate(165%);
+		box-shadow: 
+			0 12px 32px rgba(2, 6, 23, 0.45),
+			0 2px 8px rgba(59, 130, 246, 0.15),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
+	.download-popup {
+		background: var(--surface-color, rgba(15, 23, 42, 0.68));
+		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
+		backdrop-filter: blur(36px) saturate(165%);
+		-webkit-backdrop-filter: blur(36px) saturate(165%);
+		box-shadow: 
+			0 12px 32px rgba(2, 6, 23, 0.45),
+			0 2px 8px rgba(15, 23, 42, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
 	.audio-player-backdrop {
 		isolation: isolate;
 	}
@@ -1490,5 +1549,21 @@
 			opacity: 0.4;
 			height: 0.5rem;
 		}
+	}
+
+	/* Dynamic button styles */
+	button.rounded-full {
+		transition: 
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			color 0.2s ease,
+			background 0.2s ease;
+	}
+
+	button.rounded-full:hover {
+		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.7)) !important;
+	}
+
+	button.rounded-full.border-blue-500 {
+		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.7)) !important;
 	}
 </style>

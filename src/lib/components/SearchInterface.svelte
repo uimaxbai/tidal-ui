@@ -42,6 +42,7 @@
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	let selectedRegion = $state<RegionOption>('auto');
+	let isRegionSelectorOpen = $state(false);
 
 	const regionAvailability: Record<RegionOption, boolean> = {
 		auto: hasRegionTargets('auto'),
@@ -76,6 +77,10 @@
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 
 	const newsItems = [
+		{
+			title: 'Redesign + QQDL',
+			description: 'Hi-Res downloading still a WIP but a cool redesign that I inspired off a very cool library called Color Thief is here - and the site is also now up at QQDL!'
+		},	
 		{
 			title: 'Hi-Res Audio',
 			description: 'Streaming for Hi-Res is now here. Stay tuned for Hi-Res downloading - I haven\'t gotten that one figured out yet. And video covers/lower quality streaming. Pretty cool.'
@@ -379,6 +384,15 @@
 				handleSearch();
 			}
 		}
+		// Close the selector after selection
+		isRegionSelectorOpen = false;
+	}
+
+	function handleRegionClick(event: MouseEvent) {
+		const target = event.currentTarget as HTMLSelectElement | null;
+		if (!target) return;
+		// Toggle the open state when clicking
+		isRegionSelectorOpen = !isRegionSelectorOpen;
 	}
 
 	function displayTrackTotal(total?: number | null): number {
@@ -403,7 +417,7 @@
 	<!-- Search Input -->
 	<div class="mb-6">
 		<div
-			class="rounded-lg border border-gray-700 bg-gray-900 py-2 px-3 pr-2 shadow-sm transition-colors focus-within:border-blue-500"
+			class="search-glass rounded-lg border shadow-sm transition-colors focus-within:border-blue-500 py-2 px-3 pr-2"
 		>
 			<div class="flex gap-2 flex-row sm:items-center sm:justify-between">
 				<div class="flex min-w-0 flex-1 items-center gap-2">
@@ -412,7 +426,7 @@
 						bind:value={query}
 						onkeypress={handleKeyPress}
 						placeholder="Search for anything..."
-						class="w-full min-w-0 flex-1 border-none p-0 bg-transparent text-white placeholder:text-gray-500 focus:outline-none ring-0"
+						class="w-full min-w-0 flex-1 border-none p-0 pl-1 bg-transparent text-white placeholder:text-gray-400 focus:outline-none ring-0"
 					/>
 				</div>
 				<div class="flex gap-2 w-auto flex-row items-center">
@@ -420,13 +434,17 @@
 						<label class="sr-only" for="region-select">Region</label>
 						<Earth
 							size={18}
-							class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+							color="#ffffff"
+							class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text0white"
+							style="color: #ffffff; z-index: 99;"
 						/>
 						<select
 							id="region-select"
-							class="appearance-none rounded-md border border-gray-700 bg-gray-900/80 pl-9 pr-9 py-2 text-sm font-medium text-white transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+							class="region-selector cursor-pointer appearance-none rounded-md border pl-9 pr-9 py-2 text-sm font-medium text-white transition-colors focus:outline-none ring-0"
 							value={selectedRegion}
 							onchange={handleRegionChange}
+							onmousedown={handleRegionClick}
+							onblur={() => isRegionSelectorOpen = false}
 							title="Change search region"
 						>
 							<option value="auto">Auto</option>
@@ -437,15 +455,14 @@
 								EU
 							</option>
 						</select>
-						<ChevronDown
-							size={16}
-							class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-						/>
+						<span class={`region-chevron pointer-events-none absolute right-3 top-1/2 text-gray-400 ${isRegionSelectorOpen ? 'rotate-180' : ''}`}>
+							<ChevronDown size={16} />
+						</span>
 					</div>
 					<button
 						onclick={handleSearch}
 						disabled={isLoading || !query.trim()}
-						class="h-full flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+						class="search-button h-full flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
 					>
 						<Search size={16} class="text-white" />
 						<span class="hidden sm:inline">{isLoading ? 'Searching…' : 'Search'}</span>
@@ -462,7 +479,7 @@
 			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
 			'tracks'
 				? 'border-blue-500 text-blue-500'
-				: 'border-transparent text-gray-400 hover:text-white'}"
+				: 'border-transparent text-gray-300 hover:text-white'}"
 		>
 			<Music size={18} />
 			Tracks
@@ -472,7 +489,7 @@
 			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
 			'albums'
 				? 'border-blue-500 text-blue-500'
-				: 'border-transparent text-gray-400 hover:text-white'}"
+				: 'border-transparent text-gray-300 hover:text-white'}"
 		>
 			<Disc size={18} />
 			Albums
@@ -482,7 +499,7 @@
 			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
 			'artists'
 				? 'border-blue-500 text-blue-500'
-				: 'border-transparent text-gray-400 hover:text-white'}"
+				: 'border-transparent text-gray-300 hover:text-white'}"
 		>
 			<User size={18} />
 			Artists
@@ -549,7 +566,7 @@
 						tabindex="0"
 						onclick={() => handleTrackActivation(track)}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="hover:bg-gray-750 group flex w-full cursor-pointer items-center gap-3 rounded-lg bg-gray-800 p-3 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none"
+						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none hover:brightness-110"
 					>
 						{#if track.album.cover}
 							<img
@@ -782,12 +799,12 @@
 			</div>
 			<!-- News Section -->
 		{:else if !query.trim()}
-			<div class="rounded-lg border border-gray-800 p-4">
+			<div class="news-container rounded-lg border p-4">
 				<h2 class="mb-4 text-3xl font-bold">News</h2>
 				<section class="grid gap-4 text-left shadow-lg sm:grid-cols-2">
 					{#each newsItems as item}
 						<article
-							class="flex flex-col gap-3 rounded-lg border border-gray-800/80 bg-gray-900/70 p-4 transition-transform hover:-translate-y-0.5"
+							class="news-card flex flex-col gap-3 rounded-lg border p-4 transition-transform hover:-translate-y-0.5"
 						>
 							<div class="flex items-center gap-3">
 								<div
@@ -797,7 +814,7 @@
 								</div>
 								<h3 class="text-lg font-semibold text-white">{item.title}</h3>
 							</div>
-							<p class="text-sm text-gray-400">{item.description}</p>
+							<p class="text-sm text-gray-300">{item.description}</p>
 						</article>
 					{/each}
 				</section>
@@ -809,3 +826,159 @@
 		{/if}
 	{/if}
 </div>
+
+<style>
+	.search-glass {
+		background: var(--surface-color, rgba(15, 23, 42, 0.68));
+		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
+		backdrop-filter: blur(32px) saturate(160%);
+		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		box-shadow: 
+			0 10px 30px rgba(2, 6, 23, 0.35),
+			0 2px 8px rgba(15, 23, 42, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
+	.track-glass {
+		background: var(--surface-color, rgba(15, 23, 42, 0.55));
+		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.12));
+		backdrop-filter: blur(24px) saturate(150%);
+		-webkit-backdrop-filter: blur(24px) saturate(150%);
+		box-shadow: 
+			0 4px 12px rgba(2, 6, 23, 0.25),
+			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease,
+			filter 0.2s ease;
+	}
+
+	.region-selector {
+		background: var(--surface-color, rgba(15, 23, 42, 0.68));
+		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
+		backdrop-filter: blur(32px) saturate(160%);
+		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
+	.region-selector:hover {
+		border-color: var(--bloom-accent, rgba(148, 163, 184, 0.3));
+		box-shadow: 
+			0 6px 20px rgba(2, 6, 23, 0.4),
+			0 2px 8px rgba(15, 23, 42, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.08);
+	}
+
+	.region-selector:focus {
+		border-color: var(--bloom-accent, #3b82f6);
+		box-shadow: 
+			0 6px 20px rgba(2, 6, 23, 0.4),
+			0 2px 8px rgba(15, 23, 42, 0.3),
+			0 0 0 3px color-mix(in srgb, var(--bloom-accent, #3b82f6) 15%, transparent),
+			inset 0 1px 0 rgba(255, 255, 255, 0.08);
+	}
+
+	.region-chevron {
+		transition: transform 200ms ease;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		transform: translateY(-50%);
+	}
+
+	.region-chevron.rotate-180 {
+		transform: translateY(-50%) rotate(180deg);
+	}
+
+	/* Tab buttons dynamic styling */
+	button.border-blue-500 {
+		border-color: rgb(96, 165, 250) !important;
+		color: rgb(96, 165, 250);
+		transition: 
+			border-color 0.2s ease,
+			color 0.2s ease;
+	}
+
+	/* Search button acrylic styling */
+	.search-button {
+		background: rgba(59, 130, 246, 0.85);
+		border: 1px solid rgba(59, 130, 246, 0.4);
+		backdrop-filter: blur(16px) saturate(140%);
+		-webkit-backdrop-filter: blur(16px) saturate(140%);
+		box-shadow: 
+			0 4px 12px rgba(59, 130, 246, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+		transition: 
+			background 0.3s ease,
+			border-color 0.3s ease,
+			box-shadow 0.3s ease,
+			opacity 0.2s ease;
+	}
+
+	.search-button:hover:not(:disabled) {
+		background: rgba(59, 130, 246, 0.95);
+		box-shadow: 
+			0 6px 18px rgba(59, 130, 246, 0.45),
+			inset 0 1px 0 rgba(255, 255, 255, 0.15);
+	}
+
+	/* News container acrylic styling */
+	.news-container {
+		background: var(--surface-color, rgba(15, 23, 42, 0.55));
+		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
+		backdrop-filter: blur(24px) saturate(150%);
+		-webkit-backdrop-filter: blur(24px) saturate(150%);
+		box-shadow: 
+			0 8px 24px rgba(2, 6, 23, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
+	/* News card acrylic styling */
+	.news-card {
+		background: var(--surface-color, rgba(15, 23, 42, 0.45));
+		border-color: var(--surface-border, rgba(148, 163, 184, 0.15));
+		backdrop-filter: blur(20px) saturate(145%);
+		-webkit-backdrop-filter: blur(20px) saturate(145%);
+		box-shadow: 
+			0 4px 12px rgba(2, 6, 23, 0.25),
+			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease,
+			transform 0.2s ease;
+	}
+
+	.news-card:hover {
+		box-shadow: 
+			0 6px 18px rgba(2, 6, 23, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	}
+
+	/* Improved contrast for grey text */
+	:global(.text-gray-400) {
+		color: rgb(156, 163, 175) !important;
+	}
+
+	:global(.text-gray-500) {
+		color: rgb(115, 125, 140) !important;
+	}
+
+	/* Better placeholder contrast */
+	input::placeholder {
+		color: rgb(156, 163, 175) !important;
+		opacity: 1;
+	}
+</style>

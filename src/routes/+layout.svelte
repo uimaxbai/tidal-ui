@@ -6,6 +6,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
+	import DynamicBackground from '$lib/components/DynamicBackground.svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore, type DownloadMode } from '$lib/stores/downloadPreferences';
@@ -40,8 +41,8 @@
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'
-			? Boolean(isZipDownloading || isLegacyQueueDownloading || isCsvExporting)
-			: downloadMode === 'csv'
+				? Boolean(isZipDownloading || isLegacyQueueDownloading || isCsvExporting)
+				: downloadMode === 'csv'
 				? Boolean(isCsvExporting)
 				: Boolean(isLegacyQueueDownloading)
 	);
@@ -399,184 +400,146 @@
 	/>
 </svelte:head>
 
-<div class="flex min-h-screen flex-col bg-neutral-800 text-white">
-	<!-- Header -->
-	<header
-		class="sticky top-0 z-50 border-b border-gray-800 bg-neutral-800"
-		bind:clientHeight={headerHeight}
-	>
-		<div class="mx-auto max-w-screen-2xl px-4 py-4">
-			<div class="flex items-center justify-between">
-				<a href="/" class="flex items-center gap-3 transition-opacity hover:opacity-80">
-					<div>
-						<h1 class="text-2xl font-bold">{data.title}</h1>
-						<p class="text-xs text-gray-400">sailing on PCM tidal waves</p>
+<div class="app-root">
+	<DynamicBackground />
+	<div class="app-shell">
+		<header class="app-header glass-panel" bind:clientHeight={headerHeight}>
+			<div class="app-header__inner">
+				<a href="/" class="brand" aria-label="Home">
+					<div class="brand__text">
+						<h1 class="brand__title">{data.title}</h1>
+						<p class="brand__subtitle">sailing on PCM tidal waves</p>
 					</div>
 				</a>
 
-				<div class="flex items-center gap-2">
-					<div class="relative" bind:this={settingsMenuContainer}>
+				<div class="toolbar">
+					<div class="settings-trigger" bind:this={settingsMenuContainer}>
 						<button
 							onclick={() => {
 								showSettingsMenu = !showSettingsMenu;
-						}}
+							}}
 							type="button"
-							class="flex items-center gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+							class={`toolbar-button glass-button ${showSettingsMenu ? 'is-active' : ''}`}
 							aria-haspopup="true"
 							aria-expanded={showSettingsMenu}
 							aria-label={`Settings menu (${playbackQualityLabel()})`}
 						>
-							<span class="flex items-center gap-2">
+							<span class="toolbar-button__label">
 								<Settings size={16} />
-								<span class="hidden sm:inline">Settings</span>
+								<span class="toolbar-button__text">Settings</span>
 							</span>
-							<span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-								{playbackQualityLabel()}
+							<span class="text-gray-400">{playbackQualityLabel()}</span>
+							<span class={`toolbar-button__chevron ${showSettingsMenu ? 'is-open' : ''}`}>
+								<ChevronDown size={16} />
 							</span>
-							<ChevronDown
-								size={16}
-								class={`transition-transform ${showSettingsMenu ? 'rotate-180' : ''}`}
-							/>
 						</button>
 						{#if showSettingsMenu}
 							<div
-								class="settings-menu z-40 rounded-2xl border border-gray-800 bg-neutral-900/95 p-5 shadow-2xl backdrop-blur md:rounded-xl"
+								class="settings-menu glass-popover"
 								style={`--settings-menu-offset: ${settingsMenuOffset()}px;`}
 							>
-								<div class="flex flex-col gap-6 md:grid md:grid-cols-2 md:gap-6">
-									<section class="md:col-span-2">
-										<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-											Streaming & Downloads
-										</p>
-										<div class="mt-3 grid gap-2 md:grid-cols-2">
+								<div class="settings-grid">
+									<section class="settings-section settings-section--wide">
+										<p class="section-heading">Streaming & Downloads</p>
+										<div class="option-grid">
 											{#each QUALITY_OPTIONS as option}
 												<button
 													type="button"
 													onclick={() => selectPlaybackQuality(option.value)}
-													class={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-														option.value === $playerStore.quality
-															? 'border-blue-500 bg-blue-900/40 text-white'
-														: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-													}`}
+													class={`glass-option ${option.value === $playerStore.quality ? 'is-active' : ''}`}
 													aria-pressed={option.value === $playerStore.quality}
 												>
-													<div class="flex flex-1 flex-col">
-														<span class="font-semibold">{option.label}</span>
-														<span class="mt-1 text-xs text-gray-400">{option.description}</span>
+													<div class="glass-option__content">
+														<span class="glass-option__label">{option.label}</span>
+														<span class="glass-option__description">{option.description}</span>
 													</div>
 													{#if option.value === $playerStore.quality}
-														<Check size={16} class="text-blue-400" />
+														<Check size={16} class="glass-option__check" />
 													{/if}
 												</button>
 											{/each}
 										</div>
 									</section>
-									<section class="settings-menu-pane mt-5 md:mt-0">
-										<div>
-											<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-												Conversions
-											</p>
+									<section class="settings-section">
+										<p class="section-heading">Conversions</p>
+										<button
+											type="button"
+											onclick={toggleAacConversion}
+											class={`glass-option ${convertAacToMp3 ? 'is-active' : ''}`}
+											aria-pressed={convertAacToMp3}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">Convert AAC downloads to MP3</span>
+												<span class="glass-option__description">Applies to 320kbps and 96kbps downloads.</span>
+											</span>
+											<span class={`glass-option__chip ${convertAacToMp3 ? 'is-active' : ''}`}>
+												{convertAacToMp3 ? 'On' : 'Off'}
+											</span>
+										</button>
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">Queue exports</p>
+										<div class="option-grid">
 											<button
 												type="button"
-												onclick={toggleAacConversion}
-												class={`mt-2 flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors ${
-													convertAacToMp3
-														? 'border-blue-500 bg-blue-900/40 text-white'
-														: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-												}`}
-												aria-pressed={convertAacToMp3}
+												onclick={() => setDownloadMode('individual')}
+												class={`glass-option ${downloadMode === 'individual' ? 'is-active' : ''}`}
+												aria-pressed={downloadMode === 'individual'}
 											>
-												<span class="text-left">
-													Convert AAC downloads to MP3
-												</span>
-												<span
-													class={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-														convertAacToMp3
-															? 'border-blue-400 text-blue-300'
-														: 'border-gray-700 text-gray-400'
-													}`}
-												>
-													{convertAacToMp3 ? 'On' : 'Off'}
-												</span>
-											</button>
-											<p class="mt-1 px-1 text-xs text-gray-500">
-												Applies to 320kbps and 96kbps downloads.
-											</p>
-										</div>
-										<div class="mt-5">
-											<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-												Queue exports
-											</p>
-											<div class="mt-2 grid gap-2">
-												<button
-													type="button"
-													onclick={() => setDownloadMode('individual')}
-													class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-														downloadMode === 'individual'
-															? 'border-blue-500 bg-blue-900/40 text-white'
-															: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-													}`}
-													aria-pressed={downloadMode === 'individual'}
-												>
-													<span class="flex items-center gap-2">
+												<span class="glass-option__content">
+													<span class="glass-option__label">
 														<Download size={16} />
 														<span>Individual files</span>
 													</span>
-													{#if downloadMode === 'individual'}
-														<Check size={14} />
-													{/if}
-												</button>
-												<button
-													type="button"
-													onclick={() => setDownloadMode('zip')}
-													class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-														downloadMode === 'zip'
-															? 'border-blue-500 bg-blue-900/40 text-white'
-															: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-													}`}
-													aria-pressed={downloadMode === 'zip'}
-												>
-													<span class="flex items-center gap-2">
+												</span>
+												{#if downloadMode === 'individual'}
+													<Check size={14} class="glass-option__check" />
+												{/if}
+											</button>
+											<button
+												type="button"
+												onclick={() => setDownloadMode('zip')}
+												class={`glass-option ${downloadMode === 'zip' ? 'is-active' : ''}`}
+												aria-pressed={downloadMode === 'zip'}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
 														<Archive size={16} />
 														<span>ZIP archive</span>
 													</span>
-													{#if downloadMode === 'zip'}
-														<Check size={14} />
-													{/if}
-												</button>
-												<button
-													type="button"
-													onclick={() => setDownloadMode('csv')}
-													class={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-														downloadMode === 'csv'
-															? 'border-blue-500 bg-blue-900/40 text-white'
-															: 'border-gray-800 text-gray-300 hover:bg-gray-800/70'
-													}`}
-													aria-pressed={downloadMode === 'csv'}
-												>
-													<span class="flex items-center gap-2">
+												</span>
+												{#if downloadMode === 'zip'}
+													<Check size={14} class="glass-option__check" />
+												{/if}
+											</button>
+											<button
+												type="button"
+												onclick={() => setDownloadMode('csv')}
+												class={`glass-option ${downloadMode === 'csv' ? 'is-active' : ''}`}
+												aria-pressed={downloadMode === 'csv'}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
 														<FileSpreadsheet size={16} />
 														<span>Export links</span>
 													</span>
-													{#if downloadMode === 'csv'}
-														<Check size={14} />
-													{/if}
-												</button>
-											</div>
+												</span>
+												{#if downloadMode === 'csv'}
+													<Check size={14} class="glass-option__check" />
+												{/if}
+											</button>
 										</div>
 									</section>
-									<section class="settings-menu-pane mt-5 md:col-span-1 md:mt-0 md:border-l md:pl-6 border-gray-500">
-										<p class="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-											Queue actions
-										</p>
-										<div class="mt-2 flex flex-col gap-2">
+									<section class="settings-section settings-section--bordered">
+										<p class="section-heading">Queue actions</p>
+										<div class="actions-column">
 											<button
 												onclick={handleQueueDownload}
 												type="button"
-												class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+												class="glass-action"
 												disabled={queueActionBusy}
 											>
-												<span class="flex items-center gap-2">
+												<span class="glass-action__label">
 													{#if downloadMode === 'zip'}
 														<Archive size={16} />
 														<span>Download queue</span>
@@ -589,25 +552,25 @@
 													{/if}
 												</span>
 												{#if queueActionBusy}
-													<LoaderCircle size={16} class="animate-spin text-gray-300" />
+													<LoaderCircle size={16} class="glass-action__spinner" />
 												{/if}
 											</button>
 											<button
 												onclick={handleExportQueueCsv}
 												type="button"
-												class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-800 bg-neutral-900 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+												class="glass-action"
 												disabled={isCsvExporting}
 											>
-												<span class="flex items-center gap-2">
+												<span class="glass-action__label">
 													<FileSpreadsheet size={16} />
 													<span>Export links as CSV</span>
 												</span>
 												{#if isCsvExporting}
-													<LoaderCircle size={16} class="animate-spin text-gray-300" />
+													<LoaderCircle size={16} class="glass-action__spinner" />
 												{/if}
 											</button>
 										</div>
-										<p class="mt-3 px-1 text-xs text-gray-500">
+										<p class="section-footnote">
 											Queue actions follow your selection above. ZIP bundles require at least two tracks,
 											while CSV exports capture the track links without downloading audio.
 										</p>
@@ -620,42 +583,40 @@
 						target="_blank"
 						rel="noopener noreferrer"
 						href="https://github.com/uimaxbai/tidal-ui"
-						class="flex aspect-square items-center gap-2 rounded-lg border border-gray-800 bg-neutral-900 p-2 text-white transition-colors hover:bg-gray-800"
+						class="toolbar-icon"
 						aria-label="Project GitHub"
 					>
-						<!-- GitHub SVG from https://github.com/logos -->
 						<svg
 							viewBox="0 0 98 96"
-							class="flex h-4 w-4 flex-shrink-0 align-middle"
+							class="toolbar-icon__svg"
 							aria-hidden="true"
 							width="98"
 							height="96"
 							xmlns="http://www.w3.org/2000/svg"
-							><path
+						>
+							<path
 								fill-rule="evenodd"
 								clip-rule="evenodd"
 								d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"
 								fill="#fff"
-							/></svg
-						>
+							/>
+						</svg>
 					</a>
 				</div>
 			</div>
-		</div>
-	</header>
+		</header>
 
-	<!-- Main Content -->
-	<main class="pb-56 sm:pb-48 flex-1 rounded-t-2xl bg-neutral-900">
-		<div
-			class="mx-auto max-w-screen-2xl px-4 py-6"
-			style={`padding-bottom: ${contentPaddingBottom}px;`}
+		<main
+			class="app-main glass-panel"
+			style={`padding-bottom: ${contentPaddingBottom}px; min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 		>
-			{@render children?.()}
-		</div>
-	</main>
+			<div class="app-main__inner">
+				{@render children?.()}
+			</div>
+		</main>
 
-	<!-- Audio Player (Fixed at bottom) -->
-	<AudioPlayer onHeightChange={handlePlayerHeight} />
+		<AudioPlayer onHeightChange={handlePlayerHeight} />
+	</div>
 </div>
 
 <LyricsPopup />
@@ -664,33 +625,35 @@
 {#if navigationState}
 	<div
 		transition:fade={{ duration: 200 }}
-		class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-10 bg-neutral-950/80 backdrop-blur-xl"
+		class="navigation-overlay"
 	>
-		<div class="absolute inset-x-0 top-0 h-1 overflow-hidden bg-white/5">
+		<div class="navigation-overlay__progress">
 			<div class="navigation-progress"></div>
 		</div>
-		<div class="relative flex h-28 w-28 items-center justify-center">
-			<span
-				class="absolute inset-0 rounded-full bg-gradient-to-br from-blue-500/30 via-purple-500/20 to-transparent blur-2xl"
-			></span>
-			<span class="absolute inset-0 rounded-full border border-white/10"></span>
-			<span class="absolute inset-2 rounded-full border-2 border-white/30"></span>
-			<span class="animate-spin-slower absolute inset-0 rounded-full border-t-4 border-blue-400/90"
-			></span>
-			<span class="relative flex h-16 w-16 items-center justify-center rounded-full bg-blue-500/20">
-				<span
-					class="h-6 w-6 animate-pulse rounded-full bg-gradient-to-br from-blue-400 to-purple-400 blur-[1px]"
-				></span>
-			</span>
-		</div>
-		<div class="flex flex-col items-center gap-2 text-center" role="status" aria-live="polite">
-			<span class="text-xs tracking-[0.4em] text-blue-300/80 uppercase">Hang tight</span>
+		<div class="navigation-overlay__content">
+			<span class="navigation-overlay__label">{navigationMessage()}</span>
 		</div>
 	</div>
 {/if}
 -->
+
 <style>
+	:global(:root) {
+		--bloom-primary: #0f172a;
+		--bloom-secondary: #1f2937;
+		--bloom-accent: #3b82f6;
+		--bloom-glow: rgba(59, 130, 246, 0.35);
+		--bloom-tertiary: rgba(99, 102, 241, 0.32);
+		--bloom-quaternary: rgba(30, 64, 175, 0.28);
+		--surface-color: rgba(15, 23, 42, 0.68);
+		--surface-border: rgba(148, 163, 184, 0.18);
+		--surface-highlight: rgba(148, 163, 184, 0.35);
+		--accent-color: var(--bloom-accent);
+	}
+
 	:global(body) {
+		margin: 0;
+		min-height: 100vh;
 		font-family:
 			'Figtree',
 			-apple-system,
@@ -700,6 +663,396 @@
 			'Helvetica Neue',
 			Arial,
 			sans-serif;
+		background: radial-gradient(circle at top, rgba(15, 23, 42, 0.85), rgba(10, 12, 24, 0.95));
+		color: #f8fafc;
+	}
+
+	.app-root {
+		position: relative;
+		min-height: 100vh;
+		background-color: rgba(4, 7, 15, 0.9);
+		color: inherit;
+	}
+
+	.app-shell {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 100vh;
+		padding: clamp(1.25rem, 3vw, 2.5rem);
+		gap: clamp(1rem, 1.5vw, 1.75rem);
+	}
+
+	.glass-panel {
+		background: var(--surface-color, rgba(15, 23, 42, 0.68));
+		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
+		border-radius: 28px;
+		backdrop-filter: blur(32px) saturate(160%);
+		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		box-shadow:
+			0 30px 80px rgba(2, 6, 23, 0.55),
+			0 4px 18px rgba(15, 23, 42, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
+	.app-header {
+		position: sticky;
+		top: calc(env(safe-area-inset-top, 0px) + clamp(0.75rem, 1.5vw, 1.5rem));
+		padding: clamp(1.1rem, 2vw, 1.5rem) clamp(1.2rem, 2.5vw, 2rem);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		z-index: 12;
+	}
+
+	.app-header__inner {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: clamp(1rem, 2vw, 2.5rem);
+	}
+
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 0.9rem;
+		text-decoration: none;
+		color: inherit;
+		font-weight: 600;
+		transition: opacity 150ms ease, transform 180ms ease;
+	}
+
+	.brand:hover {
+		opacity: 0.88;
+		transform: translateY(-1px);
+	}
+
+	.brand__title {
+		font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+		margin: 0;
+	}
+
+	.brand__subtitle {
+		margin: 0.15rem 0 0;
+		font-size: 0.72rem;
+		color: rgba(241, 245, 249, 0.6);
+		font-weight: normal;
+	}
+
+	.toolbar {
+		display: flex;
+		align-items: center;
+		gap: 0.85rem;
+	}
+
+	.toolbar-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.2);
+		background: linear-gradient(135deg, rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.25));
+		color: inherit;
+		transition: border-color 160ms ease, transform 180ms ease, box-shadow 180ms ease;
+	}
+
+	.toolbar-icon:hover {
+		transform: translateY(-1px);
+		border-color: rgba(148, 163, 184, 0.38);
+		box-shadow: 0 10px 30px rgba(8, 11, 19, 0.42);
+	}
+
+	.toolbar-icon__svg {
+		width: 18px;
+		height: 18px;
+		flex-shrink: 0;
+	}
+
+	.toolbar-button {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.75rem;
+		border-radius: 999px;
+		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
+		padding: 0.55rem 0.95rem 0.55rem 0.85rem;
+		font-size: 0.8rem;
+		line-height: 1;
+		font-weight: 600;
+		color: inherit;
+		cursor: pointer;
+		background: linear-gradient(135deg, rgba(15, 23, 42, 0.6), rgba(24, 34, 56, 0.42));
+		transition: 
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 160ms ease, 
+			transform 160ms ease;
+	}
+
+	.toolbar-button:hover {
+		border-color: var(--bloom-accent, rgba(148, 163, 184, 0.3));
+		box-shadow: 0 12px 35px rgba(8, 11, 19, 0.38);
+	}
+
+	.toolbar-button.is-active {
+		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.68));
+		box-shadow: 0 12px 32px rgba(59, 130, 246, 0.28);
+	}
+
+	.toolbar-button__label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
+	.toolbar-button__text {
+		display: none;
+	}
+
+	.toolbar-button__chip {
+		font-size: 0.65rem;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		padding: 0.3rem 0.6rem;
+		border-radius: 999px;
+		background: rgba(59, 130, 246, 0.15);
+		border: 1px solid rgba(59, 130, 246, 0.28);
+		color: rgba(191, 219, 254, 0.95);
+	}
+
+	.toolbar-button__chevron {
+		transition: transform 180ms ease;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.toolbar-button__chevron.is-open {
+		transform: rotate(180deg);
+	}
+
+	.settings-trigger {
+		position: relative;
+	}
+
+	.settings-menu {
+		position: fixed;
+		top: var(--settings-menu-offset, 88px);
+		left: calc(env(safe-area-inset-left, 0px) + 1.25rem);
+		right: calc(env(safe-area-inset-right, 0px) + 1.25rem);
+		margin: 0;
+		max-height: calc(100vh - var(--settings-menu-offset, 88px) - 2.5rem);
+		overflow-y: auto;
+		padding: clamp(1.25rem, 2vw, 1.75rem);
+		border-radius: 32px;
+		background: var(--surface-color, rgba(15, 23, 42, 0.95));
+		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
+		backdrop-filter: blur(48px) saturate(170%);
+		-webkit-backdrop-filter: blur(48px) saturate(170%);
+		box-shadow: 
+			0 30px 80px rgba(2, 6, 23, 0.55),
+			0 4px 18px rgba(15, 23, 42, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		transition: 
+			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow 0.3s ease;
+	}
+
+	.settings-grid {
+		display: grid;
+		gap: 1.25rem;
+	}
+
+	.settings-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.8rem;
+	}
+
+	.settings-section--wide {
+		grid-column: span 1;
+	}
+
+	.section-heading {
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.2em;
+		font-weight: 700;
+		margin: 0;
+		color: rgba(203, 213, 225, 0.7);
+	}
+
+	.option-grid {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	.glass-option {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		border-radius: 18px;
+		border: 1px solid rgba(148, 163, 184, 0.16);
+		background: linear-gradient(145deg, rgba(15, 23, 42, 0.65), rgba(20, 30, 48, 0.45));
+		padding: 0.75rem 0.9rem;
+		color: inherit;
+		font-size: 0.86rem;
+		cursor: pointer;
+		text-align: left;
+		transition: border-color 140ms ease, transform 140ms ease, box-shadow 160ms ease;
+	}
+
+	.glass-option:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 10px 30px rgba(15, 23, 42, 0.3);
+	}
+
+	.glass-option.is-active {
+		border-color: rgba(59, 130, 246, 0.6);
+		background: linear-gradient(145deg, rgba(37, 99, 235, 0.38), rgba(59, 130, 246, 0.22));
+		box-shadow: 0 15px 35px rgba(59, 130, 246, 0.26);
+	}
+
+	.glass-option__content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.glass-option__label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+		font-weight: 600;
+	}
+
+	.glass-option__description {
+		font-size: 0.72rem;
+		opacity: 0.65;
+	}
+
+	.glass-option__check {
+		color: rgba(191, 219, 254, 0.95);
+	}
+
+	.glass-option__chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.68rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		padding: 0.25rem 0.65rem;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.45);
+		color: rgba(226, 232, 240, 0.82);
+	}
+
+	.glass-option__chip.is-active {
+		border-color: rgba(59, 130, 246, 0.65);
+		color: rgba(219, 234, 254, 0.9);
+	}
+
+	.settings-section--bordered {
+		padding-top: 1rem;
+		border-top: 1px solid rgba(148, 163, 184, 0.12);
+	}
+
+	.actions-column {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.glass-action {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		border-radius: 18px;
+		border: 1px solid rgba(148, 163, 184, 0.18);
+		background: linear-gradient(140deg, rgba(15, 23, 42, 0.65), rgba(17, 25, 44, 0.52));
+		padding: 0.8rem 1rem;
+		font-size: 0.86rem;
+		font-weight: 600;
+		color: inherit;
+		cursor: pointer;
+		transition: border-color 140ms ease, box-shadow 160ms ease, transform 160ms ease;
+	}
+
+	.glass-action:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.glass-action:hover:not(:disabled) {
+		transform: translateY(-1px);
+		border-color: rgba(148, 163, 184, 0.3);
+		box-shadow: 0 12px 35px rgba(8, 11, 19, 0.38);
+	}
+
+	.glass-action__label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
+	.glass-action__spinner {
+		animation: spin 1s linear infinite;
+		color: rgba(203, 213, 225, 0.85);
+	}
+
+	.section-footnote {
+		margin: 0;
+		font-size: 0.72rem;
+		color: rgba(203, 213, 225, 0.6);
+		line-height: 1.4;
+	}
+
+	.app-main {
+		flex: 1;
+		padding: clamp(1.5rem, 2.4vw, 2.75rem);
+		border-radius: 32px;
+		position: relative;
+		z-index: 1;
+	}
+
+	.app-main__inner {
+		max-width: min(1100px, 100%);
+		margin: 0 auto;
+	}
+
+	.navigation-overlay {
+		position: fixed;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2rem;
+		background: rgba(6, 11, 22, 0.72);
+		backdrop-filter: blur(18px);
+		z-index: 50;
+	}
+
+	.navigation-overlay__progress {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 3px;
+		overflow: hidden;
+		background: rgba(241, 245, 249, 0.08);
 	}
 
 	.navigation-progress {
@@ -710,6 +1063,13 @@
 		width: 60%;
 		background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.9), transparent);
 		animation: shimmer 1.2s ease-in-out infinite;
+	}
+
+	.navigation-overlay__content {
+		font-size: 0.78rem;
+		letter-spacing: 0.28em;
+		text-transform: uppercase;
+		color: rgba(226, 232, 240, 0.9);
 	}
 
 	@keyframes shimmer {
@@ -731,52 +1091,83 @@
 		animation: spin-slower 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 	}
 
-	:global(.settings-menu) {
-		position: fixed;
-		top: var(--settings-menu-offset, 88px);
-		left: calc(env(safe-area-inset-left, 0px) + 1rem);
-		right: calc(env(safe-area-inset-right, 0px) + 1rem);
-		margin: 0;
-		width: auto;
-		max-height: calc(100vh - var(--settings-menu-offset, 88px) - 24px - 10rem);
-		overflow-y: auto;
-		overflow-x: hidden;
-		padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
-		padding-top: 1.25rem;
-		-webkit-overflow-scrolling: touch;
-		overscroll-behavior: contain;
-	}
-
-	:global(.settings-menu-pane) {
-		border-top: 1px solid rgba(31, 41, 55, 1);
-		padding-top: 1.25rem;
-	}
-
-	@media (min-width: 768px) {
-		:global(.settings-menu) {
-			position: absolute;
-			top: calc(100% + 0.5rem);
-			right: 0;
-			left: auto;
-			width: 32rem;
-			max-height: none;
-			overflow: visible;
-			padding-top: 1.25rem;
-			padding-bottom: 1.25rem;
+	@keyframes spin {
+		0% {
+			transform: rotate(0deg);
 		}
-
-		:global(.settings-menu-pane) {
-			border-top: none;
-			padding-top: 0;
+		100% {
+			transform: rotate(360deg);
 		}
 	}
 
 	@keyframes spin-slower {
-		from {
+		0% {
 			transform: rotate(0deg);
 		}
-		to {
+		100% {
 			transform: rotate(360deg);
+		}
+	}
+
+	@media (min-width: 520px) {
+		.toolbar-button__text {
+			display: inline;
+		}
+	}
+
+	@media (min-width: 768px) {
+		.settings-menu {
+			position: absolute;
+			right: 0;
+			left: auto;
+			width: 32rem;
+			max-height: none;
+			padding: 1.5rem;
+			border-radius: 28px;
+			top: calc(var(--settings-menu-offset, 88px) - 35px);
+		}
+
+		.settings-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 1.5rem;
+		}
+
+		.settings-section--wide {
+			grid-column: span 2;
+		}
+
+		.settings-section--bordered {
+			border-left: 1px solid rgba(148, 163, 184, 0.12);
+			border-top: none;
+			padding-top: 0;
+			padding-left: 1.35rem;
+		}
+	}
+
+	@media (max-width: 640px) {
+		.app-shell {
+			padding: 1.1rem;
+		}
+
+		.app-header {
+			border-radius: 22px;
+		}
+
+		.glass-panel {
+			border-radius: 22px;
+		}
+
+		.toolbar {
+			gap: 0.65rem;
+		}
+
+		.toolbar-button {
+			padding: 0.5rem 0.8rem;
+		}
+
+		.app-main {
+			padding: 1.4rem;
 		}
 	}
 </style>

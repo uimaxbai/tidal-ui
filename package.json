@@ -1,7 +1,7 @@
 {
 	"name": "tidal-ui",
 	"private": true,
-	"version": "0.0.1",
+	"version": "2.0.0",
 	"license": "MPL-2.0",
 	"type": "module",
 	"scripts": {
@@ -26,6 +26,7 @@
 		"@tailwindcss/forms": "^0.5.9",
 		"@tailwindcss/typography": "^0.5.15",
 		"@tailwindcss/vite": "^4.0.0",
+		"@types/colorthief": "^2.6.0",
 		"@types/node": "^20",
 		"eslint": "^9.22.0",
 		"eslint-config-prettier": "^10.0.1",
@@ -45,6 +46,7 @@
 	"dependencies": {
 		"@ffmpeg/ffmpeg": "^0.12.6",
 		"@ffmpeg/util": "^0.12.1",
+		"colorthief": "^2.6.0",
 		"ioredis": "^5.4.1",
 		"jszip": "^3.10.1",
 		"lucide-svelte": "^0.544.0",

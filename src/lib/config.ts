@@ -53,13 +53,86 @@ const ALL_API_TARGETS = [
 		weight: 1,
 		requiresProxy: false,
 		category: 'auto-only'
+	},
+	{
+		name: 'hund',
+		baseUrl: 'https://hund.qqdl.site',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'katze',
+		baseUrl: 'https://katze.qqdl.site',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'maus',
+		baseUrl: 'https://maus.qqdl.site',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'vogel',
+		baseUrl: 'https://vogel.qqdl.site',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'wolf',
+		baseUrl: 'https://wolf.qqdl.site',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	}
+] satisfies ApiClusterTarget[];
+
+const US_API_TARGETS = [
+	{
+		name: 'hund',
+		baseUrl: 'https://hund.qqdl.site',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'katze',
+		baseUrl: 'https://katze.qqdl.site',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'maus',
+		baseUrl: 'https://maus.qqdl.site',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'vogel',
+		baseUrl: 'https://vogel.qqdl.site',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'wolf',
+		baseUrl: 'https://wolf.qqdl.site',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
 	}
 ] satisfies ApiClusterTarget[];
 
 const TARGET_COLLECTIONS: Record<RegionPreference, ApiClusterTarget[]> = {
 	auto: [...ALL_API_TARGETS],
 	eu: [],
-	us: []
+	us: [...US_API_TARGETS]
 };
 
 const TARGETS = TARGET_COLLECTIONS.auto;
