@@ -5,7 +5,6 @@
 	import type { Playlist, Track } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { ArrowLeft, Play, User, Clock } from 'lucide-svelte';
-	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
 
 	let playlist = $state<Playlist | null>(null);
@@ -66,12 +65,12 @@
 		<div class="rounded-lg border border-red-900 bg-red-900/20 p-6">
 			<h2 class="mb-2 text-xl font-semibold text-red-400">Error Loading Playlist</h2>
 			<p class="text-red-300">{error}</p>
-			<button
-				onclick={() => goto('/')}
-				class="mt-4 rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
+			<a
+				href="/"
+				class="mt-4 inline-flex rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
 			>
 				Go Home
-			</button>
+			</a>
 		</div>
 	</div>
 {:else if playlist}
@@ -157,12 +156,13 @@
 				<h3 class="mb-3 text-sm font-semibold text-gray-400">Featured Artists</h3>
 				<div class="flex flex-wrap gap-2">
 					{#each playlist.promotedArtists as artist}
-						<button
-							onclick={() => goto(`/artist/${artist.id}`)}
+						<a
+							href={`/artist/${artist.id}`}
+							data-sveltekit-preload-data
 							class="rounded-full bg-gray-800 px-3 py-1.5 text-sm transition-colors hover:bg-gray-700"
 						>
 							{artist.name}
-						</button>
+						</a>
 					{/each}
 				</div>
 			</div>

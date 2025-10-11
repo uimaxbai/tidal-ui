@@ -1,8 +1,7 @@
 <script lang="ts">
 	import SearchInterface from '$lib/components/SearchInterface.svelte';
-	import type { Track, Album, Artist, Playlist } from '$lib/types';
+	import type { Track } from '$lib/types';
 	import { playerStore } from '$lib/stores/player';
-	import { goto } from '$app/navigation';
 
 	let { data } = $props();
 
@@ -11,17 +10,6 @@
 		playerStore.play();
 	}
 
-	function handleAlbumSelect(album: Album) {
-		goto(`/album/${album.id}`);
-	}
-
-	function handleArtistSelect(artist: Artist) {
-		goto(`/artist/${artist.id}`);
-	}
-
-	function handlePlaylistSelect(playlist: Playlist) {
-		goto(`/playlist/${playlist.uuid}`);
-	}
 </script>
 
 <svelte:head>
@@ -44,10 +32,5 @@
 	</div>
 
 	<!-- Search Interface -->
-	<SearchInterface
-		onTrackSelect={handleTrackSelect}
-		onAlbumSelect={handleAlbumSelect}
-		onArtistSelect={handleArtistSelect}
-		onPlaylistSelect={handlePlaylistSelect}
-	/>
+	<SearchInterface onTrackSelect={handleTrackSelect} />
 </div>

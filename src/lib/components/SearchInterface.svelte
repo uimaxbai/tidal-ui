@@ -1,13 +1,17 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
+	import { hasRegionTargets } from '$lib/config';
 	import { downloadAlbum, getExtensionForQuality } from '$lib/downloads';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { regionStore, type RegionOption } from '$lib/stores/region';
 	import type { Track, Album, Artist, Playlist, AudioQuality } from '$lib/types';
 	import {
 		Search,
+		ChevronDown,
 		Music,
 		User,
 		Disc,
@@ -16,7 +20,9 @@
 		ListPlus,
 		ListVideo,
 		LoaderCircle,
-		X
+		X,
+		Earth,
+		Ban
 	} from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
@@ -35,6 +41,30 @@
 	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
+	let selectedRegion = $state<RegionOption>('auto');
+
+	const regionAvailability: Record<RegionOption, boolean> = {
+		auto: hasRegionTargets('auto'),
+		us: hasRegionTargets('us'),
+		eu: hasRegionTargets('eu')
+	};
+
+	const ensureSupportedRegion = (value: RegionOption): RegionOption => {
+		if (value !== 'auto' && !regionAvailability[value]) {
+			return 'auto';
+		}
+		return value;
+	};
+
+	const unsubscribeRegion = regionStore.subscribe((value) => {
+		const nextRegion = ensureSupportedRegion(value);
+		if (nextRegion !== value) {
+			regionStore.setRegion(nextRegion);
+		}
+		selectedRegion = nextRegion;
+	});
+
+	onDestroy(unsubscribeRegion);
 
 	type AlbumDownloadState = {
 		downloading: boolean;
@@ -72,12 +102,9 @@
 
 	interface Props {
 		onTrackSelect?: (track: Track) => void;
-		onAlbumSelect?: (album: Album) => void;
-		onArtistSelect?: (artist: Artist) => void;
-		onPlaylistSelect?: (playlist: Playlist) => void;
 	}
 
-	let { onTrackSelect, onAlbumSelect, onArtistSelect, onPlaylistSelect }: Props = $props();
+	let { onTrackSelect }: Props = $props();
 
 	async function fetchWithRetry<T>(
 		action: () => Promise<T>,
@@ -299,22 +326,24 @@
 		try {
 			switch (activeTab) {
 				case 'tracks': {
-					const response = await fetchWithRetry(() => losslessAPI.searchTracks(query));
+					const response = await fetchWithRetry(() =>
+						losslessAPI.searchTracks(query, selectedRegion)
+					);
 					tracks = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'albums': {
-					const response = await losslessAPI.searchAlbums(query);
+					const response = await losslessAPI.searchAlbums(query, selectedRegion);
 					albums = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'artists': {
-					const response = await losslessAPI.searchArtists(query);
+					const response = await losslessAPI.searchArtists(query, selectedRegion);
 					artists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'playlists': {
-					const response = await losslessAPI.searchPlaylists(query);
+					const response = await losslessAPI.searchPlaylists(query, selectedRegion);
 					playlists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
@@ -340,6 +369,18 @@
 		}
 	}
 
+	function handleRegionChange(event: Event) {
+		const target = event.currentTarget as HTMLSelectElement | null;
+		if (!target) return;
+		const value = ensureSupportedRegion(target.value as RegionOption);
+		if (value !== selectedRegion) {
+			regionStore.setRegion(value);
+			if (query.trim()) {
+				handleSearch();
+			}
+		}
+	}
+
 	function displayTrackTotal(total?: number | null): number {
 		if (!Number.isFinite(total)) return 0;
 		return total && total > 0 ? total : (total ?? 0);
@@ -360,22 +401,58 @@
 
 <div class="w-full">
 	<!-- Search Input -->
-	<div class="relative mb-6">
-		<input
-			type="text"
-			bind:value={query}
-			onkeypress={handleKeyPress}
-			placeholder="Search for anything..."
-			class="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 pl-12 text-white transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-		/>
-		<Search class="absolute top-1/2 left-4 -translate-y-1/2 text-gray-400" size={20} />
-		<button
-			onclick={handleSearch}
-			disabled={isLoading || !query.trim()}
-			class="absolute top-1/2 right-2 -translate-y-1/2 rounded-md bg-blue-600 px-4 py-1.5 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+	<div class="mb-6">
+		<div
+			class="rounded-lg border border-gray-700 bg-gray-900 py-2 px-3 pr-2 shadow-sm transition-colors focus-within:border-blue-500"
 		>
-			{isLoading ? 'Searching...' : 'Search'}
-		</button>
+			<div class="flex gap-2 flex-row sm:items-center sm:justify-between">
+				<div class="flex min-w-0 flex-1 items-center gap-2">
+					<input
+						type="text"
+						bind:value={query}
+						onkeypress={handleKeyPress}
+						placeholder="Search for anything..."
+						class="w-full min-w-0 flex-1 border-none p-0 bg-transparent text-white placeholder:text-gray-500 focus:outline-none ring-0"
+					/>
+				</div>
+				<div class="flex gap-2 w-auto flex-row items-center">
+					<div class="relative w-auto">
+						<label class="sr-only" for="region-select">Region</label>
+						<Earth
+							size={18}
+							class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+						/>
+						<select
+							id="region-select"
+							class="appearance-none rounded-md border border-gray-700 bg-gray-900/80 pl-9 pr-9 py-2 text-sm font-medium text-white transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+							value={selectedRegion}
+							onchange={handleRegionChange}
+							title="Change search region"
+						>
+							<option value="auto">Auto</option>
+							<option value="us" disabled={!regionAvailability.us} class:opacity-50={!regionAvailability.us}>
+								US
+							</option>
+							<option value="eu" disabled={!regionAvailability.eu} class:opacity-50={!regionAvailability.eu}>
+								EU
+							</option>
+						</select>
+						<ChevronDown
+							size={16}
+							class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+						/>
+					</div>
+					<button
+						onclick={handleSearch}
+						disabled={isLoading || !query.trim()}
+						class="h-full flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+					>
+						<Search size={16} class="text-white" />
+						<span class="hidden sm:inline">{isLoading ? 'Searching…' : 'Search'}</span>
+					</button>
+				</div>
+			</div>
+		</div>
 	</div>
 
 	<!-- Tabs -->
@@ -573,10 +650,10 @@
 								<Download size={16} />
 							{/if}
 						</button>
-						<button
-							onclick={() => onAlbumSelect?.(album)}
-							type="button"
+						<a
+							href={`/album/${album.id}`}
 							class="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
+							data-sveltekit-preload-data
 						>
 							<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
 								{#if album.videoCover}
@@ -629,7 +706,7 @@
 							{#if album.releaseDate}
 								<p class="text-xs text-gray-500">{album.releaseDate.split('-')[0]}</p>
 							{/if}
-						</button>
+						</a>
 						{#if albumDownloadStates[album.id]?.downloading}
 							<p class="mt-2 text-xs text-blue-300">
 								Downloading
@@ -653,7 +730,11 @@
 		{:else if activeTab === 'artists' && artists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
 				{#each artists as artist}
-					<button onclick={() => onArtistSelect?.(artist)} class="group text-center">
+					<a
+						href={`/artist/${artist.id}`}
+						class="group text-center"
+						data-sveltekit-preload-data
+					>
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-full">
 							{#if artist.picture}
 								<img
@@ -671,13 +752,17 @@
 							{artist.name}
 						</h3>
 						<p class="text-xs text-gray-500">Artist</p>
-					</button>
+					</a>
 				{/each}
 			</div>
 		{:else if activeTab === 'playlists' && playlists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 				{#each playlists as playlist}
-					<button onclick={() => onPlaylistSelect?.(playlist)} class="group text-left">
+					<a
+						href={`/playlist/${playlist.uuid}`}
+						class="group text-left"
+						data-sveltekit-preload-data
+					>
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
 							{#if playlist.image}
 								<img
@@ -692,7 +777,7 @@
 						</h3>
 						<p class="truncate text-sm text-gray-400">{playlist.creator.name}</p>
 						<p class="text-xs text-gray-500">{playlist.numberOfTracks} tracks</p>
-					</button>
+					</a>
 				{/each}
 			</div>
 			<!-- News Section -->

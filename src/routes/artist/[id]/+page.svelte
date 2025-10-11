@@ -6,7 +6,6 @@
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import { onMount } from 'svelte';
 	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
-	import { goto } from '$app/navigation';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -218,12 +217,12 @@
 		<div class="rounded-lg border border-red-900 bg-red-900/20 p-6">
 			<h2 class="mb-2 text-xl font-semibold text-red-400">Error Loading Artist</h2>
 			<p class="text-red-300">{error}</p>
-			<button
-				onclick={() => goto('/')}
-				class="mt-4 rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
+			<a
+				href="/"
+				class="mt-4 inline-flex rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
 			>
 				Go Home
-			</button>
+			</a>
 		</div>
 	</div>
 {:else if artist}

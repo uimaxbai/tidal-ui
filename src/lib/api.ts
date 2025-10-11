@@ -1,5 +1,6 @@
 // API service for HIFI API
-import { API_CONFIG, fetchWithCORS } from './config';
+import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from './config';
+import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import type {
 	Track,
@@ -57,6 +58,24 @@ class LosslessAPI {
 
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
+	}
+
+	private resolveRegionalBase(region: RegionOption = 'auto'): string {
+		try {
+			const target = selectApiTargetForRegion(region);
+			if (target?.baseUrl) {
+				return target.baseUrl;
+			}
+		} catch (error) {
+			console.warn('Falling back to default API base URL for region selection', { region, error });
+		}
+		return this.baseUrl;
+	}
+
+	private buildRegionalUrl(path: string, region: RegionOption = 'auto'): string {
+		const base = this.resolveRegionalBase(region).replace(/\/+$/, '');
+		const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+		return `${base}${normalizedPath}`;
 	}
 
 	private normalizeSearchResponse<T>(
@@ -303,8 +322,10 @@ class LosslessAPI {
 	/**
 	 * Search for tracks
 	 */
-	async searchTracks(query: string): Promise<SearchResponse<Track>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?s=${encodeURIComponent(query)}`);
+	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
+		const response = await this.fetch(
+			this.buildRegionalUrl(`/search/?s=${encodeURIComponent(query)}`, region)
+		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search tracks');
 		const data = await response.json();
@@ -318,8 +339,10 @@ class LosslessAPI {
 	/**
 	 * Search for artists
 	 */
-	async searchArtists(query: string): Promise<SearchResponse<Artist>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?a=${encodeURIComponent(query)}`);
+	async searchArtists(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Artist>> {
+		const response = await this.fetch(
+			this.buildRegionalUrl(`/search/?a=${encodeURIComponent(query)}`, region)
+		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search artists');
 		const data = await response.json();
@@ -333,8 +356,10 @@ class LosslessAPI {
 	/**
 	 * Search for albums
 	 */
-	async searchAlbums(query: string): Promise<SearchResponse<Album>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
+	async searchAlbums(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Album>> {
+		const response = await this.fetch(
+			this.buildRegionalUrl(`/search/?al=${encodeURIComponent(query)}`, region)
+		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await response.json();
@@ -348,8 +373,10 @@ class LosslessAPI {
 	/**
 	 * Search for playlists
 	 */
-	async searchPlaylists(query: string): Promise<SearchResponse<Playlist>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?p=${encodeURIComponent(query)}`);
+	async searchPlaylists(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Playlist>> {
+		const response = await this.fetch(
+			this.buildRegionalUrl(`/search/?p=${encodeURIComponent(query)}`, region)
+		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search playlists');
 		const data = await response.json();

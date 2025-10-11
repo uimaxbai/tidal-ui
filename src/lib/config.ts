@@ -1,51 +1,68 @@
 // CORS Proxy Configuration
 // If you're experiencing CORS issues with the HIFI API, you can set up a proxy
 
+type RegionPreference = 'auto' | 'us' | 'eu';
+
 export interface ApiClusterTarget {
 	name: string;
 	baseUrl: string;
 	weight: number;
 	requiresProxy: boolean;
+	category: 'auto-only';
 }
 
-const TARGETS = [
+const ALL_API_TARGETS = [
 	{
 		name: 'new-squid',
 		baseUrl: 'https://kraken.squid.wtf',
 		weight: 20,
-		requiresProxy: false
+		requiresProxy: false,
+		category: 'auto-only'
 	},
 	{
 		name: 'squid-api',
 		baseUrl: 'https://triton.squid.wtf',
 		weight: 20,
-		requiresProxy: false
+		requiresProxy: false,
+		category: 'auto-only'
 	},
 	{
 		name: 'squid-api-2',
 		baseUrl: 'https://zeus.squid.wtf',
 		weight: 19,
-		requiresProxy: false
+		requiresProxy: false,
+		category: 'auto-only'
 	},
 	{
 		name: 'squid-api-3',
 		baseUrl: 'https://aether.squid.wtf',
 		weight: 19,
-		requiresProxy: false
+		requiresProxy: false,
+		category: 'auto-only'
 	},
 	{
 		name: 'vercel-fastapi',
 		baseUrl: 'https://tidal-api-2.binimum.org',
 		weight: 1,
-		requiresProxy: false
+		requiresProxy: false,
+		category: 'auto-only'
 	},
 	{
 		name: 'proxied-primary',
 		baseUrl: 'https://tidal.401658.xyz',
 		weight: 1,
-		requiresProxy: false
-	},
+		requiresProxy: false,
+		category: 'auto-only'
+	}
 ] satisfies ApiClusterTarget[];
+
+const TARGET_COLLECTIONS: Record<RegionPreference, ApiClusterTarget[]> = {
+	auto: [...ALL_API_TARGETS],
+	eu: [],
+	us: []
+};
+
+const TARGETS = TARGET_COLLECTIONS.auto;
 
 export const API_CONFIG = {
 	// Cluster of target endpoints for load distribution and redundancy
@@ -60,8 +77,8 @@ type WeightedTarget = ApiClusterTarget & { cumulativeWeight: number };
 
 let weightedTargets: WeightedTarget[] | null = null;
 
-function buildWeightedTargets(): WeightedTarget[] {
-	const validTargets = API_CONFIG.targets.filter((target) => {
+function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
+	const validTargets = targets.filter((target) => {
 		if (!target?.baseUrl || typeof target.baseUrl !== 'string') {
 			return false;
 		}
@@ -92,20 +109,65 @@ function buildWeightedTargets(): WeightedTarget[] {
 
 function ensureWeightedTargets(): WeightedTarget[] {
 	if (!weightedTargets) {
-		weightedTargets = buildWeightedTargets();
+		weightedTargets = buildWeightedTargets(API_CONFIG.targets);
 	}
 	return weightedTargets;
 }
 
 export function selectApiTarget(): ApiClusterTarget {
 	const targets = ensureWeightedTargets();
-	const totalWeight = targets[targets.length - 1]?.cumulativeWeight ?? 0;
-	const random = Math.random() * totalWeight;
-	return targets.find((target) => random < target.cumulativeWeight) ?? targets[0];
+	return selectFromWeightedTargets(targets);
 }
 
 export function getPrimaryTarget(): ApiClusterTarget {
 	return ensureWeightedTargets()[0];
+}
+
+function selectFromWeightedTargets(weighted: WeightedTarget[]): ApiClusterTarget {
+	if (weighted.length === 0) {
+		throw new Error('No weighted targets available for selection');
+	}
+
+	const totalWeight = weighted[weighted.length - 1]?.cumulativeWeight ?? 0;
+	if (totalWeight <= 0) {
+		return weighted[0];
+	}
+
+	const random = Math.random() * totalWeight;
+	for (const target of weighted) {
+		if (random < target.cumulativeWeight) {
+			return target;
+		}
+	}
+
+	return weighted[0];
+}
+
+export function getTargetsForRegion(region: RegionPreference = 'auto'): ApiClusterTarget[] {
+	const targets = TARGET_COLLECTIONS[region];
+	return Array.isArray(targets) ? targets : [];
+}
+
+export function selectApiTargetForRegion(region: RegionPreference): ApiClusterTarget {
+	if (region === 'auto') {
+		return selectApiTarget();
+	}
+
+	const targets = getTargetsForRegion(region);
+	if (targets.length === 0) {
+		return selectApiTarget();
+	}
+
+	const weighted = buildWeightedTargets(targets);
+	return selectFromWeightedTargets(weighted);
+}
+
+export function hasRegionTargets(region: RegionPreference): boolean {
+	if (region === 'auto') {
+		return TARGET_COLLECTIONS.auto.length > 0;
+	}
+
+	return getTargetsForRegion(region).length > 0;
 }
 
 function parseTargetBase(target: ApiClusterTarget): URL | null {
