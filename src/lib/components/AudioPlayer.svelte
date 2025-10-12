@@ -1239,8 +1239,8 @@
 							<div class="flex items-center gap-2 sm:flex-none">
 								<button
 									onclick={() => lyricsStore.toggle()}
-									class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {$lyricsStore.open
-										? 'border-blue-500 text-white'
+									class="player-toggle-button {$lyricsStore.open
+										? 'player-toggle-button--active'
 										: ''}"
 									aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
 									aria-expanded={$lyricsStore.open}
@@ -1251,8 +1251,8 @@
 								</button>
 								<button
 									onclick={toggleQueuePanel}
-									class="flex items-center gap-2 rounded-full border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-blue-500 hover:text-white {showQueuePanel
-										? 'border-blue-500 text-white'
+									class="player-toggle-button {showQueuePanel
+										? 'player-toggle-button--active'
 										: ''}"
 									aria-label="Toggle queue panel"
 									aria-expanded={showQueuePanel}
@@ -1409,60 +1409,57 @@
 
 <style>
 	.audio-player-glass {
-		background: var(--surface-color, rgba(15, 23, 42, 0.68));
-		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
+		background: transparent;
+		border-color: rgba(148, 163, 184, 0.2);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 30px 80px rgba(2, 6, 23, 0.55),
-			0 4px 18px rgba(15, 23, 42, 0.4),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			0 30px 80px rgba(2, 6, 23, 0.6),
+			0 4px 18px rgba(15, 23, 42, 0.45),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
 
 	.queue-panel {
-		background: var(--surface-color, rgba(15, 23, 42, 0.68));
-		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 155%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 155%));
+		background: transparent;
+		border-color: rgba(148, 163, 184, 0.2);
+		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 8px 24px rgba(2, 6, 23, 0.35),
-			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+			0 8px 24px rgba(2, 6, 23, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
 
 	.ffmpeg-banner {
-		background: var(--surface-color, rgba(15, 23, 42, 0.68));
-		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.6));
-		backdrop-filter: blur(var(--perf-blur-high, 36px)) saturate(var(--perf-saturate, 165%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-high, 36px)) saturate(var(--perf-saturate, 165%));
+		background: transparent;
+		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.7));
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 12px 32px rgba(2, 6, 23, 0.45),
-			0 2px 8px rgba(59, 130, 246, 0.15),
-			inset 0 1px 0 rgba(255, 255, 255, 0.06);
+			0 12px 32px rgba(2, 6, 23, 0.5),
+			0 2px 8px rgba(59, 130, 246, 0.2),
+			inset 0 1px 0 rgba(255, 255, 255, 0.08),
+			inset 0 0 30px rgba(59, 130, 246, 0.08);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
 
 	.download-popup {
-		background: var(--surface-color, rgba(15, 23, 42, 0.68));
-		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(var(--perf-blur-high, 36px)) saturate(var(--perf-saturate, 165%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-high, 36px)) saturate(var(--perf-saturate, 165%));
+		background: transparent;
+		border-color: rgba(148, 163, 184, 0.2);
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 12px 32px rgba(2, 6, 23, 0.45),
-			0 2px 8px rgba(15, 23, 42, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			0 12px 32px rgba(2, 6, 23, 0.5),
+			0 2px 8px rgba(15, 23, 42, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -1563,7 +1560,33 @@
 		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.7)) !important;
 	}
 
-	button.rounded-full.border-blue-500 {
-		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.7)) !important;
+	/* Player toggle buttons (Lyrics, Queue) */
+	.player-toggle-button {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		border-radius: 9999px;
+		border: 1px solid rgba(148, 163, 184, 0.25);
+		background: transparent;
+		backdrop-filter: blur(16px) saturate(140%);
+		-webkit-backdrop-filter: blur(16px) saturate(140%);
+		padding: 0.5rem 0.75rem;
+		font-size: 0.875rem;
+		color: rgba(209, 213, 219, 0.85);
+		transition: 
+			border-color 200ms ease,
+			color 200ms ease,
+			box-shadow 200ms ease;
+	}
+
+	.player-toggle-button:hover {
+		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.6));
+		color: rgba(255, 255, 255, 0.95);
+	}
+
+	.player-toggle-button--active {
+		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.7));
+		color: rgba(255, 255, 255, 0.98);
+		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.15);
 	}
 </style>

@@ -32,6 +32,7 @@
 	let downloadTaskIds = $state(new Map<number, string>());
 	let cancelledIds = $state(new Set<number>());
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
+	const downloadCoverSeperatelyPreference = $derived($userPreferencesStore.downloadCoversSeperately);
 
 	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
 
@@ -139,7 +140,8 @@
 				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
 				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
 				ffmpegAutoTriggered: false,
-				convertAacToMp3: convertAacToMp3Preference
+				convertAacToMp3: convertAacToMp3Preference,
+				downloadCoverSeperately: downloadCoverSeperatelyPreference
 			});
 			downloadUiStore.completeTrackDownload(taskId);
 		} catch (error) {

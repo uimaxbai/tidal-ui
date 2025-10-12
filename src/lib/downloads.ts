@@ -90,7 +90,7 @@ export async function downloadAlbum(
 	quality: AudioQuality,
 	callbacks?: AlbumDownloadCallbacks,
 	preferredArtistName?: string,
-	options?: { mode?: DownloadMode; convertAacToMp3?: boolean }
+	options?: { mode?: DownloadMode; convertAacToMp3?: boolean; downloadCoverSeperately?: boolean }
 ): Promise<void> {
 	const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 	const canonicalAlbum = fetchedAlbum ?? album;
@@ -100,6 +100,7 @@ export async function downloadAlbum(
 	const shouldZip = mode === 'zip' && total > 1;
 	const useCsv = mode === 'csv';
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
+	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
 	const artistName = sanitizeForFilename(
 		preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist'
 	);
@@ -157,7 +158,8 @@ export async function downloadAlbum(
 			convertAacToMp3
 		);
 		await losslessAPI.downloadTrack(track.id, quality, filename, {
-			convertAacToMp3
+			convertAacToMp3,
+			downloadCoverSeperately
 		});
 		completed += 1;
 		callbacks?.onTrackDownloaded?.(completed, total, track);

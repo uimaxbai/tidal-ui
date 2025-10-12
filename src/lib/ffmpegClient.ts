@@ -184,11 +184,15 @@ export async function getFFmpeg(options?: FfmpegLoadOptions): Promise<FFmpegInst
 		loadPromise = (async () => {
 			const FFmpegConstructor = await ensureFFmpegClass();
 			const instance = new FFmpegConstructor();
+			
 			const assets = await ensureAssets(options);
+			
+			// Load with memory optimization for WebAssembly
 			await instance.load({
 				coreURL: assets.coreUrl,
 				wasmURL: assets.wasmUrl
 			});
+			
 			ffmpegInstance = instance;
 			URL.revokeObjectURL(assets.coreUrl);
 			URL.revokeObjectURL(assets.wasmUrl);

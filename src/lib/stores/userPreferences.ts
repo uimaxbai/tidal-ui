@@ -8,6 +8,7 @@ export type PerformanceMode = 'auto' | 'high' | 'medium' | 'low';
 export interface UserPreferencesState {
 	playbackQuality: AudioQuality;
 	convertAacToMp3: boolean;
+	downloadCoversSeperately: boolean;
 	performanceMode: PerformanceMode;
 }
 
@@ -16,6 +17,7 @@ const STORAGE_KEY = 'tidal-ui.userPreferences';
 const DEFAULT_STATE: UserPreferencesState = {
 	playbackQuality: 'HI_RES_LOSSLESS',
 	convertAacToMp3: false,
+	downloadCoversSeperately: false,
 	performanceMode: 'auto'
 };
 
@@ -28,6 +30,7 @@ function parseStoredPreferences(raw: string | null): UserPreferencesState {
 		const parsed = JSON.parse(raw) as Partial<UserPreferencesState>;
 		const quality = parsed?.playbackQuality;
 		const convertFlag = parsed?.convertAacToMp3;
+		const downloadCoversFlag = parsed?.downloadCoversSeperately;
 		const perfMode = parsed?.performanceMode;
 		return {
 			playbackQuality:
@@ -38,6 +41,7 @@ function parseStoredPreferences(raw: string | null): UserPreferencesState {
 					? quality
 					: DEFAULT_STATE.playbackQuality,
 			convertAacToMp3: typeof convertFlag === 'boolean' ? convertFlag : DEFAULT_STATE.convertAacToMp3,
+			downloadCoversSeperately: typeof downloadCoversFlag === 'boolean' ? downloadCoversFlag : DEFAULT_STATE.downloadCoversSeperately,
 			performanceMode:
 				perfMode === 'auto' || perfMode === 'high' || perfMode === 'medium' || perfMode === 'low'
 					? perfMode
@@ -99,6 +103,17 @@ const createUserPreferencesStore = () => {
 		},
 		toggleConvertAacToMp3() {
 			update((state) => ({ ...state, convertAacToMp3: !state.convertAacToMp3 }));
+		},
+		setDownloadCoversSeperately(value: boolean) {
+			update((state) => {
+				if (state.downloadCoversSeperately === value) {
+					return state;
+				}
+				return { ...state, downloadCoversSeperately: value };
+			});
+		},
+		toggleDownloadCoversSeperately() {
+			update((state) => ({ ...state, downloadCoversSeperately: !state.downloadCoversSeperately }));
 		},
 		setPerformanceMode(mode: PerformanceMode) {
 			update((state) => {

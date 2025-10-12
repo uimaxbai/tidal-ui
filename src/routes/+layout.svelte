@@ -120,6 +120,7 @@
 	});
 
 	const convertAacToMp3 = $derived($userPreferencesStore.convertAacToMp3);
+	const downloadCoversSeperately = $derived($userPreferencesStore.downloadCoversSeperately);
 
 	function selectPlaybackQuality(quality: AudioQuality): void {
 		playerStore.setQuality(quality);
@@ -128,6 +129,10 @@
 
 	function toggleAacConversion(): void {
 		userPreferencesStore.toggleConvertAacToMp3();
+	}
+
+	function toggleDownloadCoversSeperately(): void {
+		userPreferencesStore.toggleDownloadCoversSeperately();
 	}
 
 	function setDownloadMode(mode: DownloadMode): void {
@@ -280,7 +285,8 @@
 						onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
 						onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
 						ffmpegAutoTriggered: false,
-						convertAacToMp3
+						convertAacToMp3,
+						downloadCoverSeperately: downloadCoversSeperately
 					});
 					downloadUiStore.completeTrackDownload(taskId);
 				} catch (error) {
@@ -512,6 +518,20 @@
 												{convertAacToMp3 ? 'On' : 'Off'}
 											</span>
 										</button>
+										<button
+											type="button"
+											onclick={toggleDownloadCoversSeperately}
+											class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''}`}
+											aria-pressed={downloadCoversSeperately}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">Download covers separately</span>
+												<span class="glass-option__description">Save cover.jpg alongside audio files.</span>
+											</span>
+											<span class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}>
+												{downloadCoversSeperately ? 'On' : 'Off'}
+											</span>
+										</button>
 									</section>
 									<section class="settings-section settings-section--wide">
 										<p class="section-heading">Queue exports</p>
@@ -741,17 +761,17 @@
 	}
 
 	.glass-panel {
-		background: var(--surface-color, rgba(15, 23, 42, 0.68));
-		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
+		background: transparent;
+		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.2));
 		border-radius: 28px;
-		backdrop-filter: blur(32px) saturate(160%);
-		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow:
-			0 30px 80px rgba(2, 6, 23, 0.55),
-			0 4px 18px rgba(15, 23, 42, 0.4),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			0 30px 80px rgba(2, 6, 23, 0.4),
+			0 4px 18px rgba(15, 23, 42, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.08),
+			inset 0 0 60px rgba(255, 255, 255, 0.02);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -815,16 +835,18 @@
 		width: 2.5rem;
 		height: 2.5rem;
 		border-radius: 999px;
-		border: 1px solid rgba(148, 163, 184, 0.2);
-		background: linear-gradient(135deg, rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.25));
+		border: 1px solid rgba(148, 163, 184, 0.22);
+		background: transparent;
+		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		color: inherit;
 		transition: border-color 160ms ease, transform 180ms ease, box-shadow 180ms ease;
 	}
 
 	.toolbar-icon:hover {
 		transform: translateY(-1px);
-		border-color: rgba(148, 163, 184, 0.38);
-		box-shadow: 0 10px 30px rgba(8, 11, 19, 0.42);
+		border-color: rgba(148, 163, 184, 0.42);
+		box-shadow: 0 10px 30px rgba(8, 11, 19, 0.35);
 	}
 
 	.toolbar-icon__svg {
@@ -838,14 +860,16 @@
 		align-items: center;
 		gap: 0.75rem;
 		border-radius: 999px;
-		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
+		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.2));
 		padding: 0.55rem 0.95rem 0.55rem 0.85rem;
 		font-size: 0.8rem;
 		line-height: 1;
 		font-weight: 600;
 		color: inherit;
 		cursor: pointer;
-		background: linear-gradient(135deg, rgba(15, 23, 42, 0.6), rgba(24, 34, 56, 0.42));
+		background: transparent;
+		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		transition: 
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 160ms ease, 
@@ -853,8 +877,8 @@
 	}
 
 	.toolbar-button:hover {
-		border-color: var(--bloom-accent, rgba(148, 163, 184, 0.3));
-		box-shadow: 0 12px 35px rgba(8, 11, 19, 0.38);
+		border-color: var(--bloom-accent, rgba(148, 163, 184, 0.35));
+		box-shadow: 0 12px 35px rgba(8, 11, 19, 0.32);
 	}
 
 	.toolbar-button.is-active {
@@ -878,8 +902,10 @@
 		text-transform: uppercase;
 		padding: 0.3rem 0.6rem;
 		border-radius: 999px;
-		background: rgba(59, 130, 246, 0.15);
-		border: 1px solid rgba(59, 130, 246, 0.28);
+		background: transparent;
+		backdrop-filter: blur(12px) saturate(130%);
+		-webkit-backdrop-filter: blur(12px) saturate(130%);
+		border: 1px solid rgba(59, 130, 246, 0.35);
 		color: rgba(191, 219, 254, 0.95);
 	}
 
@@ -908,16 +934,20 @@
 		overflow-y: auto;
 		padding: clamp(1rem, 1.8vw, 1.4rem);
 		border-radius: 28px;
-		background: var(--surface-color, rgba(15, 23, 42, 0.95));
-		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(48px) saturate(170%);
-		-webkit-backdrop-filter: blur(48px) saturate(170%);
+		background: rgba(15, 23, 42, 0.75);
+		border: 1px solid rgba(148, 163, 184, 0.25);
+		backdrop-filter: blur(48px) saturate(180%) brightness(1.05);
+		-webkit-backdrop-filter: blur(48px) saturate(180%) brightness(1.05);
 		box-shadow: 
 			0 30px 80px rgba(2, 6, 23, 0.55),
 			0 4px 18px rgba(15, 23, 42, 0.4),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			inset 0 1px 0 rgba(255, 255, 255, 0.08),
+			inset 0 0 60px rgba(255, 255, 255, 0.02);
+		z-index: 100;
+		isolation: isolate;
+		will-change: transform;
+		transform: translateZ(0);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -974,8 +1004,10 @@
 		justify-content: space-between;
 		gap: 0.75rem;
 		border-radius: 14px;
-		border: 1px solid rgba(148, 163, 184, 0.16);
-		background: linear-gradient(145deg, rgba(15, 23, 42, 0.65), rgba(20, 30, 48, 0.45));
+		border: 1px solid rgba(148, 163, 184, 0.18);
+		background: transparent;
+		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
 		padding: 0.6rem 0.75rem;
 		color: inherit;
 		font-size: 0.84rem;
@@ -1001,13 +1033,16 @@
 
 	.glass-option:hover {
 		transform: translateY(-1px);
-		box-shadow: 0 10px 30px rgba(15, 23, 42, 0.3);
+		box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+		border-color: rgba(148, 163, 184, 0.28);
 	}
 
 	.glass-option.is-active {
-		border-color: rgba(59, 130, 246, 0.6);
-		background: linear-gradient(145deg, rgba(37, 99, 235, 0.38), rgba(59, 130, 246, 0.22));
-		box-shadow: 0 15px 35px rgba(59, 130, 246, 0.26);
+		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.65));
+		background: transparent;
+		box-shadow: 
+			0 15px 35px rgba(59, 130, 246, 0.22),
+			inset 0 0 40px rgba(59, 130, 246, 0.08);
 	}
 
 	.glass-option__content {
@@ -1044,14 +1079,18 @@
 		text-transform: uppercase;
 		padding: 0.2rem 0.55rem;
 		border-radius: 999px;
+		background: transparent;
+		backdrop-filter: blur(16px) saturate(140%);
+		-webkit-backdrop-filter: blur(16px) saturate(140%);
 		border: 1px solid rgba(148, 163, 184, 0.45);
 		color: rgba(226, 232, 240, 0.82);
 		flex-shrink: 0;
 	}
 
 	.glass-option__chip.is-active {
-		border-color: rgba(59, 130, 246, 0.65);
-		color: rgba(219, 234, 254, 0.9);
+		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.7));
+		color: rgba(219, 234, 254, 0.95);
+		box-shadow: inset 0 0 20px rgba(59, 130, 246, 0.15);
 	}
 
 	.settings-section--bordered {
@@ -1071,8 +1110,10 @@
 		justify-content: space-between;
 		gap: 1rem;
 		border-radius: 18px;
-		border: 1px solid rgba(148, 163, 184, 0.18);
-		background: linear-gradient(140deg, rgba(15, 23, 42, 0.65), rgba(17, 25, 44, 0.52));
+		border: 1px solid rgba(148, 163, 184, 0.2);
+		background: transparent;
+		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
 		padding: 0.8rem 1rem;
 		font-size: 0.86rem;
 		font-weight: 600;
@@ -1088,8 +1129,8 @@
 
 	.glass-action:hover:not(:disabled) {
 		transform: translateY(-1px);
-		border-color: rgba(148, 163, 184, 0.3);
-		box-shadow: 0 12px 35px rgba(8, 11, 19, 0.38);
+		border-color: rgba(148, 163, 184, 0.35);
+		box-shadow: 0 12px 35px rgba(8, 11, 19, 0.32);
 	}
 
 	.glass-action__label {
@@ -1131,8 +1172,9 @@
 		align-items: center;
 		justify-content: center;
 		gap: 2rem;
-		background: rgba(6, 11, 22, 0.72);
-		backdrop-filter: blur(18px);
+		background: transparent;
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		z-index: 50;
 	}
 
@@ -1143,7 +1185,10 @@
 		right: 0;
 		height: 3px;
 		overflow: hidden;
-		background: rgba(241, 245, 249, 0.08);
+		background: transparent;
+		backdrop-filter: blur(8px) saturate(120%);
+		-webkit-backdrop-filter: blur(8px) saturate(120%);
+		box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
 	}
 
 	.navigation-progress {
@@ -1152,7 +1197,13 @@
 		bottom: 0;
 		left: -40%;
 		width: 60%;
-		background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.9), transparent);
+		background: linear-gradient(
+			90deg,
+			transparent,
+			var(--bloom-accent, rgba(96, 165, 250, 0.9)),
+			transparent
+		);
+		box-shadow: 0 0 12px var(--bloom-accent, rgba(96, 165, 250, 0.5));
 		animation: shimmer 1.2s ease-in-out infinite;
 	}
 

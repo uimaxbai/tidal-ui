@@ -559,8 +559,9 @@
 		align-items: center;
 		justify-content: center;
 		padding: 1rem;
-		background: rgba(9, 12, 19, 0.75);
-		backdrop-filter: blur(6px);
+		background: transparent;
+		backdrop-filter: blur(var(--perf-blur-low, 12px)) saturate(120%);
+		-webkit-backdrop-filter: blur(var(--perf-blur-low, 12px)) saturate(120%);
 		z-index: 60;
 	}
 
@@ -570,19 +571,18 @@
 		display: flex;
 		flex-direction: column;
 		border-radius: 1.25rem;
-		background: var(--surface-color, rgba(15, 23, 42, 0.68));
-		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(32px) saturate(160%);
-		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		background: transparent;
+		border: 1px solid rgba(148, 163, 184, 0.25);
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 30px 80px rgba(2, 6, 23, 0.55),
-			0 4px 18px rgba(15, 23, 42, 0.4),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			0 30px 80px rgba(2, 6, 23, 0.6),
+			0 4px 18px rgba(15, 23, 42, 0.45),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 		overflow: hidden;
 		transition:
 			width 180ms ease,
 			height 180ms ease,
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -636,13 +636,16 @@
 		justify-content: center;
 		padding: 0.4rem;
 		border-radius: 9999px;
-		border: 1px solid rgba(71, 85, 105, 0.55);
-		background: rgba(30, 41, 59, 0.7);
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: transparent;
+		backdrop-filter: blur(16px) saturate(140%);
+		-webkit-backdrop-filter: blur(16px) saturate(140%);
 		color: #e2e8f0;
 		transition:
 			background 160ms ease,
 			border-color 160ms ease,
-			transform 160ms ease;
+			transform 160ms ease,
+			box-shadow 160ms ease;
 	}
 
 	.lyrics-icon-button[disabled] {
@@ -651,8 +654,8 @@
 	}
 
 	.lyrics-icon-button:not([disabled]):hover {
-		background: rgba(56, 189, 248, 0.18);
-		border-color: rgba(96, 165, 250, 0.6);
+		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.7));
+		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.12);
 		transform: translateY(-1px);
 	}
 
@@ -739,21 +742,24 @@
 	}
 
 	.lyrics-retry {
-		border: 1px solid rgba(96, 165, 250, 0.6);
-		background: rgba(56, 189, 248, 0.2);
+		border: 1px solid var(--bloom-accent, rgba(96, 165, 250, 0.7));
+		background: transparent;
+		backdrop-filter: blur(16px) saturate(140%);
+		-webkit-backdrop-filter: blur(16px) saturate(140%);
 		color: #f0f9ff;
 		border-radius: 9999px;
 		padding: 0.45rem 1.25rem;
 		font-size: 0.85rem;
 		font-weight: 500;
+		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.1);
 		transition:
-			background 160ms ease,
-			border-color 160ms ease;
+			border-color 160ms ease,
+			box-shadow 160ms ease;
 	}
 
 	.lyrics-retry:hover {
-		background: rgba(96, 165, 250, 0.3);
-		border-color: rgba(191, 219, 254, 0.8);
+		border-color: var(--bloom-accent, rgba(191, 219, 254, 0.9));
+		box-shadow: inset 0 0 30px rgba(96, 165, 250, 0.18);
 	}
 
 	.spinner {

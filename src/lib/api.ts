@@ -50,6 +50,7 @@ export interface DownloadTrackOptions {
 	onFfmpegError?: (error: unknown) => void;
 	ffmpegAutoTriggered?: boolean;
 	convertAacToMp3?: boolean;
+	downloadCoverSeperately?: boolean;
 }
 
 class LosslessAPI {
@@ -998,6 +999,32 @@ class LosslessAPI {
 		}
 	}
 
+	private validateImageData(data: Uint8Array): boolean {
+		// Check if data is long enough to contain magic bytes
+		if (!data || data.length < 4) {
+			return false;
+		}
+
+		// Check for JPEG magic bytes (FF D8 FF)
+		if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+			return true;
+		}
+
+		// Check for PNG magic bytes (89 50 4E 47)
+		if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+			return true;
+		}
+
+		// Check for WebP magic bytes (52 49 46 46 ... 57 45 42 50)
+		if (data.length >= 12 &&
+		    data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
+		    data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50) {
+			return true;
+		}
+
+		return false;
+	}
+
 	private buildMetadataEntries(lookup: TrackLookup): Array<[string, string]> {
 		const entries: Array<[string, string]> = [];
 		const { track } = lookup;
@@ -1126,6 +1153,8 @@ class LosslessAPI {
 		options?.onFfmpegStart?.();
 
 		let ffmpeg: Awaited<ReturnType<typeof ffmpegModule.getFFmpeg>>;
+		let progressHandler: ((data: { progress: number }) => void) | null = null;
+		
 		try {
 			const loadOptions: Parameters<typeof ffmpegModule.getFFmpeg>[0] = {
 				signal: options?.signal,
@@ -1144,6 +1173,15 @@ class LosslessAPI {
 				}
 			};
 			ffmpeg = await ffmpegModule.getFFmpeg(loadOptions);
+			
+			// Set up progress tracking for this specific job
+			progressHandler = ({ progress }: { progress: number }) => {
+				if (options?.onProgress && progress >= 0) {
+					options.onProgress({ stage: 'embedding', progress: Math.min(1, progress) });
+				}
+			};
+			ffmpeg.on('progress', progressHandler);
+			
 			options?.onFfmpegProgress?.(1);
 			options?.onFfmpegComplete?.();
 		} catch (loadError) {
@@ -1161,78 +1199,175 @@ class LosslessAPI {
 		let coverWritten = false;
 
 		try {
-			const setProgress = (
-				ffmpeg as unknown as {
-					setProgress?: (cb: (data: { ratio?: number }) => void) => void;
-				}
-			).setProgress;
-			if (typeof setProgress === 'function') {
-				setProgress(({ ratio }) => {
-					if (ratio != null && options?.onProgress) {
-						const normalised = Math.max(0, Math.min(1, ratio));
-						options.onProgress({ stage: 'embedding', progress: normalised });
-					}
-				});
-			}
 			if (options?.onProgress) {
 				options.onProgress({ stage: 'embedding', progress: 0 });
 			}
-			await ffmpeg.writeFile(inputName, await ffmpegModule.fetchFile(blob));
+			
+			// Convert blob to Uint8Array to ensure proper memory handling
+			const arrayBuffer = await blob.arrayBuffer();
+			const uint8Array = new Uint8Array(arrayBuffer);
+			
+			await ffmpeg.writeFile(inputName, uint8Array);
 
 			const artworkId = lookup.track.album?.cover;
+			
 			if (artworkId) {
-				const coverUrl = this.getCoverUrl(artworkId, '1280');
-				try {
-					const coverResponse = await fetch(coverUrl);
-					if (coverResponse.ok) {
-						const coverBlob = await coverResponse.blob();
-						await ffmpeg.writeFile(coverName, await ffmpegModule.fetchFile(coverBlob));
+				// Try multiple sizes as fallback
+				const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
+				let coverFetchSuccess = false;
+				
+				for (const size of coverSizes) {
+					if (coverFetchSuccess) break;
+					
+					const coverUrl = this.getCoverUrl(artworkId, size);
+					
+					// Try two fetch strategies: with headers, then without
+					const fetchStrategies = [
+						{
+							name: 'with-headers',
+							options: {
+								method: 'GET' as const,
+								headers: {
+									'Accept': 'image/jpeg,image/jpg,image/png,image/*',
+									'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+								},
+								signal: AbortSignal.timeout(10000)
+							}
+						},
+						{
+							name: 'simple',
+							options: {
+								method: 'GET' as const,
+								signal: AbortSignal.timeout(10000)
+							}
+						}
+					];
+					
+					for (const strategy of fetchStrategies) {
+						if (coverFetchSuccess) break;
+					
+					try {
+						const coverResponse = await fetch(coverUrl, strategy.options);
+						
+						if (!coverResponse.ok) {
+							continue; // Try next size
+						}
+						
+						const contentType = coverResponse.headers.get('Content-Type');
+						const contentLength = coverResponse.headers.get('Content-Length');
+						
+						// Check if Content-Length indicates empty response
+						if (contentLength && parseInt(contentLength, 10) === 0) {
+							continue; // Try next size
+						}
+						
+						if (contentType && !contentType.startsWith('image/')) {
+							continue; // Try next size
+						}
+						
+						// Try arrayBuffer directly instead of blob first (more reliable)
+						let coverArrayBuffer: ArrayBuffer;
+						
+						try {
+							coverArrayBuffer = await coverResponse.arrayBuffer();
+						} catch {
+							continue; // Try next size
+						}
+						
+						if (!coverArrayBuffer || coverArrayBuffer.byteLength === 0) {
+							continue; // Try next size
+						}
+						
+						const coverUint8Array = new Uint8Array(coverArrayBuffer);
+						
+						// Verify we have actual image data (check for JPEG/PNG magic bytes)
+						const isValidImage = this.validateImageData(coverUint8Array);
+						if (!isValidImage) {
+							continue; // Try next size
+						}
+						
+						await ffmpeg.writeFile(coverName, coverUint8Array);
 						coverWritten = true;
+						coverFetchSuccess = true;
+						break; // Success, exit strategy loop
+						
+					} catch {
+						// Continue to next strategy
 					}
-				} catch (artworkError) {
-					console.warn('Failed to fetch cover art for metadata embedding', artworkError);
-				}
+					} // End strategy loop
+				} // End size loop
 			}
 
 			const args: string[] = ['-i', inputName];
 			if (coverWritten) {
 				args.push('-i', coverName);
 			}
-
+			
+			// Map streams FIRST (matching working command pattern)
+			// Working command: -map 0:a -map 1 -codec copy
+			if (coverWritten) {
+				args.push('-map', '0:a');  // Map audio stream from first input
+				args.push('-map', '1');    // Map entire second input (cover image)
+			} else {
+				args.push('-map', '0:a');
+			}
+			
+			// Codec settings
+			if (shouldConvertToMp3) {
+				args.push('-codec:a', 'libmp3lame');
+				args.push('-b:a', targetBitrate);
+			} else {
+				args.push('-codec', 'copy');
+			}
+			
+			// Track metadata (title, artist, album, etc.)
 			for (const [key, value] of this.buildMetadataEntries(lookup)) {
 				args.push('-metadata', `${key}=${value}`);
 			}
-
-			args.push('-map', '0:a:0');
+			
+			// Cover-specific metadata and disposition (matching working command)
 			if (coverWritten) {
-				args.push('-map', '1:v:0');
-			}
-
-			if (shouldConvertToMp3) {
-				args.push('-c:a', 'libmp3lame');
-				args.push('-b:a', targetBitrate);
-			}
-
-			if (coverWritten) {
-				if (!shouldConvertToMp3) {
-					args.push('-c:a', 'copy');
-				}
-				args.push('-c:v', 'mjpeg');
 				args.push('-metadata:s:v', 'title=Album cover');
 				args.push('-metadata:s:v', 'comment=Cover (front)');
 				args.push('-disposition:v', 'attached_pic');
-			} else if (!shouldConvertToMp3) {
-				args.push('-c', 'copy');
 			}
-
-			args.push('-map_metadata', '0');
+			
+			// MP3-specific settings
 			if (shouldConvertToMp3) {
 				args.push('-id3v2_version', '3');
+				args.push('-write_xing', '0');
 			}
 
 			args.push(outputName);
-
-			await ffmpeg.exec(args);
+			
+			// Execute FFmpeg with timeout protection (3 minutes for large files)
+			const timeoutMs = 180000; // 3 minutes
+			const execPromise = ffmpeg.exec(args);
+			const timeoutPromise = new Promise<never>((_, reject) => {
+				setTimeout(() => {
+					reject(new Error(`FFmpeg execution timeout - processing took longer than 3 minutes. Try using "Download covers separately" option instead.`));
+				}, timeoutMs);
+			});
+			
+			try {
+				await Promise.race([execPromise, timeoutPromise]);
+			} catch (execError) {
+				// Check if it's a timeout
+				const errorMessage = execError instanceof Error ? execError.message : String(execError);
+				if (errorMessage.includes('timeout')) {
+					throw new Error('FFmpeg timeout: Processing took too long. Enable "Download covers separately" option for FLAC files.');
+				}
+				
+				// Check if it's a memory error
+				if (errorMessage.includes('memory access out of bounds') || 
+				    errorMessage.includes('RuntimeError') ||
+				    errorMessage.includes('out of memory')) {
+					throw new Error('FFmpeg memory error: File may be too large for browser processing. Try a smaller file or download without metadata embedding.');
+				}
+				
+				throw execError;
+			}
+			
 			const outputData = await ffmpeg.readFile(outputName);
 			if (options?.onProgress) {
 				options.onProgress({ stage: 'embedding', progress: 1 });
@@ -1250,27 +1385,46 @@ class LosslessAPI {
 				outputExtension,
 				contentType ?? (blob.type && blob.type.length > 0 ? blob.type : undefined)
 			);
-			return new Blob([blobArray], { type: mimeType });
+			const resultBlob = new Blob([blobArray], { type: mimeType });
+			return resultBlob;
 		} catch (error) {
-			console.warn('FFmpeg execution failed', error);
-			options?.onFfmpegError?.(error);
+			// Check if it's a memory error and provide helpful message
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			if (errorMessage.includes('memory access out of bounds') || 
+			    errorMessage.includes('RuntimeError') ||
+			    errorMessage.includes('out of memory') ||
+			    errorMessage.includes('memory error')) {
+				options?.onFfmpegError?.(new Error('Memory error: File processed without metadata due to browser limitations'));
+			} else {
+				options?.onFfmpegError?.(error);
+			}
+			
+			// Return null to fallback to original blob (handled by caller)
 			return null;
 		} finally {
-			try {
-				await ffmpeg.deleteFile(inputName);
-			} catch (cleanupErr) {
-				console.debug('Failed to delete FFmpeg input file', cleanupErr);
+			// Remove progress handler
+			if (progressHandler && ffmpeg) {
+				ffmpeg.off('progress', progressHandler);
 			}
-			try {
-				await ffmpeg.deleteFile(outputName);
-			} catch (cleanupErr) {
-				console.debug('Failed to delete FFmpeg output file', cleanupErr);
-			}
-			if (coverWritten) {
+			
+			// Clean up temporary files
+			if (ffmpeg) {
 				try {
-					await ffmpeg.deleteFile(coverName);
+					await ffmpeg.deleteFile(inputName);
 				} catch (cleanupErr) {
-					console.debug('Failed to delete FFmpeg cover file', cleanupErr);
+					console.debug('Failed to delete FFmpeg input file', cleanupErr);
+				}
+				try {
+					await ffmpeg.deleteFile(outputName);
+				} catch (cleanupErr) {
+					console.debug('Failed to delete FFmpeg output file', cleanupErr);
+				}
+				if (coverWritten) {
+					try {
+						await ffmpeg.deleteFile(coverName);
+					} catch (cleanupErr) {
+						console.debug('Failed to delete FFmpeg cover file', cleanupErr);
+					}
 				}
 			}
 		}
@@ -1468,6 +1622,122 @@ class LosslessAPI {
 			a.click();
 			document.body.removeChild(a);
 			URL.revokeObjectURL(url);
+
+			// Download cover separately if enabled
+			if (options?.downloadCoverSeperately) {
+				try {
+					const metadata = await this.getPreferredTrackMetadata(trackId, quality);
+					const coverId = metadata.track.album?.cover;
+					if (coverId) {
+						console.log('[Cover Download] Fetching cover for separate download...');
+						
+						// Try multiple sizes as fallback
+						const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
+						let coverDownloadSuccess = false;
+						
+						for (const size of coverSizes) {
+							if (coverDownloadSuccess) break;
+							
+							const coverUrl = this.getCoverUrl(coverId, size);
+							console.log(`[Cover Download] Attempting size ${size}:`, coverUrl);
+							
+							// Try two fetch strategies: with headers, then without
+							const fetchStrategies = [
+								{
+									name: 'with-headers',
+									options: {
+										method: 'GET' as const,
+										headers: {
+											'Accept': 'image/jpeg,image/jpg,image/png,image/*',
+											'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+										},
+										signal: AbortSignal.timeout(10000)
+									}
+								},
+								{
+									name: 'simple',
+									options: {
+										method: 'GET' as const,
+										signal: AbortSignal.timeout(10000)
+									}
+								}
+							];
+							
+							for (const strategy of fetchStrategies) {
+								if (coverDownloadSuccess) break;
+								
+								console.log(`[Cover Download] Trying strategy: ${strategy.name}`);
+							
+							try {
+								const coverResponse = await fetch(coverUrl, strategy.options);
+								
+								console.log(`[Cover Download] Response status: ${coverResponse.status}, Content-Length: ${coverResponse.headers.get('Content-Length')}`);
+								
+								if (!coverResponse.ok) {
+									console.warn(`[Cover Download] Failed with status ${coverResponse.status} for size ${size}`);
+									continue;
+								}
+								
+								const contentType = coverResponse.headers.get('Content-Type');
+								const contentLength = coverResponse.headers.get('Content-Length');
+								
+								if (contentLength && parseInt(contentLength, 10) === 0) {
+									console.warn(`[Cover Download] Content-Length is 0 for size ${size}`);
+									continue;
+								}
+								
+								if (contentType && !contentType.startsWith('image/')) {
+									console.warn(`[Cover Download] Invalid content type: ${contentType}`);
+									continue;
+								}
+								
+								// Use arrayBuffer directly for more reliable data retrieval
+								const arrayBuffer = await coverResponse.arrayBuffer();
+								
+								if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+									console.warn(`[Cover Download] Empty array buffer for size ${size}`);
+									continue;
+								}
+								
+								const uint8Array = new Uint8Array(arrayBuffer);
+								console.log(`[Cover Download] Received ${uint8Array.length} bytes`);
+								console.log(`[Cover Download] First 16 bytes:`, Array.from(uint8Array.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+								
+								// Validate image data
+								if (!this.validateImageData(uint8Array)) {
+									console.warn(`[Cover Download] Invalid image data for size ${size}`);
+									continue;
+								}
+								
+								// Create blob from validated data
+								const coverBlob = new Blob([uint8Array], { type: 'image/jpeg' });
+								
+								const coverObjectUrl = URL.createObjectURL(coverBlob);
+								const coverLink = document.createElement('a');
+								coverLink.href = coverObjectUrl;
+								coverLink.download = 'cover.jpg';
+								document.body.appendChild(coverLink);
+								coverLink.click();
+								document.body.removeChild(coverLink);
+								URL.revokeObjectURL(coverObjectUrl);
+								
+								coverDownloadSuccess = true;
+								console.log(`[Cover Download] Successfully downloaded (${size}x${size}, strategy: ${strategy.name})`);
+								break;
+							} catch (sizeError) {
+								console.warn(`[Cover Download] Failed at size ${size} with strategy ${strategy.name}:`, sizeError);
+							}
+							} // End strategy loop
+						} // End size loop
+						
+						if (!coverDownloadSuccess) {
+							console.warn('[Cover Download] All attempts failed');
+						}
+					}
+				} catch (coverError) {
+					console.warn('Failed to download cover separately:', coverError);
+				}
+			}
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') {
 				throw error;

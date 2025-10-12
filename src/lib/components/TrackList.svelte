@@ -20,6 +20,7 @@
 	let cancelledIds = $state(new Set<number>());
 	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
+	const downloadCoverSeperatelyPreference = $derived($userPreferencesStore.downloadCoversSeperately);
 
 	function getDisplayTags(tags?: string[] | null): string[] {
 		if (!tags) return [];
@@ -110,7 +111,8 @@
 				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
 				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
 				ffmpegAutoTriggered: false,
-				convertAacToMp3: convertAacToMp3Preference
+				convertAacToMp3: convertAacToMp3Preference,
+				downloadCoverSeperately: downloadCoverSeperatelyPreference
 			});
 			downloadUiStore.completeTrackDownload(taskId);
 		} catch (error) {

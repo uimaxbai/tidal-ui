@@ -312,12 +312,14 @@
 		position: absolute;
 		inset: -25vmax;
 		background:
-			radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--bloom-accent) 90%, transparent) 0%, transparent 60%),
-			radial-gradient(circle at 80% 30%, color-mix(in srgb, var(--bloom-secondary) 95%, transparent) 0%, transparent 65%),
-			radial-gradient(circle at 50% 80%, color-mix(in srgb, var(--bloom-primary) 85%, transparent) 0%, transparent 70%),
-			radial-gradient(circle at 65% 50%, color-mix(in srgb, var(--bloom-tertiary, var(--bloom-accent)) 75%, transparent) 0%, transparent 55%),
-			radial-gradient(circle at 30% 60%, color-mix(in srgb, var(--bloom-quaternary, var(--bloom-secondary)) 80%, transparent) 0%, transparent 58%);
-		filter: blur(90px) saturate(130%);
+			radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--bloom-accent) 95%, transparent) 0%, transparent 55%),
+			radial-gradient(circle at 80% 30%, color-mix(in srgb, var(--bloom-secondary) 98%, transparent) 0%, transparent 60%),
+			radial-gradient(circle at 50% 80%, color-mix(in srgb, var(--bloom-primary) 88%, transparent) 0%, transparent 65%),
+			radial-gradient(circle at 65% 50%, color-mix(in srgb, var(--bloom-tertiary, var(--bloom-accent)) 82%, transparent) 0%, transparent 50%),
+			radial-gradient(circle at 30% 60%, color-mix(in srgb, var(--bloom-quaternary, var(--bloom-secondary)) 85%, transparent) 0%, transparent 53%),
+			radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--bloom-glow, var(--bloom-accent)) 75%, transparent) 0%, transparent 48%),
+			radial-gradient(circle at 10% 90%, color-mix(in srgb, var(--bloom-highlight, var(--bloom-secondary)) 70%, transparent) 0%, transparent 45%);
+		filter: blur(100px) saturate(140%);
 		transform-origin: center;
 		animation: bloom-rotate 60s ease-in-out infinite;
 		animation-play-state: paused;
@@ -328,10 +330,11 @@
 	/* Medium performance: reduce gradients and blur */
 	.dynamic-background[data-performance='medium'] .dynamic-background__gradient {
 		background:
-			radial-gradient(circle at 25% 25%, color-mix(in srgb, var(--bloom-accent) 85%, transparent) 0%, transparent 65%),
-			radial-gradient(circle at 75% 35%, color-mix(in srgb, var(--bloom-secondary) 90%, transparent) 0%, transparent 70%),
-			radial-gradient(circle at 50% 75%, color-mix(in srgb, var(--bloom-primary) 80%, transparent) 0%, transparent 75%);
-		filter: blur(60px) saturate(120%);
+			radial-gradient(circle at 25% 25%, color-mix(in srgb, var(--bloom-accent) 88%, transparent) 0%, transparent 62%),
+			radial-gradient(circle at 75% 35%, color-mix(in srgb, var(--bloom-secondary) 92%, transparent) 0%, transparent 68%),
+			radial-gradient(circle at 50% 75%, color-mix(in srgb, var(--bloom-primary) 82%, transparent) 0%, transparent 72%),
+			radial-gradient(circle at 15% 85%, color-mix(in srgb, var(--bloom-glow, var(--bloom-accent)) 70%, transparent) 0%, transparent 50%);
+		filter: blur(70px) saturate(125%);
 	}
 
 	/* Low performance: minimal gradients and blur */

@@ -41,6 +41,7 @@
 	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
+	const downloadCoverSeperatelyPreference = $derived($userPreferencesStore.downloadCoversSeperately);
 	let selectedRegion = $state<RegionOption>('auto');
 	let isRegionSelectorOpen = $state(false);
 
@@ -199,7 +200,8 @@
 				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
 				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
 				ffmpegAutoTriggered: false,
-				convertAacToMp3: convertAacToMp3Preference
+				convertAacToMp3: convertAacToMp3Preference,
+				downloadCoverSeperately: downloadCoverSeperatelyPreference
 			});
 			downloadUiStore.completeTrackDownload(taskId);
 		} catch (err) {
@@ -266,7 +268,7 @@
 					}
 				},
 				album.artist?.name,
-				{ mode: albumDownloadMode, convertAacToMp3: convertAacToMp3Preference }
+				{ mode: albumDownloadMode, convertAacToMp3: convertAacToMp3Preference, downloadCoverSeperately: downloadCoverSeperatelyPreference }
 			);
 			const finalState = albumDownloadStates[album.id];
 			patchAlbumDownloadState(album.id, {
@@ -829,42 +831,39 @@
 
 <style>
 	.search-glass {
-		background: var(--surface-color, rgba(15, 23, 42, 0.68));
-		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(32px) saturate(160%);
-		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		background: transparent;
+		border-color: rgba(148, 163, 184, 0.2);
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 10px 30px rgba(2, 6, 23, 0.35),
-			0 2px 8px rgba(15, 23, 42, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			0 10px 30px rgba(2, 6, 23, 0.4),
+			0 2px 8px rgba(15, 23, 42, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
 
 	.track-glass {
-		background: var(--surface-color, rgba(15, 23, 42, 0.55));
-		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.12));
-		backdrop-filter: blur(24px) saturate(150%);
-		-webkit-backdrop-filter: blur(24px) saturate(150%);
+		background: transparent;
+		border: 1px solid rgba(148, 163, 184, 0.15);
+		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 4px 12px rgba(2, 6, 23, 0.25),
-			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+			0 4px 12px rgba(2, 6, 23, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease,
 			filter 0.2s ease;
 	}
 
 	.region-selector {
-		background: var(--surface-color, rgba(15, 23, 42, 0.68));
-		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(32px) saturate(160%);
-		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		background: transparent;
+		border-color: rgba(148, 163, 184, 0.2);
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -932,39 +931,38 @@
 
 	/* News container acrylic styling */
 	.news-container {
-		background: var(--surface-color, rgba(15, 23, 42, 0.55));
-		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(24px) saturate(150%);
-		-webkit-backdrop-filter: blur(24px) saturate(150%);
+		background: transparent;
+		border-color: rgba(148, 163, 184, 0.2);
+		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 8px 24px rgba(2, 6, 23, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+			0 8px 24px rgba(2, 6, 23, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
 
 	/* News card acrylic styling */
 	.news-card {
-		background: var(--surface-color, rgba(15, 23, 42, 0.45));
-		border-color: var(--surface-border, rgba(148, 163, 184, 0.15));
-		backdrop-filter: blur(20px) saturate(145%);
-		-webkit-backdrop-filter: blur(20px) saturate(145%);
+		background: transparent;
+		border-color: rgba(148, 163, 184, 0.18);
+		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
-			0 4px 12px rgba(2, 6, 23, 0.25),
-			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+			0 4px 12px rgba(2, 6, 23, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease,
 			transform 0.2s ease;
 	}
 
 	.news-card:hover {
+		border-color: rgba(148, 163, 184, 0.3);
 		box-shadow: 
-			0 6px 18px rgba(2, 6, 23, 0.35),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			0 6px 18px rgba(2, 6, 23, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 	}
 
 	/* Improved contrast for grey text */
