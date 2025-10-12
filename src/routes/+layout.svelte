@@ -502,7 +502,7 @@
 											{/each}
 										</div>
 									</section>
-									<section class="settings-section">
+									<section class="settings-section settings-section--wide">
 										<p class="section-heading">Conversions</p>
 										<button
 											type="button"
@@ -520,33 +520,12 @@
 										</button>
 									</section>
 									<section class="settings-section settings-section--wide">
-										<p class="section-heading">Performance Mode</p>
-										<div class="option-grid">
-											{#each PERFORMANCE_OPTIONS as option}
-												<button
-													type="button"
-													onclick={() => setPerformanceMode(option.value)}
-													class={`glass-option ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
-													aria-pressed={option.value === $userPreferencesStore.performanceMode}
-												>
-													<div class="glass-option__content">
-														<span class="glass-option__label">{option.label}</span>
-														<span class="glass-option__description">{option.description}</span>
-													</div>
-													{#if option.value === $userPreferencesStore.performanceMode}
-														<Check size={16} class="glass-option__check" />
-													{/if}
-												</button>
-											{/each}
-										</div>
-									</section>
-									<section class="settings-section">
 										<p class="section-heading">Queue exports</p>
-										<div class="option-grid">
+										<div class="option-grid option-grid--compact">
 											<button
 												type="button"
 												onclick={() => setDownloadMode('individual')}
-												class={`glass-option ${downloadMode === 'individual' ? 'is-active' : ''}`}
+												class={`glass-option glass-option--compact ${downloadMode === 'individual' ? 'is-active' : ''}`}
 												aria-pressed={downloadMode === 'individual'}
 											>
 												<span class="glass-option__content">
@@ -562,7 +541,7 @@
 											<button
 												type="button"
 												onclick={() => setDownloadMode('zip')}
-												class={`glass-option ${downloadMode === 'zip' ? 'is-active' : ''}`}
+												class={`glass-option glass-option--compact ${downloadMode === 'zip' ? 'is-active' : ''}`}
 												aria-pressed={downloadMode === 'zip'}
 											>
 												<span class="glass-option__content">
@@ -578,7 +557,7 @@
 											<button
 												type="button"
 												onclick={() => setDownloadMode('csv')}
-												class={`glass-option ${downloadMode === 'csv' ? 'is-active' : ''}`}
+												class={`glass-option glass-option--compact ${downloadMode === 'csv' ? 'is-active' : ''}`}
 												aria-pressed={downloadMode === 'csv'}
 											>
 												<span class="glass-option__content">
@@ -591,6 +570,26 @@
 													<Check size={14} class="glass-option__check" />
 												{/if}
 											</button>
+										</div>
+									</section>
+									<section class="settings-section settings-section--wide">
+										<p class="section-heading">Performance Mode</p>
+										<div class="option-grid option-grid--compact">
+											{#each PERFORMANCE_OPTIONS as option}
+												<button
+													type="button"
+													onclick={() => setPerformanceMode(option.value)}
+													class={`glass-option glass-option--compact ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
+													aria-pressed={option.value === $userPreferencesStore.performanceMode}
+												>
+													<div class="glass-option__content">
+														<span class="glass-option__label">{option.label}</span>
+													</div>
+													{#if option.value === $userPreferencesStore.performanceMode}
+														<Check size={14} class="glass-option__check" />
+													{/if}
+												</button>
+											{/each}
 										</div>
 									</section>
 									<section class="settings-section settings-section--bordered">
@@ -913,8 +912,8 @@
 		margin: 0;
 		max-height: calc(100vh - var(--settings-menu-offset, 88px) - 16rem);
 		overflow-y: auto;
-		padding: clamp(1.25rem, 2vw, 1.75rem);
-		border-radius: 32px;
+		padding: clamp(1rem, 1.8vw, 1.4rem);
+		border-radius: 28px;
 		background: var(--surface-color, rgba(15, 23, 42, 0.95));
 		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.18));
 		backdrop-filter: blur(48px) saturate(170%);
@@ -941,13 +940,13 @@
 
 	.settings-grid {
 		display: grid;
-		gap: 1.25rem;
+		gap: 1rem;
 	}
 
 	.settings-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.8rem;
+		gap: 0.6rem;
 	}
 
 	.settings-section--wide {
@@ -955,9 +954,9 @@
 	}
 
 	.section-heading {
-		font-size: 0.7rem;
+		font-size: 0.68rem;
 		text-transform: uppercase;
-		letter-spacing: 0.2em;
+		letter-spacing: 0.18em;
 		font-weight: 700;
 		margin: 0;
 		color: rgba(203, 213, 225, 0.7);
@@ -965,7 +964,13 @@
 
 	.option-grid {
 		display: grid;
-		gap: 0.75rem;
+		gap: 0.5rem;
+	}
+
+	.option-grid--compact {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: 0.4rem;
 	}
 
 	.glass-option {
@@ -973,16 +978,31 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 1rem;
-		border-radius: 18px;
+		gap: 0.75rem;
+		border-radius: 14px;
 		border: 1px solid rgba(148, 163, 184, 0.16);
 		background: linear-gradient(145deg, rgba(15, 23, 42, 0.65), rgba(20, 30, 48, 0.45));
-		padding: 0.75rem 0.9rem;
+		padding: 0.6rem 0.75rem;
 		color: inherit;
-		font-size: 0.86rem;
+		font-size: 0.84rem;
 		cursor: pointer;
 		text-align: left;
 		transition: border-color 140ms ease, transform 140ms ease, box-shadow 160ms ease;
+	}
+
+	.glass-option--compact {
+		padding: 0.5rem 0.65rem;
+		gap: 0.5rem;
+		border-radius: 12px;
+	}
+
+	.glass-option--compact .glass-option__label {
+		font-size: 0.8rem;
+		font-weight: 600;
+	}
+
+	.glass-option--compact .glass-option__description {
+		display: none;
 	}
 
 	.glass-option:hover {
@@ -999,36 +1019,40 @@
 	.glass-option__content {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: 0.25rem;
 	}
 
 	.glass-option__label {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.55rem;
+		gap: 0.5rem;
 		font-weight: 600;
+		font-size: 0.84rem;
 	}
 
 	.glass-option__description {
-		font-size: 0.72rem;
-		opacity: 0.65;
+		font-size: 0.7rem;
+		opacity: 0.62;
+		line-height: 1.3;
 	}
 
 	.glass-option__check {
 		color: rgba(191, 219, 254, 0.95);
+		flex-shrink: 0;
 	}
 
 	.glass-option__chip {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 0.68rem;
-		letter-spacing: 0.18em;
+		font-size: 0.66rem;
+		letter-spacing: 0.16em;
 		text-transform: uppercase;
-		padding: 0.25rem 0.65rem;
+		padding: 0.2rem 0.55rem;
 		border-radius: 999px;
 		border: 1px solid rgba(148, 163, 184, 0.45);
 		color: rgba(226, 232, 240, 0.82);
+		flex-shrink: 0;
 	}
 
 	.glass-option__chip.is-active {
@@ -1037,14 +1061,14 @@
 	}
 
 	.settings-section--bordered {
-		padding-top: 1rem;
+		padding-top: 0.75rem;
 		border-top: 1px solid rgba(148, 163, 184, 0.12);
 	}
 
 	.actions-column {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: 0.6rem;
 	}
 
 	.glass-action {
@@ -1211,11 +1235,13 @@
 			grid-column: span 2;
 		}
 
+		.option-grid--compact {
+			grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		}
+
 		.settings-section--bordered {
-			border-left: 1px solid rgba(148, 163, 184, 0.12);
 			border-top: none;
 			padding-top: 0;
-			padding-left: 1.35rem;
 		}
 	}
 
