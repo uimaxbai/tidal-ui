@@ -3,6 +3,7 @@
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { playerStore } from '$lib/stores/player';
+	import { effectivePerformanceLevel, animationsEnabled } from '$lib/stores/performance';
 	import { losslessAPI } from '$lib/api';
 	import {
 		extractPaletteFromImage,
@@ -13,6 +14,7 @@
 		type PaletteResult,
 		type RGBColor
 	} from '$lib/utils/colorPalette';
+	import { getOptimalGradientColors, getOptimalBlur } from '$lib/utils/performance';
 
 	type Theme = {
 		primary: string;
@@ -70,7 +72,9 @@
 	};
 
 	let theme: Theme = DEFAULT_THEME;
-	let isPlaying = false;
+	let isPlaying = $state(false);
+	let enableAnimations = $state(true);
+	let performanceLevel = $state<'high' | 'medium' | 'low'>('high');
 	let requestToken = 0;
 	let latestState: PlayerStateShape = { currentTrack: null, isPlaying: false };
 	let currentCoverUrl: string | null = null;
@@ -111,12 +115,15 @@
 
 		const albumCover = track.album?.cover ?? null;
 		if (albumCover) {
-			return losslessAPI.getCoverUrl(albumCover, '1280');
+			// Use smaller images for better performance on low-end devices
+			const imageSize = performanceLevel === 'low' ? '640' : performanceLevel === 'medium' ? '1280' : '1280';
+			return losslessAPI.getCoverUrl(albumCover, imageSize);
 		}
 
 		const artistPicture = track.artist?.picture ?? track.artists?.find((artist) => Boolean(artist?.picture))?.picture ?? null;
 		if (artistPicture) {
-			return losslessAPI.getArtistPictureUrl(artistPicture, '750');
+			const imageSize = performanceLevel === 'low' ? '750' : performanceLevel === 'medium' ? '750' : '750';
+			return losslessAPI.getArtistPictureUrl(artistPicture, imageSize);
 		}
 
 		return null;
@@ -235,6 +242,15 @@
 		if (!browser) return;
 		setCssVariables(theme);
 		
+		// Subscribe to performance settings
+		const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
+			performanceLevel = level;
+		});
+		
+		const unsubAnim = animationsEnabled.subscribe((enabled) => {
+			enableAnimations = enabled;
+		});
+		
 		// Get current state before subscribing
 		const currentState = get(playerStore);
 		if (currentState.currentTrack) {
@@ -265,6 +281,11 @@
 		
 		// Subscribe after handling initial state
 		subscribeToPlayer();
+		
+		return () => {
+			unsubPerf();
+			unsubAnim();
+		};
 	});
 
 	onDestroy(() => {
@@ -272,7 +293,7 @@
 	});
 </script>
 
-<div class={`dynamic-background ${isPlaying ? 'playing' : ''}`} aria-hidden="true">
+<div class={`dynamic-background ${isPlaying && enableAnimations ? 'playing' : ''}`} aria-hidden="true" data-performance={performanceLevel}>
 	<div class="dynamic-background__gradient"></div>
 	<div class="dynamic-background__vignette"></div>
 	<div class="dynamic-background__noise"></div>
@@ -301,6 +322,25 @@
 		animation: bloom-rotate 60s ease-in-out infinite;
 		animation-play-state: paused;
 		transition: background 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+		will-change: transform;
+	}
+
+	/* Medium performance: reduce gradients and blur */
+	.dynamic-background[data-performance='medium'] .dynamic-background__gradient {
+		background:
+			radial-gradient(circle at 25% 25%, color-mix(in srgb, var(--bloom-accent) 85%, transparent) 0%, transparent 65%),
+			radial-gradient(circle at 75% 35%, color-mix(in srgb, var(--bloom-secondary) 90%, transparent) 0%, transparent 70%),
+			radial-gradient(circle at 50% 75%, color-mix(in srgb, var(--bloom-primary) 80%, transparent) 0%, transparent 75%);
+		filter: blur(60px) saturate(120%);
+	}
+
+	/* Low performance: minimal gradients and blur */
+	.dynamic-background[data-performance='low'] .dynamic-background__gradient {
+		background:
+			radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--bloom-accent) 75%, transparent) 0%, transparent 70%),
+			radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--bloom-secondary) 80%, transparent) 0%, transparent 75%);
+		filter: blur(40px) saturate(110%);
+		animation: none; /* Disable rotation on low-end */
 	}
 
 	.dynamic-background.playing .dynamic-background__gradient {

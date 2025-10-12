@@ -1411,8 +1411,8 @@
 	.audio-player-glass {
 		background: var(--surface-color, rgba(15, 23, 42, 0.68));
 		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(32px) saturate(160%);
-		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow: 
 			0 30px 80px rgba(2, 6, 23, 0.55),
 			0 4px 18px rgba(15, 23, 42, 0.4),
@@ -1426,8 +1426,8 @@
 	.queue-panel {
 		background: var(--surface-color, rgba(15, 23, 42, 0.68));
 		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(28px) saturate(155%);
-		-webkit-backdrop-filter: blur(28px) saturate(155%);
+		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 155%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 155%));
 		box-shadow: 
 			0 8px 24px rgba(2, 6, 23, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -1440,8 +1440,8 @@
 	.ffmpeg-banner {
 		background: var(--surface-color, rgba(15, 23, 42, 0.68));
 		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.6));
-		backdrop-filter: blur(36px) saturate(165%);
-		-webkit-backdrop-filter: blur(36px) saturate(165%);
+		backdrop-filter: blur(var(--perf-blur-high, 36px)) saturate(var(--perf-saturate, 165%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 36px)) saturate(var(--perf-saturate, 165%));
 		box-shadow: 
 			0 12px 32px rgba(2, 6, 23, 0.45),
 			0 2px 8px rgba(59, 130, 246, 0.15),
@@ -1455,8 +1455,8 @@
 	.download-popup {
 		background: var(--surface-color, rgba(15, 23, 42, 0.68));
 		border-color: var(--surface-border, rgba(148, 163, 184, 0.18));
-		backdrop-filter: blur(36px) saturate(165%);
-		-webkit-backdrop-filter: blur(36px) saturate(165%);
+		backdrop-filter: blur(var(--perf-blur-high, 36px)) saturate(var(--perf-saturate, 165%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 36px)) saturate(var(--perf-saturate, 165%));
 		box-shadow: 
 			0 12px 32px rgba(2, 6, 23, 0.45),
 			0 2px 8px rgba(15, 23, 42, 0.3),

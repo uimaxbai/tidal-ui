@@ -386,7 +386,7 @@
 										{/if}
 									</div>
 									<div class="w-full">
-										<h3 class="truncate text-lg font-semibold text-white group-hover:text-blue-400">
+										<h3 class="truncate text-balance text-lg font-semibold text-white group-hover:text-blue-400">
 											{album.title}
 										</h3>
 										{#if formatAlbumMeta(album)}

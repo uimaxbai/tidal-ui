@@ -11,6 +11,7 @@
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore, type DownloadMode } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { effectivePerformanceLevel } from '$lib/stores/performance';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
 	import { navigating } from '$app/stores';
@@ -34,6 +35,7 @@
 	let viewportHeight = $state(0);
 	let navigationState = $state<Navigation | null>(null);
 	let showSettingsMenu = $state(false);
+	let performanceLevel = $state<'high' | 'medium' | 'low'>('high');
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
@@ -79,6 +81,33 @@
 		}
 	];
 
+	const PERFORMANCE_OPTIONS: Array<{
+		value: 'auto' | 'high' | 'medium' | 'low';
+		label: string;
+		description: string;
+	}> = [
+		{
+			value: 'auto',
+			label: 'Auto',
+			description: 'Automatically detect device capabilities'
+		},
+		{
+			value: 'high',
+			label: 'High Quality',
+			description: 'Full effects with blur and animations'
+		},
+		{
+			value: 'medium',
+			label: 'Balanced',
+			description: 'Reduced effects for better performance'
+		},
+		{
+			value: 'low',
+			label: 'Performance',
+			description: 'Minimal effects for low-end devices'
+		}
+	];
+
 	const playbackQualityLabel = $derived(() => {
 		const quality = $playerStore.quality;
 		if (quality === 'HI_RES_LOSSLESS') {
@@ -103,6 +132,10 @@
 
 	function setDownloadMode(mode: DownloadMode): void {
 		downloadPreferencesStore.setMode(mode);
+	}
+
+	function setPerformanceMode(mode: 'auto' | 'high' | 'medium' | 'low'): void {
+		userPreferencesStore.setPerformanceMode(mode);
 	}
 
 	const navigationMessage = $derived(() => {
@@ -316,6 +349,14 @@
 	let controllerChangeHandler: (() => void) | null = null;
 
 	onMount(() => {
+		// Subscribe to performance level and update data attribute
+		const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
+			performanceLevel = level;
+			if (typeof document !== 'undefined') {
+				document.documentElement.setAttribute('data-performance', level);
+			}
+		});
+
 		const updateViewportHeight = () => {
 			viewportHeight = window.innerHeight;
 		};
@@ -377,6 +418,7 @@
 			window.removeEventListener('resize', updateViewportHeight);
 			document.removeEventListener('click', handleDocumentClick);
 			unsubscribe();
+			unsubPerf();
 			if (controllerChangeHandler) {
 				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
 			}
@@ -395,7 +437,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link
-		href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Schibsted+Grotesk:ital,wght@0,400..900;1,400..900&display=swap"
+		href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&display=swap"
 		rel="stylesheet"
 	/>
 </svelte:head>
@@ -476,6 +518,27 @@
 												{convertAacToMp3 ? 'On' : 'Off'}
 											</span>
 										</button>
+									</section>
+									<section class="settings-section settings-section--wide">
+										<p class="section-heading">Performance Mode</p>
+										<div class="option-grid">
+											{#each PERFORMANCE_OPTIONS as option}
+												<button
+													type="button"
+													onclick={() => setPerformanceMode(option.value)}
+													class={`glass-option ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
+													aria-pressed={option.value === $userPreferencesStore.performanceMode}
+												>
+													<div class="glass-option__content">
+														<span class="glass-option__label">{option.label}</span>
+														<span class="glass-option__description">{option.description}</span>
+													</div>
+													{#if option.value === $userPreferencesStore.performanceMode}
+														<Check size={16} class="glass-option__check" />
+													{/if}
+												</button>
+											{/each}
+										</div>
 									</section>
 									<section class="settings-section">
 										<p class="section-heading">Queue exports</p>
@@ -607,8 +670,8 @@
 		</header>
 
 		<main
-			class="app-main glass-panel"
-			style={`padding-bottom: ${contentPaddingBottom}px; min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
+			class="app-main glass-panel mb-56 sm:mb-40"
+			style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 		>
 			<div class="app-main__inner">
 				{@render children?.()}
@@ -848,7 +911,7 @@
 		left: calc(env(safe-area-inset-left, 0px) + 1.25rem);
 		right: calc(env(safe-area-inset-right, 0px) + 1.25rem);
 		margin: 0;
-		max-height: calc(100vh - var(--settings-menu-offset, 88px) - 2.5rem);
+		max-height: calc(100vh - var(--settings-menu-offset, 88px) - 16rem);
 		overflow-y: auto;
 		padding: clamp(1.25rem, 2vw, 1.75rem);
 		border-radius: 32px;
@@ -864,6 +927,16 @@
 			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
+	}
+	/* Hide scrollbar for Chrome, Safari and Opera */
+	.settings-menu::-webkit-scrollbar {
+		display: none;
+	}
+
+	/* Hide scrollbar for IE, Edge and Firefox */
+	.settings-menu {
+		-ms-overflow-style: none;  /* IE and Edge */
+		scrollbar-width: none;  /* Firefox */
 	}
 
 	.settings-grid {
@@ -1121,11 +1194,12 @@
 			right: 0;
 			left: auto;
 			width: 32rem;
-			max-height: none;
+			max-height: calc(100vh - var(--settings-menu-offset, 88px) - 16rem);
 			padding: 1.5rem;
 			border-radius: 28px;
 			top: calc(var(--settings-menu-offset, 88px) - 35px);
 		}
+		
 
 		.settings-grid {
 			display: grid;

@@ -20,3 +20,25 @@ button:disabled,
 a[aria-disabled='true'] {
 	cursor: not-allowed;
 }
+
+/* Performance-optimized blur and effects */
+:root[data-performance='medium'] {
+	--perf-blur-high: 20px;
+	--perf-blur-medium: 16px;
+	--perf-blur-low: 12px;
+	--perf-saturate: 130%;
+}
+
+:root[data-performance='low'] {
+	--perf-blur-high: 12px;
+	--perf-blur-medium: 10px;
+	--perf-blur-low: 8px;
+	--perf-saturate: 100%;
+}
+
+:root:not([data-performance='medium']):not([data-performance='low']) {
+	--perf-blur-high: 32px;
+	--perf-blur-medium: 28px;
+	--perf-blur-low: 24px;
+	--perf-saturate: 160%;
+}

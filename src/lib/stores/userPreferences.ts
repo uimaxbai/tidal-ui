@@ -1,17 +1,22 @@
 import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
 import type { AudioQuality } from '$lib/types';
+import { detectPerformance, type PerformanceLevel } from '$lib/utils/performance';
+
+export type PerformanceMode = 'auto' | 'high' | 'medium' | 'low';
 
 export interface UserPreferencesState {
 	playbackQuality: AudioQuality;
 	convertAacToMp3: boolean;
+	performanceMode: PerformanceMode;
 }
 
 const STORAGE_KEY = 'tidal-ui.userPreferences';
 
 const DEFAULT_STATE: UserPreferencesState = {
 	playbackQuality: 'HI_RES_LOSSLESS',
-	convertAacToMp3: false
+	convertAacToMp3: false,
+	performanceMode: 'auto'
 };
 
 function parseStoredPreferences(raw: string | null): UserPreferencesState {
@@ -23,6 +28,7 @@ function parseStoredPreferences(raw: string | null): UserPreferencesState {
 		const parsed = JSON.parse(raw) as Partial<UserPreferencesState>;
 		const quality = parsed?.playbackQuality;
 		const convertFlag = parsed?.convertAacToMp3;
+		const perfMode = parsed?.performanceMode;
 		return {
 			playbackQuality:
 				quality === 'HI_RES_LOSSLESS' ||
@@ -31,7 +37,11 @@ function parseStoredPreferences(raw: string | null): UserPreferencesState {
 				quality === 'LOW'
 					? quality
 					: DEFAULT_STATE.playbackQuality,
-			convertAacToMp3: typeof convertFlag === 'boolean' ? convertFlag : DEFAULT_STATE.convertAacToMp3
+			convertAacToMp3: typeof convertFlag === 'boolean' ? convertFlag : DEFAULT_STATE.convertAacToMp3,
+			performanceMode:
+				perfMode === 'auto' || perfMode === 'high' || perfMode === 'medium' || perfMode === 'low'
+					? perfMode
+					: DEFAULT_STATE.performanceMode
 		};
 	} catch (error) {
 		console.warn('Failed to parse stored user preferences', error);
@@ -89,6 +99,21 @@ const createUserPreferencesStore = () => {
 		},
 		toggleConvertAacToMp3() {
 			update((state) => ({ ...state, convertAacToMp3: !state.convertAacToMp3 }));
+		},
+		setPerformanceMode(mode: PerformanceMode) {
+			update((state) => {
+				if (state.performanceMode === mode) {
+					return state;
+				}
+				return { ...state, performanceMode: mode };
+			});
+		},
+		getEffectivePerformanceLevel(): PerformanceLevel {
+			const state = readInitialPreferences();
+			if (state.performanceMode === 'auto') {
+				return detectPerformance();
+			}
+			return state.performanceMode as PerformanceLevel;
 		},
 		reset() {
 			set(DEFAULT_STATE);
