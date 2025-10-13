@@ -88,7 +88,14 @@ const ALL_API_TARGETS = [
 		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
-	}
+	},
+	{
+		name: 'monochrome',
+		baseUrl: 'https://hifi.prigoana.com',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
 ] satisfies ApiClusterTarget[];
 
 const US_API_TARGETS = [
