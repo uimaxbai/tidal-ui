@@ -131,6 +131,13 @@ const ALL_API_TARGETS = [
 		requiresProxy: false,
 		category: 'auto-only'
 	},
+	{
+		name: 'monochrome-tokyo',
+		baseUrl: 'https://tokyo.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
 ] satisfies ApiClusterTarget[];
 
 const US_API_TARGETS = [
