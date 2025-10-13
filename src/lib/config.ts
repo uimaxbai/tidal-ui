@@ -96,6 +96,41 @@ const ALL_API_TARGETS = [
 		requiresProxy: false,
 		category: 'auto-only'
 	},
+	{
+		name: 'monochrome-singapore',
+		baseUrl: 'https://singapore.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-ohio',
+		baseUrl: 'https://ohio.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-oregon',
+		baseUrl: 'https://oregon.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-virginia',
+		baseUrl: 'https://virginia.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-frankfurt',
+		baseUrl: 'https://frankfurt.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
 ] satisfies ApiClusterTarget[];
 
 const US_API_TARGETS = [
