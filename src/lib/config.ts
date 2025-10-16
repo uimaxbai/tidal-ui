@@ -41,6 +41,27 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
+		name: 'phoenix',
+		baseUrl: 'https://phoenix.squid.wtf',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'shiva',
+		baseUrl: 'https://shiva.squid.wtf',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'chaos',
+		baseUrl: 'https://chaos.squid.wtf',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
 		name: 'vercel-fastapi',
 		baseUrl: 'https://tidal-api-2.binimum.org',
 		weight: 1,

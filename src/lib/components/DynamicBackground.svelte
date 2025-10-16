@@ -14,7 +14,6 @@
 		type PaletteResult,
 		type RGBColor
 	} from '$lib/utils/colorPalette';
-	import { getOptimalGradientColors, getOptimalBlur } from '$lib/utils/performance';
 
 	type Theme = {
 		primary: string;
@@ -75,6 +74,7 @@
 	let isPlaying = $state(false);
 	let enableAnimations = $state(true);
 	let performanceLevel = $state<'high' | 'medium' | 'low'>('high');
+	let backgroundEnabled = $state(true);
 	let requestToken = 0;
 	let latestState: PlayerStateShape = { currentTrack: null, isPlaying: false };
 	let currentCoverUrl: string | null = null;
@@ -115,21 +115,28 @@
 
 		const albumCover = track.album?.cover ?? null;
 		if (albumCover) {
-			// Use smaller images for better performance on low-end devices
-			const imageSize = performanceLevel === 'low' ? '640' : performanceLevel === 'medium' ? '1280' : '1280';
+			// Use smaller images when the device is constrained
+			const imageSize = performanceLevel === 'low' ? '320' : performanceLevel === 'medium' ? '640' : '1280';
 			return losslessAPI.getCoverUrl(albumCover, imageSize);
 		}
 
 		const artistPicture = track.artist?.picture ?? track.artists?.find((artist) => Boolean(artist?.picture))?.picture ?? null;
 		if (artistPicture) {
-			const imageSize = performanceLevel === 'low' ? '750' : performanceLevel === 'medium' ? '750' : '750';
-			return losslessAPI.getArtistPictureUrl(artistPicture, imageSize);
+			return losslessAPI.getArtistPictureUrl(artistPicture, '750');
 		}
 
 		return null;
 	};
 
 	const updateFromTrack = async (state: PlayerStateShape | null = null) => {
+		// Avoid heavy palette work altogether for low performance devices
+		if (performanceLevel === 'low') {
+			resetTheme();
+			currentCoverUrl = null;
+			retryAttempts = 0;
+			return;
+		}
+
 		const snapshot = state ?? latestState;
 		const token = ++requestToken;
 
@@ -189,11 +196,11 @@
 		const coverUrl = state.currentTrack ? resolveArtworkUrl(state.currentTrack) : null;
 		
 		// Skip if we're already processing or have processed this exact cover
-		if (coverUrl === lastProcessedCover) {
+		if (backgroundEnabled && coverUrl === lastProcessedCover) {
 			return;
 		}
-		
-		lastProcessedCover = coverUrl;
+
+		lastProcessedCover = backgroundEnabled ? coverUrl : null;
 		updateFromTrack(state);
 	};
 
@@ -244,7 +251,28 @@
 		
 		// Subscribe to performance settings
 		const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
+			const previousLevel = performanceLevel;
+			if (level === previousLevel) {
+				return;
+			}
+
 			performanceLevel = level;
+			backgroundEnabled = level !== 'low';
+
+			if (level === 'low') {
+				// Cancel any pending palette work and fall back to a lightweight baseline
+				requestToken += 1;
+				lastProcessedCover = null;
+				currentCoverUrl = null;
+				retryAttempts = 0;
+				resetTheme();
+			} else if (previousLevel === 'low' && latestState?.currentTrack) {
+				// Reprocess the current artwork when moving back to richer modes
+				lastProcessedCover = null;
+				currentCoverUrl = null;
+				retryAttempts = 0;
+				updateFromTrack(latestState);
+			}
 		});
 		
 		const unsubAnim = animationsEnabled.subscribe((enabled) => {
@@ -272,8 +300,9 @@
 				isPlaying: currentState.isPlaying
 			};
 			
-			// Mark this cover as being processed so subscription doesn't duplicate
-			lastProcessedCover = resolveArtworkUrl(snapshot.currentTrack);
+			const coverUrl = resolveArtworkUrl(snapshot.currentTrack);
+			backgroundEnabled = performanceLevel !== 'low';
+			lastProcessedCover = backgroundEnabled ? coverUrl : null;
 			latestState = snapshot;
 			isPlaying = snapshot.isPlaying && Boolean(snapshot.currentTrack);
 			updateFromTrack(snapshot);
@@ -293,10 +322,14 @@
 	});
 </script>
 
-<div class={`dynamic-background ${isPlaying && enableAnimations ? 'playing' : ''}`} aria-hidden="true" data-performance={performanceLevel}>
-	<div class="dynamic-background__gradient"></div>
-	<div class="dynamic-background__vignette"></div>
-	<div class="dynamic-background__noise"></div>
+<div class={`dynamic-background ${isPlaying && enableAnimations ? 'playing' : ''} ${backgroundEnabled ? '' : 'is-disabled'}`} aria-hidden="true" data-performance={performanceLevel}>
+	{#if backgroundEnabled}
+		<div class="dynamic-background__gradient"></div>
+		<div class="dynamic-background__vignette"></div>
+		<div class="dynamic-background__noise"></div>
+	{:else}
+		<div class="dynamic-background__fallback"></div>
+	{/if}
 </div>
 
 <style>
@@ -306,6 +339,14 @@
 		z-index: 0;
 		pointer-events: none;
 		overflow: hidden;
+	}
+
+	.dynamic-background.is-disabled {
+		background: linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--bloom-primary, #0f172a) 94%, transparent) 0%,
+			color-mix(in srgb, var(--bloom-secondary, #1e293b) 86%, transparent) 100%
+		);
 	}
 
 	.dynamic-background__gradient {
@@ -342,8 +383,13 @@
 		background:
 			radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--bloom-accent) 75%, transparent) 0%, transparent 70%),
 			radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--bloom-secondary) 80%, transparent) 0%, transparent 75%);
-		filter: blur(40px) saturate(110%);
+		inset: -15vmax;
+		filter: blur(28px) saturate(105%);
 		animation: none; /* Disable rotation on low-end */
+	}
+
+	.dynamic-background[data-performance='low'] .dynamic-background__noise {
+		opacity: 0.1;
 	}
 
 	.dynamic-background.playing .dynamic-background__gradient {
@@ -362,6 +408,15 @@
 		background-image: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"%3E%3Cfilter id="n" x="0" y="0" width="100%25" height="100%25"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="128" height="128" filter="url(%23n)" opacity="0.18"/%3E%3C/svg%3E');
 		mix-blend-mode: soft-light;
 		opacity: 0.5;
+	}
+
+	.dynamic-background__fallback {
+		position: absolute;
+		inset: 0;
+		background: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.16) 0%, transparent 55%),
+			radial-gradient(circle at 80% 80%, rgba(30, 64, 175, 0.12) 0%, transparent 70%),
+			radial-gradient(circle at 50% 100%, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42, 0.9) 70%);
+		filter: none;
 	}
 
 	@keyframes bloom-rotate {

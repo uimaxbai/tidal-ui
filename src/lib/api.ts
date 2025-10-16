@@ -1025,6 +1025,31 @@ class LosslessAPI {
 		return false;
 	}
 
+	private detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
+		if (!data || data.length < 4) {
+			return null;
+		}
+
+		// Check for JPEG magic bytes (FF D8 FF)
+		if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+			return { extension: 'jpg', mimeType: 'image/jpeg' };
+		}
+
+		// Check for PNG magic bytes (89 50 4E 47)
+		if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+			return { extension: 'png', mimeType: 'image/png' };
+		}
+
+		// Check for WebP magic bytes (52 49 46 46 ... 57 45 42 50)
+		if (data.length >= 12 &&
+		    data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
+		    data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50) {
+			return { extension: 'webp', mimeType: 'image/webp' };
+		}
+
+		return null;
+	}
+
 	private buildMetadataEntries(lookup: TrackLookup): Array<[string, string]> {
 		const entries: Array<[string, string]> = [];
 		const { track } = lookup;
@@ -1194,9 +1219,9 @@ class LosslessAPI {
 				: `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 		const inputName = `source-${uniqueSuffix}.${extension}`;
 		const outputName = `output-${uniqueSuffix}.${outputExtension}`;
-		const coverName = `cover-${uniqueSuffix}.jpg`;
 
 		let coverWritten = false;
+		let coverExtension = 'jpg';
 
 		try {
 			if (options?.onProgress) {
@@ -1280,13 +1305,16 @@ class LosslessAPI {
 						
 						const coverUint8Array = new Uint8Array(coverArrayBuffer);
 						
-						// Verify we have actual image data (check for JPEG/PNG magic bytes)
-						const isValidImage = this.validateImageData(coverUint8Array);
-						if (!isValidImage) {
+						// Detect image format from magic bytes
+						const imageFormat = this.detectImageFormat(coverUint8Array);
+						if (!imageFormat) {
 							continue; // Try next size
 						}
 						
-						await ffmpeg.writeFile(coverName, coverUint8Array);
+						coverExtension = imageFormat.extension;
+						const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
+						
+						await ffmpeg.writeFile(finalCoverName, coverUint8Array);
 						coverWritten = true;
 						coverFetchSuccess = true;
 						break; // Success, exit strategy loop
@@ -1300,7 +1328,8 @@ class LosslessAPI {
 
 			const args: string[] = ['-i', inputName];
 			if (coverWritten) {
-				args.push('-i', coverName);
+				const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
+				args.push('-i', finalCoverName);
 			}
 			
 			// Map streams FIRST (matching working command pattern)
@@ -1421,7 +1450,8 @@ class LosslessAPI {
 				}
 				if (coverWritten) {
 					try {
-						await ffmpeg.deleteFile(coverName);
+						const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
+						await ffmpeg.deleteFile(finalCoverName);
 					} catch (cleanupErr) {
 						console.debug('Failed to delete FFmpeg cover file', cleanupErr);
 					}
@@ -1709,20 +1739,27 @@ class LosslessAPI {
 									continue;
 								}
 								
-								// Create blob from validated data
-								const coverBlob = new Blob([uint8Array], { type: 'image/jpeg' });
+								// Detect image format
+								const imageFormat = this.detectImageFormat(uint8Array);
+								if (!imageFormat) {
+									console.warn(`[Cover Download] Unknown image format for size ${size}`);
+									continue;
+								}
+								
+								// Create blob with correct MIME type
+								const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
 								
 								const coverObjectUrl = URL.createObjectURL(coverBlob);
 								const coverLink = document.createElement('a');
 								coverLink.href = coverObjectUrl;
-								coverLink.download = 'cover.jpg';
+								coverLink.download = `cover.${imageFormat.extension}`;
 								document.body.appendChild(coverLink);
 								coverLink.click();
 								document.body.removeChild(coverLink);
 								URL.revokeObjectURL(coverObjectUrl);
 								
 								coverDownloadSuccess = true;
-								console.log(`[Cover Download] Successfully downloaded (${size}x${size}, strategy: ${strategy.name})`);
+								console.log(`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`);
 								break;
 							} catch (sizeError) {
 								console.warn(`[Cover Download] Failed at size ${size} with strategy ${strategy.name}:`, sizeError);

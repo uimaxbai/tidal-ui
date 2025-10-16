@@ -27,6 +27,26 @@
 		return tags.filter((tag) => tag && !IGNORED_TAGS.has(tag));
 	}
 
+	function formatTrackNumber(track: Track): string {
+		const volumeNumber = Number(track.volumeNumber);
+		const trackNumber = Number(track.trackNumber);
+		
+		// Check if this is a multi-volume album by checking:
+		// 1. numberOfVolumes > 1, or
+		// 2. volumeNumber is set and finite (indicating multi-volume structure)
+		const isMultiVolume = (track.album?.numberOfVolumes && track.album.numberOfVolumes > 1) || 
+		                      Number.isFinite(volumeNumber);
+		
+		if (isMultiVolume) {
+			const volumePadded = Number.isFinite(volumeNumber) && volumeNumber > 0 ? volumeNumber.toString() : '1';
+			const trackPadded = Number.isFinite(trackNumber) && trackNumber > 0 ? trackNumber.toString() : '0';
+			return `${volumePadded}-${trackPadded}`;
+		} else {
+			const trackPadded = Number.isFinite(trackNumber) && trackNumber > 0 ? trackNumber.toString() : '0';
+			return trackPadded;
+		}
+	}
+
 	function handlePlayTrack(track: Track, index: number) {
 		playerStore.setQueue(tracks, index);
 		playerStore.play();
@@ -171,7 +191,7 @@
 						{:else if isCurrentTrack(track)}
 							<Play size={16} class="text-blue-500" />
 						{:else}
-							<span class="text-sm text-gray-400 group-hover:hidden">{index + 1}</span>
+							<span class="text-sm text-gray-400 group-hover:hidden">{formatTrackNumber(track)}</span>
 							<Play size={16} class="hidden text-white group-hover:block" />
 						{/if}
 					</button>
