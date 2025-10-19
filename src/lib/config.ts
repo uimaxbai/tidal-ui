@@ -159,6 +159,20 @@ const ALL_API_TARGETS = [
 		requiresProxy: false,
 		category: 'auto-only'
 	},
+	{
+		name: 'monochrome-jakarta',
+		baseUrl: 'https://jakarta.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-california',
+		baseUrl: 'https://california.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
 ] satisfies ApiClusterTarget[];
 
 const US_API_TARGETS = [
