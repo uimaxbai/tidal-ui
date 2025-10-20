@@ -69,9 +69,23 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'proxied-primary',
-		baseUrl: 'https://tidal.401658.xyz',
-		weight: 1,
+		name: 'monochrome-jakarta',
+		baseUrl: 'https://jakarta.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-california',
+		baseUrl: 'https://california.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-london',
+		baseUrl: 'https://london.monochrome.tf',
+		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
