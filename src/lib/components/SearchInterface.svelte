@@ -8,6 +8,7 @@
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
+	import { isTidalUrl } from '$lib/utils/urlParser';
 	import type { Track, Album, Artist, Playlist, AudioQuality } from '$lib/types';
 	import {
 		Search,
@@ -22,7 +23,8 @@
 		LoaderCircle,
 		X,
 		Earth,
-		Ban
+		Ban,
+		Link2
 	} from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
@@ -67,6 +69,9 @@
 	});
 
 	onDestroy(unsubscribeRegion);
+
+	// Computed property to check if current query is a Tidal URL
+	const isQueryATidalUrl = $derived(query.trim().length > 0 && isTidalUrl(query.trim()));
 
 	type AlbumDownloadState = {
 		downloading: boolean;
@@ -324,8 +329,59 @@
 		}
 	});
 
+	async function handleUrlImport() {
+		if (!query.trim()) return;
+
+		isLoading = true;
+		error = null;
+
+		try {
+			const result = await losslessAPI.importFromUrl(query);
+
+			// Clear previous results
+			tracks = [];
+			albums = [];
+			artists = [];
+			playlists = [];
+
+			// Set results based on type
+			switch (result.type) {
+				case 'track':
+					tracks = [result.data as Track];
+					activeTab = 'tracks';
+					break;
+				case 'album':
+					albums = [result.data as Album];
+					activeTab = 'albums';
+					break;
+				case 'artist':
+					artists = [result.data as Artist];
+					activeTab = 'artists';
+					break;
+				case 'playlist': {
+					const playlistData = result.data as { playlist: Playlist; tracks: Track[] };
+					playlists = [playlistData.playlist];
+					tracks = playlistData.tracks;
+					activeTab = 'playlists';
+					break;
+				}
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to import from URL';
+			console.error('URL import error:', err);
+		} finally {
+			isLoading = false;
+		}
+	}
+
 	async function handleSearch() {
 		if (!query.trim()) return;
+
+		// Auto-detect: if query is a Tidal URL, import it; otherwise, search
+		if (isQueryATidalUrl) {
+			await handleUrlImport();
+			return;
+		}
 
 		isLoading = true;
 		error = null;
@@ -371,7 +427,8 @@
 
 	function handleTabChange(tab: SearchTab) {
 		activeTab = tab;
-		if (query.trim()) {
+		// Only trigger search if we have a query and it's not a URL
+		if (query.trim() && !isQueryATidalUrl) {
 			handleSearch();
 		}
 	}
@@ -382,7 +439,8 @@
 		const value = ensureSupportedRegion(target.value as RegionOption);
 		if (value !== selectedRegion) {
 			regionStore.setRegion(value);
-			if (query.trim()) {
+			// Only trigger search if we have a query and it's not a URL
+			if (query.trim() && !isQueryATidalUrl) {
 				handleSearch();
 			}
 		}
@@ -427,11 +485,12 @@
 						type="text"
 						bind:value={query}
 						onkeypress={handleKeyPress}
-						placeholder="Search for anything..."
+						placeholder={isQueryATidalUrl ? "Tidal URL detected - press Enter to import" : "Search for tracks, albums, artists... or paste a Tidal URL"}
 						class="w-full min-w-0 flex-1 border-none p-0 pl-1 bg-transparent text-white placeholder:text-gray-400 focus:outline-none ring-0"
 					/>
 				</div>
 				<div class="flex gap-2 w-auto flex-row items-center">
+					{#if !isQueryATidalUrl}
 					<div class="relative w-auto">
 						<label class="sr-only" for="region-select">Region</label>
 						<Earth
@@ -461,20 +520,27 @@
 							<ChevronDown size={16} />
 						</span>
 					</div>
+					{/if}
 					<button
 						onclick={handleSearch}
 						disabled={isLoading || !query.trim()}
 						class="search-button h-full flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
 					>
-						<Search size={16} class="text-white" />
-						<span class="hidden sm:inline">{isLoading ? 'Searching…' : 'Search'}</span>
+						{#if isQueryATidalUrl}
+							<Link2 size={16} class="text-white" />
+							<span class="hidden sm:inline">{isLoading ? 'Importing…' : 'Import'}</span>
+						{:else}
+							<Search size={16} class="text-white" />
+							<span class="hidden sm:inline">{isLoading ? 'Searching…' : 'Search'}</span>
+						{/if}
 					</button>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Tabs -->
+	<!-- Tabs (hidden when URL is detected) -->
+	{#if !isQueryATidalUrl}
 	<div class="mb-6 flex gap-2 overflow-auto border-b border-gray-700">
 		<button
 			onclick={() => handleTabChange('tracks')}
@@ -507,6 +573,7 @@
 			Artists
 		</button>
 	</div>
+	{/if}
 
 	<!-- Loading State -->
 	{#if isLoading}
@@ -821,7 +888,15 @@
 					{/each}
 				</section>
 			</div>
-		{:else if query.trim() && !isLoading}
+		{:else if isQueryATidalUrl && !isLoading}
+			<div class="py-12 text-center text-gray-400">
+				<div class="flex flex-col items-center gap-4">
+					<Link2 size={48} class="text-blue-400" />
+					<p class="text-lg text-white">Tidal URL detected</p>
+					<p class="text-sm">Press Enter or click Import to load this content</p>
+				</div>
+			</div>
+		{:else if query.trim() && !isLoading && !isQueryATidalUrl}
 			<div class="py-12 text-center text-gray-400">
 				<p>No results found...</p>
 			</div>

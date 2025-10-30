@@ -2,6 +2,7 @@
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from './config';
 import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
+import { parseTidalUrl, type TidalUrlParseResult } from '$lib/utils/urlParser';
 import type {
 	Track,
 	Artist,
@@ -382,6 +383,71 @@ class LosslessAPI {
 		if (!response.ok) throw new Error('Failed to search playlists');
 		const data = await response.json();
 		return this.normalizeSearchResponse<Playlist>(data, 'playlists');
+	}
+
+	/**
+	 * Import content from a Tidal URL
+	 * Supports track, album, artist, and playlist URLs
+	 */
+	async importFromUrl(url: string): Promise<{
+		type: 'track' | 'album' | 'artist' | 'playlist';
+		data: Track | Album | Artist | { playlist: Playlist; tracks: Track[] };
+	}> {
+		const parsed = parseTidalUrl(url);
+
+		if (parsed.type === 'unknown') {
+			throw new Error('Invalid Tidal URL. Please provide a valid track, album, artist, or playlist URL.');
+		}
+
+		switch (parsed.type) {
+			case 'track': {
+				if (!parsed.trackId) {
+					throw new Error('Could not extract track ID from URL');
+				}
+				const lookup = await this.getTrack(parsed.trackId);
+				return {
+					type: 'track',
+					data: this.prepareTrack(lookup.track)
+				};
+			}
+
+			case 'album': {
+				if (!parsed.albumId) {
+					throw new Error('Could not extract album ID from URL');
+				}
+				const { album } = await this.getAlbum(parsed.albumId);
+				return {
+					type: 'album',
+					data: this.prepareAlbum(album)
+				};
+			}
+
+			case 'artist': {
+				if (!parsed.artistId) {
+					throw new Error('Could not extract artist ID from URL');
+				}
+				const artist = await this.getArtist(parsed.artistId);
+				return {
+					type: 'artist',
+					data: this.prepareArtist(artist)
+				};
+			}
+
+			case 'playlist': {
+				if (!parsed.playlistId) {
+					throw new Error('Could not extract playlist ID from URL');
+				}
+				const { playlist, items } = await this.getPlaylist(parsed.playlistId);
+				const tracks = items.map((item) => this.prepareTrack(item.item));
+				return {
+					type: 'playlist',
+					data: { playlist, tracks }
+				};
+			}
+
+			default:
+				throw new Error('Unsupported URL type');
+		}
 	}
 
 	/**
