@@ -850,9 +850,9 @@
 						data-sveltekit-preload-data
 					>
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
-							{#if playlist.image}
+							{#if playlist.squareImage || playlist.image}
 								<img
-									src={losslessAPI.getCoverUrl(playlist.image, '640')}
+									src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
 									alt={playlist.title}
 									class="h-full w-full object-cover transition-transform group-hover:scale-105"
 								/>
