@@ -87,12 +87,12 @@
 		<!-- Playlist Header -->
 		<div class="flex flex-col gap-8 md:flex-row">
 			<!-- Playlist Cover -->
-			{#if playlist.image}
+			{#if playlist.squareImage || playlist.image}
 				<div
 					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-80"
 				>
 					<img
-						src={losslessAPI.getCoverUrl(playlist.image, '640')}
+						src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
 						alt={playlist.title}
 						class="h-full w-full object-cover"
 					/>
