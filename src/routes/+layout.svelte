@@ -6,7 +6,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
-	import DynamicBackground from '$lib/components/DynamicBackground.svelte';
+	import DynamicBackgroundWebGL from '$lib/components/DynamicBackground.svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore, type DownloadMode } from '$lib/stores/downloadPreferences';
@@ -443,7 +443,7 @@
 </svelte:head>
 
 <div class="app-root">
-	<DynamicBackground />
+	<DynamicBackgroundWebGL />
 	<div class="app-shell">
 		<header class="app-header glass-panel" bind:clientHeight={headerHeight}>
 			<div class="app-header__inner">
