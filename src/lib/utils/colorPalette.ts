@@ -218,3 +218,194 @@ export async function extractPaletteFromImage(url: string, precision = 32): Prom
 		palette: paletteColors.length > 0 ? paletteColors : [dominant]
 	};
 }
+
+/**
+ * WebGL-specific palette extraction that follows the YouLyPlus specification:
+ * - Extracts exactly 40 colors from an 8x5 grid
+ * - Calculates vibrancy (saturation + luminance weighting)
+ * - Returns the most vibrant color for lyrics highlighting
+ */
+export async function extractPaletteFromImageWebGL(url: string): Promise<{ palette: RGBColor[], mostVibrant: RGBColor }> {
+	if (!browser) {
+		const defaultPalette = Array(40).fill(DEFAULT_COLOR);
+		return { palette: defaultPalette, mostVibrant: DEFAULT_COLOR };
+	}
+
+	// Constants from specification
+	const STRETCHED_GRID_WIDTH = 32;
+	const STRETCHED_GRID_HEIGHT = 18;
+	const MASTER_PALETTE_TEX_WIDTH = 8;
+	const MASTER_PALETTE_TEX_HEIGHT = 5;
+	const MIN_LUMINANCE_THRESHOLD = 0.15;
+
+	// Load image
+	const image = new Image();
+	image.crossOrigin = 'anonymous';
+	image.decoding = 'async';
+
+	const loadPromise = new Promise<HTMLImageElement>((resolve, reject) => {
+		image.onload = () => resolve(image);
+		image.onerror = (event) => reject(event);
+	});
+
+	image.src = url;
+
+	let loadedImage: HTMLImageElement;
+	try {
+		loadedImage = await loadPromise;
+	} catch (error) {
+		console.warn('Failed to load image for WebGL palette extraction', error);
+		const defaultPalette = Array(40).fill(DEFAULT_COLOR);
+		return { palette: defaultPalette, mostVibrant: DEFAULT_COLOR };
+	}
+
+	// Create temporary canvas for color extraction
+	const tempCanvas = document.createElement('canvas');
+	tempCanvas.width = STRETCHED_GRID_WIDTH;
+	tempCanvas.height = STRETCHED_GRID_HEIGHT;
+	const tempCtx = tempCanvas.getContext('2d');
+	
+	if (!tempCtx) {
+		const defaultPalette = Array(40).fill(DEFAULT_COLOR);
+		return { palette: defaultPalette, mostVibrant: DEFAULT_COLOR };
+	}
+
+	// Draw image to canvas
+	tempCtx.drawImage(loadedImage, 0, 0, STRETCHED_GRID_WIDTH, STRETCHED_GRID_HEIGHT);
+
+	// Extract colors from 8x5 grid
+	const cellW = STRETCHED_GRID_WIDTH / MASTER_PALETTE_TEX_WIDTH;
+	const cellH = STRETCHED_GRID_HEIGHT / MASTER_PALETTE_TEX_HEIGHT;
+	const palette: RGBColor[] = [];
+
+	for (let j = 0; j < MASTER_PALETTE_TEX_HEIGHT; j++) {
+		for (let i = 0; i < MASTER_PALETTE_TEX_WIDTH; i++) {
+			const x = Math.floor(i * cellW);
+			const y = Math.floor(j * cellH);
+			let color = getAverageColorWithVibrancy(tempCtx, x, y, Math.ceil(cellW), Math.ceil(cellH));
+			
+			// Very aggressively tone down bright colors for better contrast
+			const lum = calculateLuminance(color);
+			if (lum > 0.3) {
+				// Reduce by up to 65% for very bright colors
+				const darkenAmount = (lum - 0.3) * 0.93;
+				const darkened = darken(color, darkenAmount);
+				color = { ...darkened, vibrancy: color.vibrancy } as RGBColor & { vibrancy: number };
+			}
+			
+			palette.push(color);
+		}
+	}
+
+	// Find most vibrant color for lyrics (filtering out very dark colors)
+	const filteredPalette = palette.filter(color => calculateLuminance(color) > MIN_LUMINANCE_THRESHOLD);
+	let mostVibrant = filteredPalette.length > 0 ? filteredPalette[0] : palette[0];
+	
+	for (const color of filteredPalette) {
+		if ((color as any).vibrancy > (mostVibrant as any).vibrancy) {
+			mostVibrant = color;
+		}
+	}
+
+	return { palette, mostVibrant };
+}
+
+/**
+ * Calculate saturation using HSV model (as per specification)
+ */
+const calculateSaturationHSV = (color: RGBColor): number => {
+	const r_norm = color.red / 255;
+	const g_norm = color.green / 255;
+	const b_norm = color.blue / 255;
+	const max = Math.max(r_norm, g_norm, b_norm);
+	const min = Math.min(r_norm, g_norm, b_norm);
+	const delta = max - min;
+	
+	if (delta < 0.00001 || max < 0.00001) return 0;
+	return delta / max; // HSV saturation
+};
+
+/**
+ * Calculate relative luminance (ITU-R BT.709)
+ */
+const calculateLuminance = (color: RGBColor): number => {
+	const linearize = (v: number) => {
+		v /= 255;
+		return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+	};
+	
+	const r = linearize(color.red);
+	const g = linearize(color.green);
+	const b = linearize(color.blue);
+	
+	// ITU-R BT.709 weights
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+/**
+ * Calculate vibrancy: combination of saturation and mid-luminance preference
+ */
+const calculateVibrancy = (color: RGBColor): number => {
+	const sat = calculateSaturationHSV(color);
+	const lum = calculateLuminance(color);
+	
+	// Favor mid-luminance colors (around 0.5)
+	const lumFactor = 1.0 - Math.abs(lum - 0.5) * 1.8;
+	
+	// Vibrancy formula from specification
+	return (sat * 0.5) + (Math.max(0, lumFactor) * 0.5);
+};
+
+/**
+ * Extract average color from a region, with vibrancy-based selection
+ */
+const getAverageColorWithVibrancy = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): RGBColor & { vibrancy: number } => {
+	const imageData = ctx.getImageData(x, y, w, h);
+	const data = imageData.data;
+	const samples: Array<RGBColor & { saturation: number; luminance: number; vibrancy: number }> = [];
+	
+	let avgR = 0, avgG = 0, avgB = 0;
+	let count = 0;
+	
+	// Sample pixels and calculate average
+	for (let i = 0; i < data.length; i += 4) {
+		const color = {
+			red: data[i],
+			green: data[i + 1],
+			blue: data[i + 2]
+		};
+		
+		avgR += color.red;
+		avgG += color.green;
+		avgB += color.blue;
+		count++;
+		
+		// Store some samples for vibrancy comparison
+		if (i % 16 === 0) { // Sample every 4th pixel
+			const saturation = calculateSaturationHSV(color);
+			const luminance = calculateLuminance(color);
+			const vibrancy = calculateVibrancy(color);
+			
+			samples.push({ ...color, saturation, luminance, vibrancy });
+		}
+	}
+	
+	const avgColor: RGBColor & { vibrancy: number } = {
+		red: Math.round(avgR / count),
+		green: Math.round(avgG / count),
+		blue: Math.round(avgB / count),
+		vibrancy: 0
+	};
+	
+	avgColor.vibrancy = calculateVibrancy(avgColor);
+	
+	// Select most vibrant sample if it's significantly better (20% threshold)
+	let best = avgColor;
+	for (const sample of samples) {
+		if (sample.vibrancy > best.vibrancy * 1.2) {
+			best = { ...sample };
+		}
+	}
+	
+	return best;
+};

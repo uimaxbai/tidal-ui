@@ -555,14 +555,17 @@
 	.lyrics-overlay {
 		position: fixed;
 		inset: 0;
+		bottom: var(--player-height, 120px);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		padding: 1rem;
+		padding-bottom: 0.5rem;
 		background: transparent;
 		backdrop-filter: blur(var(--perf-blur-low, 12px)) saturate(120%);
 		-webkit-backdrop-filter: blur(var(--perf-blur-low, 12px)) saturate(120%);
 		z-index: 60;
+		pointer-events: none;
 	}
 
 	.lyrics-panel {
@@ -580,16 +583,10 @@
 			0 4px 18px rgba(15, 23, 42, 0.45),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 		overflow: hidden;
+		pointer-events: auto;
 		transition:
-			width 180ms ease,
-			height 180ms ease,
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
-	}
-
-	.lyrics-panel--maximized {
-		width: min(1200px, 98vw);
-		height: min(900px, 92vh);
 	}
 
 	.lyrics-header {
@@ -776,6 +773,7 @@
 			padding: 0;
 			align-items: stretch;
 			justify-content: stretch;
+			bottom: 0; /* Override player height on mobile for full screen */
 		}
 
 		.lyrics-panel {
@@ -783,11 +781,7 @@
 			border: none;
 			width: 100vw;
 			height: 100vh;
-		}
-
-		.lyrics-panel--maximized {
-			width: 100vw;
-			height: 100vh;
+			max-height: 100vh;
 		}
 
 		.lyrics-header {

@@ -3,10 +3,12 @@
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
-	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE } from '$lib/api';
+	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
 	import type { DashManifestResult } from '$lib/api';
 	import { getProxiedUrl } from '$lib/config';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
+	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { sanitizeForFilename, getExtensionForQuality } from '$lib/downloads';
 	import type { Track, AudioQuality } from '$lib/types';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -56,6 +58,8 @@
 	let lastQualityTrackId: number | null = null;
 	let lastQualityForTrack: AudioQuality | null = null;
 	let currentPlaybackQuality = $state<AudioQuality | null>(null);
+	let isDownloadingCurrentTrack = $state(false);
+	let downloadTaskIdForCurrentTrack: string | null = null;
 	const { onHeightChange = () => {} } = $props<{ onHeightChange?: (height: number) => void }>();
 
 	let containerElement: HTMLDivElement | null = null;
@@ -80,6 +84,8 @@
 	let mediaSessionTrackId: number | null = null;
 	let cleanupMediaSessionHandlers: (() => void) | null = null;
 	let lastKnownPlaybackState: 'none' | 'paused' | 'playing' = 'none';
+	let isSeeking = false;
+	let seekBarElement = $state<HTMLButtonElement | null>(null);
 
 	function getCacheKey(trackId: number, quality: AudioQuality) {
 		return `${trackId}:${quality}`;
@@ -622,10 +628,12 @@
 		updateMediaSessionPositionState();
 	}
 
-	function handleSeek(event: MouseEvent) {
-		const target = event.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
-		const percent = (event.clientX - rect.left) / rect.width;
+	function handleSeek(event: MouseEvent | TouchEvent) {
+		if (!seekBarElement) return;
+		
+		const rect = seekBarElement.getBoundingClientRect();
+		const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
+		const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
 		const newTime = percent * $playerStore.duration;
 
 		if (audioElement) {
@@ -633,6 +641,31 @@
 			playerStore.setCurrentTime(newTime);
 			updateMediaSessionPositionState();
 		}
+	}
+
+	function handleSeekStart(event: MouseEvent | TouchEvent) {
+		event.preventDefault();
+		isSeeking = true;
+		handleSeek(event);
+		
+		const handleMove = (e: MouseEvent | TouchEvent) => {
+			if (isSeeking) {
+				handleSeek(e);
+			}
+		};
+		
+		const handleEnd = () => {
+			isSeeking = false;
+			document.removeEventListener('mousemove', handleMove as EventListener);
+			document.removeEventListener('mouseup', handleEnd);
+			document.removeEventListener('touchmove', handleMove as EventListener);
+			document.removeEventListener('touchend', handleEnd);
+		};
+		
+		document.addEventListener('mousemove', handleMove as EventListener);
+		document.addEventListener('mouseup', handleEnd);
+		document.addEventListener('touchmove', handleMove as EventListener);
+		document.addEventListener('touchend', handleEnd);
 	}
 
 	function handleVolumeChange(event: Event) {
@@ -662,6 +695,74 @@
 		}
 
 		audioElement.play().catch(() => {});
+	}
+
+	async function handleDownloadCurrentTrack() {
+		const track = $playerStore.currentTrack;
+		if (!track || isDownloadingCurrentTrack) {
+			return;
+		}
+
+		const quality = $playerStore.quality;
+		const convertAacToMp3 = $userPreferencesStore.convertAacToMp3;
+		const downloadCoverSeperately = $userPreferencesStore.downloadCoversSeperately;
+		const artistName = track.artist?.name ?? 'Unknown Artist';
+		const titleName = track.title ?? 'Unknown Track';
+		const ext = getExtensionForQuality(quality, convertAacToMp3);
+		const filename = `${sanitizeForFilename(artistName)} - ${sanitizeForFilename(titleName)}.${ext}`;
+
+		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+			subtitle: track.album?.title ?? track.artist?.name
+		});
+		
+		downloadTaskIdForCurrentTrack = taskId;
+		isDownloadingCurrentTrack = true;
+		downloadUiStore.skipFfmpegCountdown();
+
+		try {
+			await losslessAPI.downloadTrack(track.id, quality, filename, {
+				signal: controller.signal,
+				onProgress: (progress: TrackDownloadProgress) => {
+					if (progress.stage === 'downloading') {
+						downloadUiStore.updateTrackProgress(
+							taskId,
+							progress.receivedBytes,
+							progress.totalBytes
+						);
+					} else {
+						downloadUiStore.updateTrackStage(taskId, progress.progress);
+					}
+				},
+				onFfmpegCountdown: ({ totalBytes }) => {
+					if (typeof totalBytes === 'number') {
+						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
+					} else {
+						downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
+					}
+				},
+				onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
+				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
+				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
+				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+				ffmpegAutoTriggered: false,
+				convertAacToMp3,
+				downloadCoverSeperately
+			});
+			downloadUiStore.completeTrackDownload(taskId);
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				downloadUiStore.completeTrackDownload(taskId);
+			} else {
+				console.error('Failed to download track:', error);
+				const fallbackMessage = 'Failed to download track. Please try again.';
+				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
+				downloadUiStore.errorTrackDownload(taskId, message);
+				alert(message);
+			}
+		} finally {
+			isDownloadingCurrentTrack = false;
+			downloadTaskIdForCurrentTrack = null;
+		}
 	}
 
 	function toggleMute() {
@@ -989,7 +1090,12 @@
 
 	function notifyContainerHeight() {
 		if (typeof onHeightChange === 'function' && containerElement) {
-			onHeightChange(containerElement.offsetHeight ?? 0);
+			const height = containerElement.offsetHeight ?? 0;
+			onHeightChange(height);
+			// Set CSS variable for other components (like lyrics popup)
+			if (typeof document !== 'undefined') {
+				document.documentElement.style.setProperty('--player-height', `${height}px`);
+			}
 		}
 	}
 </script>
@@ -1121,7 +1227,9 @@
 					<!-- Progress Bar -->
 					<div class="mb-3">
 						<button
-							onclick={handleSeek}
+							bind:this={seekBarElement}
+							onmousedown={handleSeekStart}
+							ontouchstart={handleSeekStart}
 							class="group relative h-1 w-full cursor-pointer overflow-hidden rounded-full bg-gray-700"
 							type="button"
 							aria-label="Seek position"
@@ -1176,10 +1284,22 @@
 								<h3 class="truncate font-semibold text-white">
 									{$playerStore.currentTrack.title}
 								</h3>
-								<p class="truncate text-sm text-gray-400">
+								<a 
+									href={`/artist/${$playerStore.currentTrack.artist.id}`}
+									class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
+									data-sveltekit-preload-data
+								>
 									{$playerStore.currentTrack.artist.name}
-								</p>
+								</a>
 								<p class="text-xs text-gray-500">
+									<a 
+										href={`/album/${$playerStore.currentTrack.album.id}`}
+										class="hover:text-blue-400 hover:underline"
+										data-sveltekit-preload-data
+									>
+										{$playerStore.currentTrack.album.title}
+									</a>
+									<span class="mx-1" aria-hidden="true">•</span>
 									<span>{formatQualityLabel(currentPlaybackQuality ?? undefined)}</span>
 									{#if currentPlaybackQuality &&
 										$playerStore.currentTrack.audioQuality &&
@@ -1198,73 +1318,87 @@
 						</div>
 
 						<div
-							class="flex flex-wrap items-center justify-between gap-3 sm:flex-nowrap sm:justify-end sm:gap-4"
+							class="flex flex-nowrap items-center justify-between gap-2 sm:gap-4"
 						>
 							<!-- Controls -->
 							<div
-								class="flex w-full flex-1 items-center justify-center gap-2 sm:w-auto sm:flex-none sm:justify-center"
+								class="flex items-center justify-center gap-1 sm:gap-2"
 							>
 								<button
 									onclick={() => playerStore.previous()}
-									class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+									class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
 									disabled={$playerStore.queueIndex <= 0}
 									aria-label="Previous track"
 								>
-									<SkipBack size={20} />
+									<SkipBack size={18} class="sm:w-5 sm:h-5" />
 								</button>
 
 								<button
 									onclick={() => playerStore.togglePlay()}
-									class="rounded-full bg-white p-3 text-gray-900 transition-transform hover:scale-105"
+									class="rounded-full bg-white p-2.5 sm:p-3 text-gray-900 transition-transform hover:scale-105"
 									aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
 								>
 									{#if $playerStore.isPlaying}
-										<Pause size={24} fill="currentColor" />
+										<Pause size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
 									{:else}
-										<Play size={24} fill="currentColor" />
+										<Play size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
 									{/if}
 								</button>
 
 								<button
 									onclick={() => playerStore.next()}
-									class="p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+									class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
 									disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
 									aria-label="Next track"
 								>
-									<SkipForward size={20} />
+									<SkipForward size={18} class="sm:w-5 sm:h-5" />
 								</button>
 							</div>
 
 							<!-- Queue Toggle -->
-							<div class="flex items-center gap-2 sm:flex-none">
+							<div class="flex items-center gap-1 sm:gap-2">
+								<button
+									onclick={handleDownloadCurrentTrack}
+									class="player-toggle-button p-1.5 sm:p-2"
+									aria-label="Download current track"
+									type="button"
+									disabled={!$playerStore.currentTrack || isDownloadingCurrentTrack}
+								>
+									{#if isDownloadingCurrentTrack}
+										<LoaderCircle size={16} class="sm:w-[18px] sm:h-[18px] animate-spin" />
+									{:else}
+										<Download size={16} class="sm:w-[18px] sm:h-[18px]" />
+									{/if}
+									<span class="hidden sm:inline">Download</span>
+								</button>
 								<button
 									onclick={() => lyricsStore.toggle()}
-									class="player-toggle-button {$lyricsStore.open
+									class="player-toggle-button p-1.5 sm:p-2 {$lyricsStore.open
 										? 'player-toggle-button--active'
 										: ''}"
 									aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
 									aria-expanded={$lyricsStore.open}
 									type="button"
 								>
-									<ScrollText size={18} />
+									<ScrollText size={16} class="sm:w-[18px] sm:h-[18px]" />
 									<span class="hidden sm:inline">Lyrics</span>
 								</button>
 								<button
 									onclick={toggleQueuePanel}
-									class="player-toggle-button {showQueuePanel
+									class="player-toggle-button p-1.5 sm:p-2 {showQueuePanel
 										? 'player-toggle-button--active'
 										: ''}"
 									aria-label="Toggle queue panel"
 									aria-expanded={showQueuePanel}
 									type="button"
 								>
-									<ListMusic size={18} />
+									<ListMusic size={16} class="sm:w-[18px] sm:h-[18px]" />
 									<span class="hidden sm:inline">Queue ({$playerStore.queue.length})</span>
 								</button>
 							</div>
 
 							<!-- Volume Control -->
-							<div class="flex items-center gap-2 sm:flex-none">
+							<div class="hidden sm:flex items-center gap-2">
 								<button
 									onclick={toggleMute}
 									class="p-2 text-gray-400 transition-colors hover:text-white"
@@ -1283,7 +1417,7 @@
 									step="0.01"
 									value={$playerStore.volume}
 									oninput={handleVolumeChange}
-									class="hidden h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white sm:block"
+									class="h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white"
 									aria-label="Volume"
 								/>
 							</div>
@@ -1360,9 +1494,14 @@
 													<p class="truncate text-sm font-medium">
 														{queuedTrack.title}
 													</p>
-													<p class="truncate text-xs text-gray-400 group-hover:text-gray-300">
+													<a 
+														href={`/artist/${queuedTrack.artist.id}`}
+														onclick={(e) => e.stopPropagation()}
+														class="truncate text-xs text-gray-400 hover:text-blue-400 hover:underline inline-block"
+														data-sveltekit-preload-data
+													>
 														{queuedTrack.artist.name}
-													</p>
+													</a>
 												</div>
 												<button
 													onclick={(event) => removeFromQueue(index, event)}

@@ -1,44 +1,15 @@
 import { derived, readable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { userPreferencesStore } from './userPreferences';
-import {
-	detectPerformance,
-	subscribeToPerformanceChanges,
-	type PerformanceLevel
-} from '$lib/utils/performance';
+import { type PerformanceLevel } from '$lib/utils/performance';
 
 /**
  * Derived store that provides the effective performance level
- * based on user preference (auto/high/medium/low) and system capabilities
+ * based on user preferences.
  */
-export const detectedPerformanceLevel = readable<PerformanceLevel>('medium', (set) => {
-	if (!browser) {
-		set('medium');
-		return;
-	}
-
-	set(detectPerformance());
-
-	const unsubscribe = subscribeToPerformanceChanges((next) => {
-		set(next);
-	});
-
-	return () => {
-		unsubscribe();
-	};
-});
-
 export const effectivePerformanceLevel = derived(
-	[userPreferencesStore, detectedPerformanceLevel],
-	([$prefs, detected]): PerformanceLevel => {
-		if (!browser) {
-			return 'medium';
-		}
-
-		if ($prefs.performanceMode === 'auto') {
-			return detected;
-		}
-
+	userPreferencesStore,
+	($prefs): PerformanceLevel => {
 		return $prefs.performanceMode as PerformanceLevel;
 	}
 );

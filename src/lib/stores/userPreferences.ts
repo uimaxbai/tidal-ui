@@ -1,9 +1,9 @@
 import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
 import type { AudioQuality } from '$lib/types';
-import { detectPerformance, type PerformanceLevel } from '$lib/utils/performance';
+import { type PerformanceLevel } from '$lib/utils/performance';
 
-export type PerformanceMode = 'auto' | 'high' | 'medium' | 'low';
+export type PerformanceMode = 'medium' | 'low';
 
 export interface UserPreferencesState {
 	playbackQuality: AudioQuality;
@@ -15,10 +15,10 @@ export interface UserPreferencesState {
 const STORAGE_KEY = 'tidal-ui.userPreferences';
 
 const DEFAULT_STATE: UserPreferencesState = {
-	playbackQuality: 'HI_RES_LOSSLESS',
+	playbackQuality: 'LOSSLESS',
 	convertAacToMp3: false,
 	downloadCoversSeperately: false,
-	performanceMode: 'auto'
+	performanceMode: 'medium'
 };
 
 function parseStoredPreferences(raw: string | null): UserPreferencesState {
@@ -43,7 +43,7 @@ function parseStoredPreferences(raw: string | null): UserPreferencesState {
 			convertAacToMp3: typeof convertFlag === 'boolean' ? convertFlag : DEFAULT_STATE.convertAacToMp3,
 			downloadCoversSeperately: typeof downloadCoversFlag === 'boolean' ? downloadCoversFlag : DEFAULT_STATE.downloadCoversSeperately,
 			performanceMode:
-				perfMode === 'auto' || perfMode === 'high' || perfMode === 'medium' || perfMode === 'low'
+				perfMode === 'medium' || perfMode === 'low'
 					? perfMode
 					: DEFAULT_STATE.performanceMode
 		};
@@ -125,9 +125,6 @@ const createUserPreferencesStore = () => {
 		},
 		getEffectivePerformanceLevel(): PerformanceLevel {
 			const state = readInitialPreferences();
-			if (state.performanceMode === 'auto') {
-				return detectPerformance();
-			}
 			return state.performanceMode as PerformanceLevel;
 		},
 		reset() {

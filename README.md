@@ -23,13 +23,6 @@ High-fidelity music streaming UI built with SvelteKit and Tailwind.
 - Artist pages include a "Download Discography" control plus one-click album download buttons. Progress and errors surface inline while requests are processed.
 - FFmpeg WASM assets stream from the official CDN on demand. If the browser cannot load FFmpeg (for example older or restricted environments), downloads gracefully fall back to the original stream without metadata injection.
 
-## Progressive Web App
-
-- The app now ships with a standalone install experience. Visit the site in a supporting browser and use the "Install" prompt or add it to your home screen.
-- A service worker precaches the UI shell, fonts, and the offline fallback page so navigation keeps working even when the network drops.
-- When a new release is deployed the service worker self-updates and refreshes open tabs to ensure everyone runs the latest build.
-- Update the icons under `static/icons/` if you want to ship a bespoke logo. The manifest lives at `static/manifest.webmanifest`.
-
 ## Run with Docker
 
 ### Quick start with Docker Compose
@@ -50,7 +43,7 @@ Pass any optional configuration (for example `TITLE`, `REDIS_URL`, or the Redis 
 
 ## Development Notes
 
-- HIFI API requests are proxied through the first-party SvelteKit route at `/api/proxy` so the browser can call the API without CORS errors.
+- Some requests are proxied through the first-party SvelteKit route at `/api/proxy` so the browser can call the API without CORS errors.
 - API responses are cached in Redis when the following environment variables are present:
   - `REDIS_URL` (preferred) or `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`/`REDIS_USERNAME`
   - Optional tuning knobs:
