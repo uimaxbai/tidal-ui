@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { hasRegionTargets } from '$lib/config';
 	import { downloadAlbum, getExtensionForQuality } from '$lib/downloads';
@@ -9,6 +9,7 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
 	import { isTidalUrl } from '$lib/utils/urlParser';
+	import { isSupportedStreamingUrl, convertToTidal, getPlatformName, isSpotifyPlaylistUrl, convertSpotifyPlaylist } from '$lib/utils/songlink';
 	import type { Track, Album, Artist, Playlist, AudioQuality } from '$lib/types';
 	import {
 		Search,
@@ -24,7 +25,11 @@
 		X,
 		Earth,
 		Ban,
-		Link2
+		Link2,
+		MoreVertical,
+		List,
+		Play,
+		Shuffle
 	} from 'lucide-svelte';
 
 	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
@@ -46,6 +51,9 @@
 	const downloadCoverSeperatelyPreference = $derived($userPreferencesStore.downloadCoversSeperately);
 	let selectedRegion = $state<RegionOption>('auto');
 	let isRegionSelectorOpen = $state(false);
+	let playlistLoadingMessage = $state<string | null>(null);
+	let isPlaylistConversionMode = $state(false);
+	let playlistConversionTotal = $state(0);
 
 	const regionAvailability: Record<RegionOption, boolean> = {
 		auto: hasRegionTargets('auto'),
@@ -73,6 +81,19 @@
 	// Computed property to check if current query is a Tidal URL
 	const isQueryATidalUrl = $derived(query.trim().length > 0 && isTidalUrl(query.trim()));
 
+	// Computed property to check if current query is a supported streaming platform URL
+	const isQueryAStreamingUrl = $derived(
+		query.trim().length > 0 && isSupportedStreamingUrl(query.trim())
+	);
+
+	// Computed property to check if current query is a Spotify playlist URL
+	const isQueryASpotifyPlaylist = $derived(
+		query.trim().length > 0 && isSpotifyPlaylistUrl(query.trim())
+	);
+
+	// Combined URL check
+	const isQueryAUrl = $derived(isQueryATidalUrl || isQueryAStreamingUrl);
+
 	type AlbumDownloadState = {
 		downloading: boolean;
 		completed: number;
@@ -83,6 +104,10 @@
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 
 	const newsItems = [
+		{
+			title: 'Links support + QOLs!',
+			description: 'You can now paste links from supported streaming platforms (Spotify, YouTube, Apple Music, etc.) and the app will try to convert them to TIDAL equivalents for you to play or download. Only Spotify playlists work right now, but I\'m working on fixing it.'
+		},	
 		{
 			title: 'Redesign + QQDL',
 			description: 'Hi-Res downloading still a WIP but a cool redesign that I inspired off a very cool library called Color Thief is here - and the site is also now up at QQDL!'
@@ -116,6 +141,25 @@
 	}
 
 	let { onTrackSelect }: Props = $props();
+
+	// Close track menus when clicking outside
+	onMount(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			const target = event.target as HTMLElement;
+			// Check if click is outside any menu
+			if (!target.closest('[id^="track-menu-"]') && !target.closest('button[title="Queue actions"]')) {
+				document.querySelectorAll('[id^="track-menu-"]').forEach(el => {
+					(el as HTMLElement).style.display = 'none';
+				});
+			}
+		};
+		
+		document.addEventListener('click', handleClickOutside);
+		
+		return () => {
+			document.removeEventListener('click', handleClickOutside);
+		};
+	});
 
 	async function fetchWithRetry<T>(
 		action: () => Promise<T>,
@@ -377,9 +421,21 @@
 	async function handleSearch() {
 		if (!query.trim()) return;
 
-		// Auto-detect: if query is a Tidal URL, import it; otherwise, search
+		// Auto-detect: if query is a Tidal URL, import it directly
 		if (isQueryATidalUrl) {
 			await handleUrlImport();
+			return;
+		}
+
+		// Auto-detect: if query is a Spotify playlist, convert it
+		if (isQueryASpotifyPlaylist) {
+			await handleSpotifyPlaylistConversion();
+			return;
+		}
+
+		// Auto-detect: if query is a streaming platform URL, convert it first
+		if (isQueryAStreamingUrl) {
+			await handleStreamingUrlConversion();
 			return;
 		}
 
@@ -419,6 +475,248 @@
 		}
 	}
 
+	async function handleStreamingUrlConversion() {
+		if (!query.trim()) {
+			return;
+		}
+
+		isLoading = true;
+		error = null;
+
+		try {
+			const platformName = getPlatformName(query.trim());
+			console.log(`Converting ${platformName || 'streaming'} URL to TIDAL...`);
+
+			const tidalInfo = await convertToTidal(query.trim(), {
+				userCountry: 'US',
+				songIfSingle: true
+			});
+
+			if (!tidalInfo) {
+				error = `Could not find TIDAL equivalent for this ${platformName || 'streaming platform'} link. The content might not be available on TIDAL.`;
+				isLoading = false;
+				return;
+			}
+
+			console.log('Converted to TIDAL:', tidalInfo);
+
+			// Load the TIDAL content based on type
+			switch (tidalInfo.type) {
+				case 'track': {
+					const trackLookup = await losslessAPI.getTrack(Number(tidalInfo.id));
+					if (trackLookup?.track) {
+						// Pre-cache the stream URL for this track
+						try {
+							const quality = $playerStore.quality;
+							await losslessAPI.getStreamUrl(trackLookup.track.id, quality);
+							console.log(`Cached stream for track ${trackLookup.track.id}`);
+						} catch (cacheErr) {
+							console.warn(`Failed to cache stream for track ${trackLookup.track.id}:`, cacheErr);
+						}
+						
+						playerStore.setTrack(trackLookup.track);
+						playerStore.play();
+						query = '';
+					}
+					break;
+				}
+				case 'album': {
+					const albumData = await losslessAPI.getAlbum(Number(tidalInfo.id));
+					if (albumData?.album) {
+						activeTab = 'albums';
+						albums = [albumData.album];
+						query = '';
+					}
+					break;
+				}
+				case 'playlist': {
+					const playlistData = await losslessAPI.getPlaylist(tidalInfo.id);
+					if (playlistData?.playlist) {
+						activeTab = 'playlists';
+						playlists = [playlistData.playlist];
+						query = '';
+					}
+					break;
+				}
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to convert URL';
+			console.error('Streaming URL conversion error:', err);
+		} finally {
+			isLoading = false;
+		}
+	}
+
+	async function handleSpotifyPlaylistConversion() {
+		if (!query.trim()) {
+			return;
+		}
+
+		error = null;
+		playlistLoadingMessage = 'Loading playlist...';
+		isPlaylistConversionMode = true;
+		isLoading = true;
+
+		try {
+			console.log('Converting Spotify playlist to TIDAL tracks...');
+
+			// Step 1: Get all Spotify track URLs from the playlist
+			const spotifyTrackUrls = await convertSpotifyPlaylist(query.trim());
+
+			if (!spotifyTrackUrls || spotifyTrackUrls.length === 0) {
+				error = 'Could not fetch tracks from Spotify playlist. The playlist might be empty or private.';
+				playlistLoadingMessage = null;
+				isLoading = false;
+				isPlaylistConversionMode = false;
+				return;
+			}
+
+			console.log(`Found ${spotifyTrackUrls.length} tracks in playlist`);
+			playlistConversionTotal = spotifyTrackUrls.length;
+			playlistLoadingMessage = `Converting ${spotifyTrackUrls.length} tracks...`;
+
+			// Clear previous results and switch to tracks tab
+			activeTab = 'tracks';
+			tracks = [];
+			const failedTracks: string[] = [];
+
+			// Set loading to false so tracks can be displayed as they're added
+			isLoading = false;
+
+			// Step 2: Convert each Spotify track URL to TIDAL and add to list as we go
+			for (let i = 0; i < spotifyTrackUrls.length; i++) {
+				const trackUrl = spotifyTrackUrls[i];
+				
+				// Update progress message
+				playlistLoadingMessage = `Converting track ${i + 1}/${spotifyTrackUrls.length}...`;
+				
+				try {
+					const tidalInfo = await convertToTidal(trackUrl, {
+						userCountry: 'US',
+						songIfSingle: true
+					});
+
+					if (tidalInfo && tidalInfo.type === 'track') {
+						const trackLookup = await losslessAPI.getTrack(Number(tidalInfo.id));
+						if (trackLookup?.track) {
+							// Pre-cache the stream URL for this track
+							try {
+								const quality = $playerStore.quality;
+								await losslessAPI.getStreamUrl(trackLookup.track.id, quality);
+								console.log(`Cached stream for track ${trackLookup.track.id}`);
+							} catch (cacheErr) {
+								console.warn(`Failed to cache stream for track ${trackLookup.track.id}:`, cacheErr);
+							}
+							
+							// Add track to the list
+							tracks = [...tracks, trackLookup.track];
+						} else {
+							failedTracks.push(trackUrl);
+						}
+					} else {
+						failedTracks.push(trackUrl);
+					}
+				} catch (err) {
+					console.warn(`Failed to convert track ${i + 1}:`, err);
+					failedTracks.push(trackUrl);
+				}
+			}
+
+			console.log(`Successfully converted ${tracks.length}/${spotifyTrackUrls.length} tracks`);
+
+			if (tracks.length === 0) {
+				error = 'Could not find TIDAL equivalents for any tracks in this playlist.';
+				playlistLoadingMessage = null;
+				isPlaylistConversionMode = false;
+				return;
+			}
+
+			// Show a message if some tracks failed
+			if (failedTracks.length > 0) {
+				console.warn(`${failedTracks.length} tracks could not be converted`);
+				playlistLoadingMessage = `Converted ${tracks.length} tracks (${failedTracks.length} failed)`;
+			} else {
+				playlistLoadingMessage = `Successfully converted ${tracks.length} tracks!`;
+			}
+
+			// Clear the query and hide loading message after a brief delay
+			query = '';
+			setTimeout(() => {
+				playlistLoadingMessage = null;
+			}, 3000);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to convert Spotify playlist';
+			console.error('Spotify playlist conversion error:', err);
+			playlistLoadingMessage = null;
+			isPlaylistConversionMode = false;
+		}
+	}
+
+	function handlePlayAll() {
+		if (tracks.length > 0) {
+			playerStore.setQueue(tracks, 0);
+			playerStore.play();
+		}
+	}
+
+	function handleShuffleAll() {
+		if (tracks.length > 0) {
+			// Shuffle the tracks
+			const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+			playerStore.setQueue(shuffled, 0);
+			playerStore.play();
+		}
+	}
+
+	async function handleDownloadAll() {
+		if (tracks.length === 0) return;
+		
+		// Download each track sequentially
+		for (const track of tracks) {
+			try {
+				const quality = $playerStore.quality;
+				const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
+				const filename = `${track.artist.name} - ${track.title}.${extension}`;
+				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+					subtitle: track.album?.title ?? track.artist?.name
+				});
+				
+				await losslessAPI.downloadTrack(track.id, quality, filename, {
+					signal: controller.signal,
+					onProgress: (progress: TrackDownloadProgress) => {
+						if (progress.stage === 'downloading') {
+							downloadUiStore.updateTrackProgress(
+								taskId,
+								progress.receivedBytes,
+								progress.totalBytes
+							);
+						} else {
+							downloadUiStore.updateTrackStage(taskId, progress.progress);
+						}
+					},
+					onFfmpegCountdown: ({ totalBytes }) => {
+						if (typeof totalBytes === 'number') {
+							downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
+						} else {
+							downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
+						}
+					},
+					onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
+					onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
+					onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
+					onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+					ffmpegAutoTriggered: false,
+					convertAacToMp3: convertAacToMp3Preference,
+					downloadCoverSeperately: downloadCoverSeperatelyPreference
+				});
+				
+				downloadUiStore.completeTrackDownload(taskId);
+			} catch (error) {
+				console.error(`Failed to download track ${track.title}:`, error);
+			}
+		}
+	}
+
 	function handleKeyPress(event: KeyboardEvent) {
 		if (event.key === 'Enter') {
 			handleSearch();
@@ -428,7 +726,7 @@
 	function handleTabChange(tab: SearchTab) {
 		activeTab = tab;
 		// Only trigger search if we have a query and it's not a URL
-		if (query.trim() && !isQueryATidalUrl) {
+		if (query.trim() && !isQueryAUrl) {
 			handleSearch();
 		}
 	}
@@ -440,7 +738,7 @@
 		if (value !== selectedRegion) {
 			regionStore.setRegion(value);
 			// Only trigger search if we have a query and it's not a URL
-			if (query.trim() && !isQueryATidalUrl) {
+			if (query.trim() && !isQueryAUrl) {
 				handleSearch();
 			}
 		}
@@ -485,12 +783,12 @@
 						type="text"
 						bind:value={query}
 						onkeypress={handleKeyPress}
-						placeholder={isQueryATidalUrl ? "Tidal URL detected - press Enter to import" : "Search for tracks, albums, artists... or paste a Tidal URL"}
+						placeholder={isQueryATidalUrl ? "Tidal URL detected - press Enter to import" : isQueryASpotifyPlaylist ? "Spotify playlist detected - press Enter to convert" : isQueryAStreamingUrl ? `${getPlatformName(query)} URL detected - press Enter to convert` : "Search for tracks, albums, artists... or paste a URL"}
 						class="w-full min-w-0 flex-1 border-none p-0 pl-1 bg-transparent text-white placeholder:text-gray-400 focus:outline-none ring-0"
 					/>
 				</div>
 				<div class="flex gap-2 w-auto flex-row items-center">
-					{#if !isQueryATidalUrl}
+					{#if !isQueryATidalUrl && !isQueryAStreamingUrl && !isQueryASpotifyPlaylist}
 					<div class="relative w-auto">
 						<label class="sr-only" for="region-select">Region</label>
 						<Earth
@@ -501,7 +799,7 @@
 						/>
 						<select
 							id="region-select"
-							class="region-selector cursor-pointer appearance-none rounded-md border pl-9 pr-9 py-2 text-sm font-medium text-white transition-colors focus:outline-none ring-0"
+							class="region-selector cursor-pointer appearance-none rounded-md border pl-9 pr-9 py-2 text-sm font-medium text-white transition-colors focus:outline-none ring-0 w-[52px] sm:w-auto"
 							value={selectedRegion}
 							onchange={handleRegionChange}
 							onmousedown={handleRegionClick}
@@ -526,7 +824,13 @@
 						disabled={isLoading || !query.trim()}
 						class="search-button h-full flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
 					>
-						{#if isQueryATidalUrl}
+						{#if isQueryASpotifyPlaylist}
+							<Link2 size={16} class="text-white" />
+							<span class="hidden sm:inline">{isLoading ? 'Converting…' : 'Convert Playlist'}</span>
+						{:else if isQueryAStreamingUrl}
+							<Link2 size={16} class="text-white" />
+							<span class="hidden sm:inline">{isLoading ? 'Converting…' : 'Convert & Play'}</span>
+						{:else if isQueryATidalUrl}
 							<Link2 size={16} class="text-white" />
 							<span class="hidden sm:inline">{isLoading ? 'Importing…' : 'Import'}</span>
 						{:else}
@@ -540,37 +844,47 @@
 	</div>
 
 	<!-- Tabs (hidden when URL is detected) -->
-	{#if !isQueryATidalUrl}
-	<div class="mb-6 flex gap-2 overflow-auto border-b border-gray-700">
+	{#if !isQueryAUrl}
+	<div class="mb-6 flex gap-2 overflow-x-auto scrollbar-hide border-b border-gray-700">
 		<button
 			onclick={() => handleTabChange('tracks')}
-			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
+			class="flex cursor-pointer items-center gap-2 border-b-2 px-3 sm:px-4 py-2 transition-colors whitespace-nowrap {activeTab ===
 			'tracks'
 				? 'border-blue-500 text-blue-500'
 				: 'border-transparent text-gray-300 hover:text-white'}"
 		>
 			<Music size={18} />
-			Tracks
+			<span class="text-sm sm:text-base">Tracks</span>
 		</button>
 		<button
 			onclick={() => handleTabChange('albums')}
-			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
+			class="flex cursor-pointer items-center gap-2 border-b-2 px-3 sm:px-4 py-2 transition-colors whitespace-nowrap {activeTab ===
 			'albums'
 				? 'border-blue-500 text-blue-500'
 				: 'border-transparent text-gray-300 hover:text-white'}"
 		>
 			<Disc size={18} />
-			Albums
+			<span class="text-sm sm:text-base">Albums</span>
 		</button>
 		<button
 			onclick={() => handleTabChange('artists')}
-			class="flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2 transition-colors {activeTab ===
+			class="flex cursor-pointer items-center gap-2 border-b-2 px-3 sm:px-4 py-2 transition-colors whitespace-nowrap {activeTab ===
 			'artists'
 				? 'border-blue-500 text-blue-500'
 				: 'border-transparent text-gray-300 hover:text-white'}"
 		>
 			<User size={18} />
-			Artists
+			<span class="text-sm sm:text-base">Artists</span>
+		</button>
+		<button
+			onclick={() => handleTabChange('playlists')}
+			class="flex cursor-pointer items-center gap-2 border-b-2 px-3 sm:px-4 py-2 transition-colors whitespace-nowrap {activeTab ===
+			'playlists'
+				? 'border-blue-500 text-blue-500'
+				: 'border-transparent text-gray-300 hover:text-white'}"
+		>
+			<List size={18} />
+			<span class="text-sm sm:text-base">Playlists</span>
 		</button>
 	</div>
 	{/if}
@@ -625,9 +939,47 @@
 		</div>
 	{/if}
 
+	<!-- Playlist Loading Progress -->
+	{#if playlistLoadingMessage}
+		<div class="rounded-lg border border-blue-900 bg-blue-900/20 p-4 text-blue-400 flex items-center gap-3 mb-4">
+			<LoaderCircle class="animate-spin" size={20} />
+			<span>{playlistLoadingMessage}</span>
+		</div>
+	{/if}
+
 	<!-- Results -->
-	{#if !isLoading && !error}
+	{#if (!isLoading && !error) || (isPlaylistConversionMode && tracks.length > 0)}
 		{#if activeTab === 'tracks' && tracks.length > 0}
+			<!-- Playlist Controls (shown when in playlist conversion mode) -->
+			{#if isPlaylistConversionMode}
+				<div class="mb-6 flex flex-wrap items-center gap-3">
+					<button
+						onclick={handlePlayAll}
+						class="flex items-center gap-2 rounded-full bg-blue-600 px-6 py-3 font-semibold transition-colors hover:bg-blue-700"
+					>
+						<Play size={20} fill="currentColor" />
+						Play All
+					</button>
+					<button
+						onclick={handleShuffleAll}
+						class="flex items-center gap-2 rounded-full bg-purple-600 px-6 py-3 font-semibold transition-colors hover:bg-purple-700"
+					>
+						<Shuffle size={20} />
+						Shuffle All
+					</button>
+					<button
+						onclick={handleDownloadAll}
+						class="flex items-center gap-2 rounded-full bg-green-600 px-6 py-3 font-semibold transition-colors hover:bg-green-700"
+					>
+						<Download size={20} />
+						Download All
+					</button>
+					<div class="ml-auto text-sm text-gray-400">
+						{tracks.length} of {playlistConversionTotal} tracks
+					</div>
+				</div>
+			{/if}
+
 			<div class="space-y-2">
 				{#each tracks as track}
 					<div
@@ -663,28 +1015,27 @@
 									>
 								{/if}
 							</h3>
-							<p class="truncate text-sm text-gray-400">{track.artist.name}</p>
+							<a 
+								href={`/artist/${track.artist.id}`}
+								onclick={(e) => e.stopPropagation()}
+								class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
+								data-sveltekit-preload-data
+							>
+								{track.artist.name}
+							</a>
 							<p class="text-xs text-gray-500">
-								{track.album.title} • {formatQualityLabel(track.audioQuality)}
+								<a 
+									href={`/album/${track.album.id}`}
+									onclick={(e) => e.stopPropagation()}
+									class="hover:text-blue-400 hover:underline"
+									data-sveltekit-preload-data
+								>
+									{track.album.title}
+								</a>
+								 • {formatQualityLabel(track.audioQuality)}
 							</p>
 						</div>
 						<div class="flex items-center gap-2 text-sm text-gray-400">
-							<button
-								onclick={(event) => handlePlayNext(track, event)}
-								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
-								title="Play next"
-								aria-label={`Play ${track.title} next`}
-							>
-								<ListVideo size={18} />
-							</button>
-							<button
-								onclick={(event) => handleAddToQueue(track, event)}
-								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
-								title="Add to queue"
-								aria-label={`Add ${track.title} to queue`}
-							>
-								<ListPlus size={18} />
-							</button>
 							<button
 								onclick={(event) =>
 									downloadingIds.has(track.id)
@@ -714,6 +1065,55 @@
 									<Download size={18} />
 								{/if}
 							</button>
+							<div class="relative">
+								<button
+									onclick={(event) => {
+										event.stopPropagation();
+										const trackMenuId = `track-menu-${track.id}`;
+										const currentMenu = document.getElementById(trackMenuId);
+										if (currentMenu?.style.display === 'block') {
+											currentMenu.style.display = 'none';
+										} else {
+											// Close all other menus
+											document.querySelectorAll('[id^="track-menu-"]').forEach(el => {
+												(el as HTMLElement).style.display = 'none';
+											});
+											if (currentMenu) currentMenu.style.display = 'block';
+										}
+									}}
+									class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+									title="Queue actions"
+									aria-label={`Queue actions for ${track.title}`}
+								>
+									<MoreVertical size={18} />
+								</button>
+								<div
+									id="track-menu-{track.id}"
+									class="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-700 bg-gray-800/95 backdrop-blur-md shadow-xl"
+									style="display: none; z-index: 100;"
+								>
+									<button
+										onclick={(event) => {
+											handlePlayNext(track, event);
+											document.getElementById(`track-menu-${track.id}`)!.style.display = 'none';
+										}}
+										class="w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-white hover:bg-gray-700/50 transition-colors rounded-t-lg"
+									>
+										<ListVideo size={16} />
+										Play Next
+									</button>
+									<button
+										onclick={(event) => {
+											handleAddToQueue(track, event);
+											document.getElementById(`track-menu-${track.id}`)!.style.display = 'none';
+										}}
+										class="w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-white hover:bg-gray-700/50 transition-colors rounded-b-lg"
+									>
+										<ListPlus size={16} />
+										Add to Queue
+									</button>
+								</div>
+							</div>
 							<span>{losslessAPI.formatDuration(track.duration)}</span>
 						</div>
 					</div>
@@ -1053,5 +1453,15 @@
 	input::placeholder {
 		color: rgb(156, 163, 175) !important;
 		opacity: 1;
+	}
+
+	/* Hide scrollbar for mobile tabs */
+	.scrollbar-hide {
+		-ms-overflow-style: none;
+		scrollbar-width: none;
+	}
+
+	.scrollbar-hide::-webkit-scrollbar {
+		display: none;
 	}
 </style>
