@@ -3,6 +3,7 @@ import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from './config';
 import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import { parseTidalUrl, type TidalUrlParseResult } from '$lib/utils/urlParser';
+import { formatArtistsForMetadata } from '$lib/utils';
 import type {
 	Track,
 	Artist,
@@ -1120,11 +1121,10 @@ class LosslessAPI {
 		const entries: Array<[string, string]> = [];
 		const { track } = lookup;
 		const album = track.album;
-		const mainArtist = track.artist?.name ?? track.artists?.[0]?.name;
-		const albumArtist =
-			album?.artist?.name ??
+		const mainArtist = formatArtistsForMetadata(track.artists);
+		const albumArtist = album?.artist?.name ??
 			(album?.artists && album.artists.length > 0 ? album.artists[0]?.name : undefined) ??
-			mainArtist;
+			track.artists?.[0]?.name;
 
 		if (track.title) entries.push(['title', track.title]);
 		if (mainArtist) entries.push(['artist', mainArtist]);

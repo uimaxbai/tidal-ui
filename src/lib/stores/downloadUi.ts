@@ -1,5 +1,6 @@
 import { derived, get, writable } from 'svelte/store';
 import type { Track } from '$lib/types';
+import { formatArtists } from '$lib/utils';
 
 export type FfmpegPhase = 'idle' | 'countdown' | 'loading' | 'ready' | 'error';
 
@@ -164,7 +165,7 @@ export const downloadUiStore = {
 			id,
 			trackId: track.id,
 			title: track.title,
-			subtitle: options?.subtitle ?? track.artist?.name ?? 'Unknown artist',
+			subtitle: options?.subtitle ?? formatArtists(track.artists),
 			filename,
 			status: 'running',
 			receivedBytes: 0,

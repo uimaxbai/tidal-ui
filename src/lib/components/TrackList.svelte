@@ -5,6 +5,7 @@
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { formatArtists } from '$lib/utils';
 	import { Play, Pause, Download, Clock, Plus, ListPlus, X } from 'lucide-svelte';
 
 	interface Props {
@@ -96,7 +97,7 @@
 
 		const quality = $playerStore.quality;
 		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-		const filename = `${track.artist.name} - ${track.title}.${extension}`;
+		const filename = `${formatArtists(track.artists)} - ${track.title}.${extension}`;
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 			subtitle: showAlbum ? (track.album?.title ?? track.artist?.name) : track.artist?.name
 		});
@@ -231,7 +232,7 @@
 						</h3>
 						<div class="flex items-center gap-2 text-sm text-gray-400">
 							{#if showArtist}
-								<span class="truncate">{track.artist.name}</span>
+								<span class="truncate">{formatArtists(track.artists)}</span>
 							{/if}
 							{#if showAlbum && showArtist}
 								<span>•</span>

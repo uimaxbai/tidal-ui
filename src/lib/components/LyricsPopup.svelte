@@ -3,6 +3,7 @@
 	import { onDestroy } from 'svelte';
 	import { currentTime, playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
+	import { formatArtists } from '$lib/utils';
 	import { Maximize2, Minimize2, RefreshCw, X } from 'lucide-svelte';
 
 	const COMPONENT_MODULE_URL =
@@ -430,7 +431,7 @@
 		}
 
 		const title = track.title;
-		const artist = track.artist?.name ?? '';
+		const artist = formatArtists(track.artists);
 		const album = track.album?.title;
 		const durationMs =
 			typeof track.duration === 'number'

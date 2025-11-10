@@ -14,6 +14,7 @@
 	import { effectivePerformanceLevel } from '$lib/stores/performance';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
+	import { formatArtists } from '$lib/utils';
 	import { navigating } from '$app/stores';
 	import JSZip from 'jszip';
 	import {
@@ -155,7 +156,7 @@
 		const isPlaying = $playerStore.isPlaying;
 		
 		if (track) {
-			const artist = track.artist?.name ?? 'Unknown Artist';
+			const artist = formatArtists(track.artists);
 			const title = track.title ?? 'Unknown Track';
 			const prefix = isPlaying ? '▶' : '⏸';
 			document.title = `${prefix} ${title} • ${artist} | BiniTidal`;
@@ -177,7 +178,7 @@
 	function buildQueueFilename(track: Track, index: number, quality: AudioQuality): string {
 		const ext = getExtensionForQuality(quality, convertAacToMp3);
 		const order = `${index + 1}`.padStart(2, '0');
-		const artistName = sanitizeForFilename(track.artist?.name ?? 'Unknown Artist');
+		const artistName = sanitizeForFilename(formatArtists(track.artists));
 		const titleName = sanitizeForFilename(track.title ?? `Track ${order}`);
 		return `${order} - ${artistName} - ${titleName}.${ext}`;
 	}
@@ -266,7 +267,7 @@
 			for (const [index, track] of tracks.entries()) {
 				const filename = buildQueueFilename(track, index, quality);
 				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-					subtitle: track.album?.title ?? track.artist?.name
+					subtitle: track.album?.title ?? formatArtists(track.artists)
 				});
 				downloadUiStore.skipFfmpegCountdown();
 
@@ -304,7 +305,7 @@
 					}
 					console.error('Failed to download track from queue:', error);
 					downloadUiStore.errorTrackDownload(taskId, error);
-					const label = `${track.artist?.name ?? 'Unknown Artist'} - ${track.title ?? 'Unknown Track'}`;
+					const label = `${formatArtists(track.artists)} - ${track.title ?? 'Unknown Track'}`;
 					const message =
 						error instanceof Error && error.message
 							? error.message

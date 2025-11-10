@@ -3,6 +3,7 @@
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { hasRegionTargets } from '$lib/config';
 	import { downloadAlbum, getExtensionForQuality } from '$lib/downloads';
+	import { formatArtists } from '$lib/utils';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
@@ -214,9 +215,9 @@
 
 		const quality = $playerStore.quality;
 		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-		const filename = `${track.artist.name} - ${track.title}.${extension}`;
+		const filename = `${formatArtists(track.artists)} - ${track.title}.${extension}`;
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: track.album?.title ?? track.artist?.name
+			subtitle: track.album?.title ?? formatArtists(track.artists)
 		});
 		const taskMap = new Map(downloadTaskIds);
 		taskMap.set(track.id, taskId);
@@ -676,9 +677,9 @@
 			try {
 				const quality = $playerStore.quality;
 				const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-				const filename = `${track.artist.name} - ${track.title}.${extension}`;
+				const filename = `${formatArtists(track.artists)} - ${track.title}.${extension}`;
 				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-					subtitle: track.album?.title ?? track.artist?.name
+					subtitle: track.album?.title ?? formatArtists(track.artists)
 				});
 				
 				await losslessAPI.downloadTrack(track.id, quality, filename, {
@@ -1015,13 +1016,13 @@
 									>
 								{/if}
 							</h3>
-							<a 
+							<a
 								href={`/artist/${track.artist.id}`}
 								onclick={(e) => e.stopPropagation()}
 								class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
 								data-sveltekit-preload-data
 							>
-								{track.artist.name}
+								{formatArtists(track.artists)}
 							</a>
 							<p class="text-xs text-gray-500">
 								<a 
