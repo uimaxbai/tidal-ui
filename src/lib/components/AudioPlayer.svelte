@@ -9,6 +9,7 @@
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { sanitizeForFilename, getExtensionForQuality } from '$lib/downloads';
+	import { formatArtists } from '$lib/utils';
 	import type { Track, AudioQuality } from '$lib/types';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -706,7 +707,7 @@
 		const quality = $playerStore.quality;
 		const convertAacToMp3 = $userPreferencesStore.convertAacToMp3;
 		const downloadCoverSeperately = $userPreferencesStore.downloadCoversSeperately;
-		const artistName = track.artist?.name ?? 'Unknown Artist';
+		const artistName = formatArtists(track.artists);
 		const titleName = track.title ?? 'Unknown Track';
 		const ext = getExtensionForQuality(quality, convertAacToMp3);
 		const filename = `${sanitizeForFilename(artistName)} - ${sanitizeForFilename(titleName)}.${ext}`;
@@ -885,7 +886,7 @@
 		try {
 			navigator.mediaSession.metadata = new MediaMetadata({
 				title: track.title,
-				artist: track.artist?.name ?? '',
+				artist: formatArtists(track.artists),
 				album: track.album?.title ?? '',
 				artwork: getMediaSessionArtwork(track)
 			});
@@ -1284,12 +1285,12 @@
 								<h3 class="truncate font-semibold text-white">
 									{$playerStore.currentTrack.title}
 								</h3>
-								<a 
+								<a
 									href={`/artist/${$playerStore.currentTrack.artist.id}`}
 									class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
 									data-sveltekit-preload-data
 								>
-									{$playerStore.currentTrack.artist.name}
+									{formatArtists($playerStore.currentTrack.artists)}
 								</a>
 								<p class="text-xs text-gray-500">
 									<a 
@@ -1494,13 +1495,13 @@
 													<p class="truncate text-sm font-medium">
 														{queuedTrack.title}
 													</p>
-													<a 
+													<a
 														href={`/artist/${queuedTrack.artist.id}`}
 														onclick={(e) => e.stopPropagation()}
 														class="truncate text-xs text-gray-400 hover:text-blue-400 hover:underline inline-block"
 														data-sveltekit-preload-data
 													>
-														{queuedTrack.artist.name}
+														{formatArtists(queuedTrack.artists)}
 													</a>
 												</div>
 												<button

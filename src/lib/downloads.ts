@@ -1,6 +1,7 @@
 import { losslessAPI } from '$lib/api';
 import type { Album, Track, AudioQuality } from '$lib/types';
 import type { DownloadMode } from '$lib/stores/downloadPreferences';
+import { formatArtists } from '$lib/utils';
 import JSZip from 'jszip';
 
 function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
@@ -74,7 +75,7 @@ export function buildTrackFilename(
 	}
 	
 	const parts = [
-		sanitizeForFilename(artistName ?? track.artist?.name ?? 'Unknown Artist'),
+		sanitizeForFilename(artistName ?? formatArtists(track.artists)),
 		sanitizeForFilename(album.title ?? 'Unknown Album'),
 		`${trackPart} ${sanitizeForFilename(track.title)}`
 	];
@@ -103,7 +104,7 @@ export async function buildTrackLinksCsv(tracks: Track[], quality: AudioQuality)
 		rows.push([
 			`${index + 1}`,
 			track.title ?? '',
-			track.artist?.name ?? '',
+			formatArtists(track.artists),
 			track.album?.title ?? '',
 			losslessAPI.formatDuration(track.duration ?? 0),
 			streamUrl
