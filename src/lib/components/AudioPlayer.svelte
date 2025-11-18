@@ -1497,7 +1497,6 @@
 													</p>
 													<a
 														href={`/artist/${queuedTrack.artist.id}`}
-														onclick={(e) => e.stopPropagation()}
 														class="truncate text-xs text-gray-400 hover:text-blue-400 hover:underline inline-block"
 														data-sveltekit-preload-data
 													>

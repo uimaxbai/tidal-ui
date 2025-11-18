@@ -986,7 +986,12 @@
 					<div
 						role="button"
 						tabindex="0"
-						onclick={() => handleTrackActivation(track)}
+						onclick={(event) => {
+							if ((event.target as HTMLElement).tagName.toLowerCase() === 'a') {
+								return;
+							}
+							handleTrackActivation(track);
+						}}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
 						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none hover:brightness-110"
 					>
@@ -1018,7 +1023,6 @@
 							</h3>
 							<a
 								href={`/artist/${track.artist.id}`}
-								onclick={(e) => e.stopPropagation()}
 								class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
 								data-sveltekit-preload-data
 							>
@@ -1027,7 +1031,6 @@
 							<p class="text-xs text-gray-500">
 								<a 
 									href={`/album/${track.album.id}`}
-									onclick={(e) => e.stopPropagation()}
 									class="hover:text-blue-400 hover:underline"
 									data-sveltekit-preload-data
 								>
