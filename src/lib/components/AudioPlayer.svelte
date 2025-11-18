@@ -87,6 +87,16 @@
 	let lastKnownPlaybackState: 'none' | 'paused' | 'playing' = 'none';
 	let isSeeking = false;
 	let seekBarElement = $state<HTMLButtonElement | null>(null);
+	let isExpanded = $state(false);
+
+	function togglePlayerView() {
+		isExpanded = !isExpanded;
+	}
+
+	// Make sure the player height is updated when the view changes
+	$effect(() => {
+		notifyContainerHeight();
+	});
 
 	function getCacheKey(trackId: number, quality: AudioQuality) {
 		return `${trackId}:${quality}`;
@@ -1115,7 +1125,7 @@
 ></audio>
 
 <div
-	class="audio-player-backdrop fixed inset-x-0 bottom-0 z-50 px-4 pt-16 pb-5 sm:px-6 sm:pt-16 sm:pb-6"
+	class="audio-player-backdrop fixed inset-x-0 bottom-0 z-50 px-2 sm:px-4 pt-16 pb-2 sm:pb-6 {isExpanded ? 'is-expanded' : 'is-compact'}"
 	bind:this={containerElement}
 >
 	<div class="relative mx-auto w-full max-w-screen-2xl">
@@ -1222,327 +1232,395 @@
 				</div>
 			</div>
 		{/if}
-		<div class="audio-player-glass overflow-hidden rounded-2xl border shadow-2xl">
-			<div class="relative px-4 py-3">
-				{#if $playerStore.currentTrack}
-					<!-- Progress Bar -->
-					<div class="mb-3">
-						<button
-							bind:this={seekBarElement}
-							onmousedown={handleSeekStart}
-							ontouchstart={handleSeekStart}
-							class="group relative h-1 w-full cursor-pointer overflow-hidden rounded-full bg-gray-700"
-							type="button"
-							aria-label="Seek position"
-						>
-							<div
-								class="pointer-events-none absolute inset-y-0 left-0 bg-blue-400/30 transition-all"
-								style="width: {bufferedPercent}%"
-								aria-hidden="true"
-							></div>
-							<div
-								class="pointer-events-none absolute inset-y-0 left-0 bg-blue-500 transition-all"
-								style="width: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
-								aria-hidden="true"
-							></div>
-							<div
-								class="pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-blue-500 opacity-0 transition-opacity group-hover:opacity-100"
-								style="left: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
-								aria-hidden="true"
-							></div>
-						</button>
-						<div class="mt-1 flex justify-between text-xs text-gray-400">
-							<span>{formatTime($playerStore.currentTime)}</span>
-							<span>{formatTime($playerStore.duration)}</span>
-						</div>
-					</div>
 
-					<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-						<!-- Track Info -->
-						<div class="flex min-w-0 items-center gap-3 sm:flex-1">
-							{#if $playerStore.currentTrack.album.videoCover}
-								<video
-									src={losslessAPI.getVideoCoverUrl($playerStore.currentTrack.album.videoCover, '640')}
-									poster={$playerStore.currentTrack.album.cover
-										? losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')
-										: undefined}
-									aria-label={$playerStore.currentTrack.title}
-									class="h-14 w-14 rounded object-cover shadow-lg"
-									autoplay
-									loop
-									muted
-									playsinline
-									preload="metadata"
-								></video>
-							{:else if $playerStore.currentTrack.album.cover}
-								<img
-									src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
-									alt={$playerStore.currentTrack.title}
-									class="h-14 w-14 rounded object-cover shadow-lg"
-								/>
-							{/if}
-							<div class="min-w-0 flex-1">
-								<h3 class="truncate font-semibold text-white">
-									{$playerStore.currentTrack.title}
-								</h3>
-								<a
-									href={`/artist/${$playerStore.currentTrack.artist.id}`}
-									class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
-									data-sveltekit-preload-data
-								>
-									{formatArtists($playerStore.currentTrack.artists)}
-								</a>
-								<p class="text-xs text-gray-500">
-									<a 
-										href={`/album/${$playerStore.currentTrack.album.id}`}
-										class="hover:text-blue-400 hover:underline"
+		{#if !isExpanded}
+			<div
+				role="button"
+				tabindex="0"
+				onclick={togglePlayerView}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') togglePlayerView();
+				}}
+				class="mini-player-glass relative flex items-center gap-3 p-2 rounded-lg cursor-pointer overflow-hidden"
+			>
+				{#if $playerStore.currentTrack?.album.cover}
+					<img
+						src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '80')}
+						alt={$playerStore.currentTrack.title}
+						class="h-12 w-12 rounded object-cover"
+					/>
+				{/if}
+				<div class="min-w-0 flex-1">
+					<h3 class="truncate font-semibold text-white">
+						{$playerStore.currentTrack?.title ?? 'Nothing playing'}
+					</h3>
+					<p class="truncate text-sm text-gray-400">
+						{formatArtists($playerStore.currentTrack?.artists)}
+					</p>
+				</div>
+				<button
+					onclick={(e) => {
+						e.stopPropagation();
+						playerStore.togglePlay();
+					}}
+					class="rounded-full bg-white/10 p-3 text-white transition-transform hover:scale-105"
+					aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
+				>
+					{#if $playerStore.isPlaying}
+						<Pause size={20} fill="currentColor" />
+					{:else}
+						<Play size={20} fill="currentColor" />
+					{/if}
+				</button>
+
+				<!-- Thin progress bar for mini-player (MOVED INSIDE and ADJUSTED) -->
+				<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-700/50">
+					<div
+						class="h-full bg-blue-500"
+						style="width: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
+					></div>
+				</div>
+			</div>
+
+		{:else}
+			<div class="audio-player-glass overflow-hidden rounded-2xl border shadow-2xl">
+				<button
+					onclick={togglePlayerView}
+					class="absolute top-2 right-2 z-10 p-2 text-gray-400 hover:text-white"
+					aria-label="Minimize player"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="m6 9 6 6 6-6" />
+					</svg>
+				</button>
+				<div class="relative px-4 py-3">
+					{#if $playerStore.currentTrack}
+						<!-- Progress Bar -->
+						<div class="mb-3">
+							<button
+								bind:this={seekBarElement}
+								onmousedown={handleSeekStart}
+								ontouchstart={handleSeekStart}
+								class="group relative h-1 w-full cursor-pointer overflow-hidden rounded-full bg-gray-700"
+								type="button"
+								aria-label="Seek position"
+							>
+								<div
+									class="pointer-events-none absolute inset-y-0 left-0 bg-blue-400/30 transition-all"
+									style="width: {bufferedPercent}%"
+									aria-hidden="true"
+								></div>
+								<div
+									class="pointer-events-none absolute inset-y-0 left-0 bg-blue-500 transition-all"
+									style="width: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
+									aria-hidden="true"
+								></div>
+								<div
+									class="pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-blue-500 opacity-0 transition-opacity group-hover:opacity-100"
+									style="left: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
+									aria-hidden="true"
+								></div>
+							</button>
+							<div class="mt-1 flex justify-between text-xs text-gray-400">
+								<span>{formatTime($playerStore.currentTime)}</span>
+								<span>{formatTime($playerStore.duration)}</span>
+							</div>
+						</div>
+
+						<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+							<!-- Track Info -->
+							<div class="flex min-w-0 items-center gap-3 sm:flex-1">
+								{#if $playerStore.currentTrack.album.videoCover}
+									<video
+										src={losslessAPI.getVideoCoverUrl(
+											$playerStore.currentTrack.album.videoCover,
+											'640'
+										)}
+										poster={$playerStore.currentTrack.album.cover
+											? losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')
+											: undefined}
+										aria-label={$playerStore.currentTrack.title}
+										class="h-14 w-14 rounded object-cover shadow-lg"
+										autoplay
+										loop
+										muted
+										playsinline
+										preload="metadata"
+									></video>
+								{:else if $playerStore.currentTrack.album.cover}
+									<img
+										src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
+										alt={$playerStore.currentTrack.title}
+										class="h-14 w-14 rounded object-cover shadow-lg"
+									/>
+								{/if}
+								<div class="min-w-0 flex-1">
+									<h3 class="truncate font-semibold text-white">
+										{$playerStore.currentTrack.title}
+									</h3>
+									<a
+										href={`/artist/${$playerStore.currentTrack.artist.id}`}
+										class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
 										data-sveltekit-preload-data
 									>
-										{$playerStore.currentTrack.album.title}
+										{formatArtists($playerStore.currentTrack.artists)}
 									</a>
-									<span class="mx-1" aria-hidden="true">•</span>
-									<span>{formatQualityLabel(currentPlaybackQuality ?? undefined)}</span>
-									{#if currentPlaybackQuality &&
-										$playerStore.currentTrack.audioQuality &&
-										currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
-										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-										<span class="text-gray-500">
-											({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
-										</span>
-									{/if}
-									{#if sampleRateLabel}
-										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-										<span>{sampleRateLabel}</span>
-									{/if}
-								</p>
+									<p class="text-xs text-gray-500">
+										<a
+											href={`/album/${$playerStore.currentTrack.album.id}`}
+											class="hover:text-blue-400 hover:underline"
+											data-sveltekit-preload-data
+										>
+											{$playerStore.currentTrack.album.title}
+										</a>
+										<span class="mx-1" aria-hidden="true">•</span>
+										<span>{formatQualityLabel(currentPlaybackQuality ?? undefined)}</span>
+										{#if currentPlaybackQuality && $playerStore.currentTrack.audioQuality && currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
+											<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+											<span class="text-gray-500">
+												({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
+											</span>
+										{/if}
+										{#if sampleRateLabel}
+											<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+											<span>{sampleRateLabel}</span>
+										{/if}
+									</p>
+								</div>
+							</div>
+
+							<div class="flex flex-nowrap items-center justify-between gap-2 sm:gap-4">
+								<!-- Controls -->
+								<div class="flex items-center justify-center gap-1 sm:gap-2">
+									<button
+										onclick={() => playerStore.previous()}
+										class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+										disabled={$playerStore.queueIndex <= 0}
+										aria-label="Previous track"
+									>
+										<SkipBack size={18} class="sm:w-5 sm:h-5" />
+									</button>
+
+									<button
+										onclick={() => playerStore.togglePlay()}
+										class="rounded-full bg-white p-2.5 sm:p-3 text-gray-900 transition-transform hover:scale-105"
+										aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
+									>
+										{#if $playerStore.isPlaying}
+											<Pause size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
+										{:else}
+											<Play size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
+										{/if}
+									</button>
+
+									<button
+										onclick={() => playerStore.next()}
+										class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+										disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
+										aria-label="Next track"
+									>
+										<SkipForward size={18} class="sm:w-5 sm:h-5" />
+									</button>
+								</div>
+
+								<!-- Queue Toggle -->
+								<div class="flex items-center gap-1 sm:gap-2">
+									<button
+										onclick={handleDownloadCurrentTrack}
+										class="player-toggle-button p-1.5 sm:p-2"
+										aria-label="Download current track"
+										type="button"
+										disabled={!$playerStore.currentTrack || isDownloadingCurrentTrack}
+									>
+										{#if isDownloadingCurrentTrack}
+											<LoaderCircle size={16} class="sm:w-[18px] sm:h-[18px] animate-spin" />
+										{:else}
+											<Download size={16} class="sm:w-[18px] sm:h-[18px]" />
+										{/if}
+										<span class="hidden sm:inline">Download</span>
+									</button>
+									<button
+										onclick={() => lyricsStore.toggle()}
+										class="player-toggle-button p-1.5 sm:p-2 {$lyricsStore.open
+											? 'player-toggle-button--active'
+											: ''}"
+										aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
+										aria-expanded={$lyricsStore.open}
+										type="button"
+									>
+										<ScrollText size={16} class="sm:w-[18px] sm:h-[18px]" />
+										<span class="hidden sm:inline">Lyrics</span>
+									</button>
+									<button
+										onclick={toggleQueuePanel}
+										class="player-toggle-button p-1.5 sm:p-2 {showQueuePanel
+											? 'player-toggle-button--active'
+											: ''}"
+										aria-label="Toggle queue panel"
+										aria-expanded={showQueuePanel}
+										type="button"
+									>
+										<ListMusic size={16} class="sm:w-[18px] sm:h-[18px]" />
+										<span class="hidden sm:inline">Queue ({$playerStore.queue.length})</span>
+									</button>
+								</div>
+
+								<!-- Volume Control -->
+								<div class="hidden sm:flex items-center gap-2">
+									<button
+										onclick={toggleMute}
+										class="p-2 text-gray-400 transition-colors hover:text-white"
+										aria-label={isMuted ? 'Unmute' : 'Mute'}
+									>
+										{#if isMuted || $playerStore.volume === 0}
+											<VolumeX size={20} />
+										{:else}
+											<Volume2 size={20} />
+										{/if}
+									</button>
+									<input
+										type="range"
+										min="0"
+										max="1"
+										step="0.01"
+										value={$playerStore.volume}
+										oninput={handleVolumeChange}
+										class="h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white"
+										aria-label="Volume"
+									/>
+								</div>
 							</div>
 						</div>
 
-						<div
-							class="flex flex-nowrap items-center justify-between gap-2 sm:gap-4"
-						>
-							<!-- Controls -->
+						{#if showQueuePanel}
 							<div
-								class="flex items-center justify-center gap-1 sm:gap-2"
+								class="queue-panel mt-4 space-y-3 rounded-2xl border p-4 text-sm shadow-inner"
+								transition:slide={{ duration: 220, easing: cubicOut }}
 							>
-								<button
-									onclick={() => playerStore.previous()}
-									class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-									disabled={$playerStore.queueIndex <= 0}
-									aria-label="Previous track"
-								>
-									<SkipBack size={18} class="sm:w-5 sm:h-5" />
-								</button>
-
-								<button
-									onclick={() => playerStore.togglePlay()}
-									class="rounded-full bg-white p-2.5 sm:p-3 text-gray-900 transition-transform hover:scale-105"
-									aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
-								>
-									{#if $playerStore.isPlaying}
-										<Pause size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
-									{:else}
-										<Play size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
-									{/if}
-								</button>
-
-								<button
-									onclick={() => playerStore.next()}
-									class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-									disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
-									aria-label="Next track"
-								>
-									<SkipForward size={18} class="sm:w-5 sm:h-5" />
-								</button>
-							</div>
-
-							<!-- Queue Toggle -->
-							<div class="flex items-center gap-1 sm:gap-2">
-								<button
-									onclick={handleDownloadCurrentTrack}
-									class="player-toggle-button p-1.5 sm:p-2"
-									aria-label="Download current track"
-									type="button"
-									disabled={!$playerStore.currentTrack || isDownloadingCurrentTrack}
-								>
-									{#if isDownloadingCurrentTrack}
-										<LoaderCircle size={16} class="sm:w-[18px] sm:h-[18px] animate-spin" />
-									{:else}
-										<Download size={16} class="sm:w-[18px] sm:h-[18px]" />
-									{/if}
-									<span class="hidden sm:inline">Download</span>
-								</button>
-								<button
-									onclick={() => lyricsStore.toggle()}
-									class="player-toggle-button p-1.5 sm:p-2 {$lyricsStore.open
-										? 'player-toggle-button--active'
-										: ''}"
-									aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
-									aria-expanded={$lyricsStore.open}
-									type="button"
-								>
-									<ScrollText size={16} class="sm:w-[18px] sm:h-[18px]" />
-									<span class="hidden sm:inline">Lyrics</span>
-								</button>
-								<button
-									onclick={toggleQueuePanel}
-									class="player-toggle-button p-1.5 sm:p-2 {showQueuePanel
-										? 'player-toggle-button--active'
-										: ''}"
-									aria-label="Toggle queue panel"
-									aria-expanded={showQueuePanel}
-									type="button"
-								>
-									<ListMusic size={16} class="sm:w-[18px] sm:h-[18px]" />
-									<span class="hidden sm:inline">Queue ({$playerStore.queue.length})</span>
-								</button>
-							</div>
-
-							<!-- Volume Control -->
-							<div class="hidden sm:flex items-center gap-2">
-								<button
-									onclick={toggleMute}
-									class="p-2 text-gray-400 transition-colors hover:text-white"
-									aria-label={isMuted ? 'Unmute' : 'Mute'}
-								>
-									{#if isMuted || $playerStore.volume === 0}
-										<VolumeX size={20} />
-									{:else}
-										<Volume2 size={20} />
-									{/if}
-								</button>
-								<input
-									type="range"
-									min="0"
-									max="1"
-									step="0.01"
-									value={$playerStore.volume}
-									oninput={handleVolumeChange}
-									class="h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white"
-									aria-label="Volume"
-								/>
-							</div>
-						</div>
-					</div>
-
-					{#if showQueuePanel}
-						<div
-							class="queue-panel mt-4 space-y-3 rounded-2xl border p-4 text-sm shadow-inner"
-							transition:slide={{ duration: 220, easing: cubicOut }}
-						>
-							<div class="flex items-center justify-between gap-2">
-								<div class="flex items-center gap-2 text-gray-300">
-									<ListMusic size={18} />
-									<span class="font-medium">Playback Queue</span>
-									<span class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
-										{$playerStore.queue.length}
-									</span>
+								<div class="flex items-center justify-between gap-2">
+									<div class="flex items-center gap-2 text-gray-300">
+										<ListMusic size={18} />
+										<span class="font-medium">Playback Queue</span>
+										<span class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
+											{$playerStore.queue.length}
+										</span>
+									</div>
+									<div class="flex items-center gap-2">
+										<button
+											onclick={handleShuffleQueue}
+											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-blue-500 hover:text-blue-200 disabled:opacity-40"
+											type="button"
+											disabled={$playerStore.queue.length <= 1}
+										>
+											<Shuffle size={14} />
+											Shuffle
+										</button>
+										<button
+											onclick={clearQueue}
+											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-red-500 hover:text-red-400"
+											type="button"
+											disabled={$playerStore.queue.length === 0}
+										>
+											<Trash2 size={14} />
+											Clear
+										</button>
+										<button
+											onclick={closeQueuePanel}
+											class="rounded-full p-1 text-gray-400 transition-colors hover:text-white"
+											aria-label="Close queue panel"
+										>
+											<X size={16} />
+										</button>
+									</div>
 								</div>
-								<div class="flex items-center gap-2">
-									<button
-										onclick={handleShuffleQueue}
-										class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-blue-500 hover:text-blue-200 disabled:opacity-40"
-										type="button"
-										disabled={$playerStore.queue.length <= 1}
-									>
-										<Shuffle size={14} />
-										Shuffle
-									</button>
-									<button
-										onclick={clearQueue}
-										class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-red-500 hover:text-red-400"
-										type="button"
-										disabled={$playerStore.queue.length === 0}
-									>
-										<Trash2 size={14} />
-										Clear
-									</button>
-									<button
-										onclick={closeQueuePanel}
-										class="rounded-full p-1 text-gray-400 transition-colors hover:text-white"
-										aria-label="Close queue panel"
-									>
-										<X size={16} />
-									</button>
-								</div>
-							</div>
 
-							{#if $playerStore.queue.length > 0}
-								<ul class="max-h-60 space-y-2 overflow-y-auto pr-1">
-									{#each $playerStore.queue as queuedTrack, index}
-										<li>
-											<div
-												onclick={() => playFromQueue(index)}
-												onkeydown={(event) => {
-													if (event.key === 'Enter' || event.key === ' ') {
-														event.preventDefault();
-														playFromQueue(index);
-													}
-												}}
-												tabindex="0"
-												role="button"
-												class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index ===
-												$playerStore.queueIndex
-													? 'bg-blue-500/10 text-white'
-													: 'text-gray-200 hover:bg-gray-800/70'}"
-											>
-												<span
-													class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300"
+								{#if $playerStore.queue.length > 0}
+									<ul class="max-h-60 space-y-2 overflow-y-auto pr-1">
+										{#each $playerStore.queue as queuedTrack, index}
+											<li>
+												<div
+													onclick={() => playFromQueue(index)}
+													onkeydown={(event) => {
+														if (event.key === 'Enter' || event.key === ' ') {
+															event.preventDefault();
+															playFromQueue(index);
+														}
+													}}
+													tabindex="0"
+													role="button"
+													class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index ===
+													$playerStore.queueIndex
+														? 'bg-blue-500/10 text-white'
+														: 'text-gray-200 hover:bg-gray-800/70'}"
 												>
-													{index + 1}
-												</span>
-												<div class="min-w-0 flex-1">
-													<p class="truncate text-sm font-medium">
-														{queuedTrack.title}
-													</p>
-													<a
-														href={`/artist/${queuedTrack.artist.id}`}
-														class="truncate text-xs text-gray-400 hover:text-blue-400 hover:underline inline-block"
-														data-sveltekit-preload-data
+													<span
+														class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300"
 													>
-														{formatArtists(queuedTrack.artists)}
-													</a>
+														{index + 1}
+													</span>
+													<div class="min-w-0 flex-1">
+														<p class="truncate text-sm font-medium">
+															{queuedTrack.title}
+														</p>
+														<a
+															href={`/artist/${queuedTrack.artist.id}`}
+															class="truncate text-xs text-gray-400 hover:text-blue-400 hover:underline inline-block"
+															data-sveltekit-preload-data
+														>
+															{formatArtists(queuedTrack.artists)}
+														</a>
+													</div>
+													<button
+														onclick={(event) => removeFromQueue(index, event)}
+														class="rounded-full p-1 text-gray-500 transition-colors hover:text-red-400"
+														aria-label={`Remove ${queuedTrack.title} from queue`}
+														type="button"
+													>
+														<X size={14} />
+													</button>
 												</div>
-												<button
-													onclick={(event) => removeFromQueue(index, event)}
-													class="rounded-full p-1 text-gray-500 transition-colors hover:text-red-400"
-													aria-label={`Remove ${queuedTrack.title} from queue`}
-													type="button"
-												>
-													<X size={14} />
-												</button>
-											</div>
-										</li>
-									{/each}
-								</ul>
-							{:else}
-								<p
-									class="rounded-lg border border-dashed border-gray-700 bg-gray-900/70 px-3 py-8 text-center text-gray-400"
-								>
-									Queue is empty
-								</p>
-							{/if}
-						</div>
-					{/if}
-
-					{#if $playerStore.currentTrack && $playerStore.isLoading}
-						<div class="loading-overlay">
-							<div class="loading-equalizer" aria-hidden="true">
-								<span class="bar" style="animation-delay: 0ms"></span>
-								<span class="bar" style="animation-delay: 150ms"></span>
-								<span class="bar" style="animation-delay: 300ms"></span>
-								<span class="bar" style="animation-delay: 450ms"></span>
+											</li>
+										{/each}
+									</ul>
+								{:else}
+									<p
+										class="rounded-lg border border-dashed border-gray-700 bg-gray-900/70 px-3 py-8 text-center text-gray-400"
+									>
+										Queue is empty
+									</p>
+								{/if}
 							</div>
-							<p class="text-sm font-medium text-gray-200">Loading track…</p>
+						{/if}
+
+						{#if $playerStore.currentTrack && $playerStore.isLoading}
+							<div class="loading-overlay">
+								<div class="loading-equalizer" aria-hidden="true">
+									<span class="bar" style="animation-delay: 0ms"></span>
+									<span class="bar" style="animation-delay: 150ms"></span>
+									<span class="bar" style="animation-delay: 300ms"></span>
+									<span class="bar" style="animation-delay: 450ms"></span>
+								</div>
+								<p class="text-sm font-medium text-gray-200">Loading track…</p>
+							</div>
+						{/if}
+					{:else}
+						<div class="flex h-20 items-center justify-center text-sm text-gray-400">
+							Nothing is playing
 						</div>
 					{/if}
-				{:else}
-					<div class="flex h-20 items-center justify-center text-sm text-gray-400">
-						Nothing is playing
-					</div>
-				{/if}
+				</div>
 			</div>
-		</div>
+		{/if}
 	</div>
 </div>
 
@@ -1727,5 +1805,21 @@
 		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.7));
 		color: rgba(255, 255, 255, 0.98);
 		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.15);
+	}
+	.mini-player-glass {
+		background: rgba(20, 30, 50, 0.6);
+		border: 1px solid rgba(148, 163, 184, 0.2);
+		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
+	}
+	
+	.audio-player-backdrop.is-compact {
+		padding-top: 0;
+		padding-bottom: 0.5rem;
+	}
+	
+	.audio-player-backdrop.is-expanded {
+		padding-top: 4rem; 
+		padding-bottom: 1.25rem;
 	}
 </style>
