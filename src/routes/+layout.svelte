@@ -3,7 +3,6 @@
 	import { get } from 'svelte/store';
 	import { fade } from 'svelte/transition';
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
 	import DynamicBackgroundWebGL from '$lib/components/DynamicBackground.svelte';
@@ -28,6 +27,7 @@
 	} from 'lucide-svelte';
 	import type { Navigation } from '@sveltejs/kit';
 	import type { Track, AudioQuality } from '$lib/types';
+	import { apiHealthStore } from '$lib/stores/apiHealth'; 
 
 	let { children, data } = $props();
 	const pageTitle = $derived(data?.title ?? 'BiniTidal');
@@ -372,6 +372,8 @@
 			}
 		});
 
+		apiHealthStore.initialize();
+
 		const updateViewportHeight = () => {
 			viewportHeight = window.innerHeight;
 		};
@@ -443,9 +445,8 @@
 
 <svelte:head>
 	<title>{pageTitle}</title>
-	<link rel="icon" href={favicon} />
-	<link rel="manifest" href="/manifest.webmanifest" />
-	<link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+	<link rel="manifest" href="/site.webmanifest" />
+	<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
 	<meta name="theme-color" content="#0f172a" />
 	<meta name="apple-mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
