@@ -1,111 +1,120 @@
+/// <reference no-default-lib="true"/>
+/// <reference lib="esnext" />
 /// <reference lib="webworker" />
+/// <reference types="@sveltejs/kit" />
 
 import { build, files, version } from '$service-worker';
 
-declare const self: ServiceWorkerGlobalScope;
+const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE_PREFIX = 'binitidal';
-const CACHE_NAME = `${CACHE_PREFIX}-v${version}`;
-const ASSETS = [...build, ...files, '/offline.html'];
+const APP_CACHE_NAME = `${CACHE_PREFIX}-app-v${version}`;
+const DATA_CACHE_NAME = `${CACHE_PREFIX}-data-v1`; // this cache persists across app versions
 
-self.addEventListener('install', (event) => {
-	self.skipWaiting();
+const ASSETS_TO_CACHE = [...new Set([...build, ...files, '/offline.html'])];
+
+const ALLOWED_STREAM_HOSTS = ['lgf.audio.tidal.com', 'amz-pr-fa.audio.tidal.com', 'flac.tidal.com'];
+
+
+sw.addEventListener('install', (event) => {
 	event.waitUntil(
-		caches.open(CACHE_NAME).then((cache) => {
-			return cache.addAll(ASSETS);
+		caches.open(APP_CACHE_NAME)
+			.then((cache) => cache.addAll(ASSETS_TO_CACHE))
+			.then(() => sw.skipWaiting())
+	);
+});
+
+sw.addEventListener('activate', (event) => {
+	event.waitUntil(
+		caches.keys().then(async (keys) => {
+			for (const key of keys) {
+				if (key.startsWith(`${CACHE_PREFIX}-app-`) && key !== APP_CACHE_NAME) {
+					await caches.delete(key);
+				}
+			}
+			await sw.clients.claim();
 		})
 	);
 });
 
-self.addEventListener('activate', (event) => {
-	event.waitUntil(
-		(async () => {
-			const cacheNames = await caches.keys();
-			await Promise.all(
-				cacheNames
-					.filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
-					.map((name) => caches.delete(name))
-			);
-			await self.clients.claim();
-		})()
-	);
-});
-
-self.addEventListener('message', (event) => {
-	if (event.data?.type === 'SKIP_WAITING') {
-		self.skipWaiting();
-	}
-});
-
-self.addEventListener('fetch', (event) => {
-	const request = event.request;
-	if (request.method !== 'GET') {
-		return;
-	}
+sw.addEventListener('fetch', (event) => {
+	const { request } = event;
+	if (request.method !== 'GET') return;
 
 	const url = new URL(request.url);
 
-	// Only handle same-origin requests
-	if (url.origin !== self.location.origin) {
+	if (url.origin !== sw.location.origin && !url.pathname.startsWith('/api/proxy')) {
 		return;
 	}
 
-	if (ASSETS.includes(url.pathname)) {
-		event.respondWith(cacheFirst(request));
+	if (url.pathname.startsWith('/api/proxy')) {
+		try {
+			const proxiedUrl = new URL(url.searchParams.get('url') || '');
+			if (ALLOWED_STREAM_HOSTS.includes(proxiedUrl.hostname)) {
+				event.respondWith(cacheFirst(request, DATA_CACHE_NAME));
+				return;
+			}
+		} catch {
+			// Invalid proxied URL, fall through to other strategies
+		}
+	}
+
+	if (ASSETS_TO_CACHE.includes(url.pathname)) {
+		event.respondWith(cacheFirst(request, APP_CACHE_NAME));
 		return;
 	}
 
 	if (request.mode === 'navigate') {
-		event.respondWith(networkFirst(request));
+		event.respondWith(networkFirst(request, APP_CACHE_NAME));
 		return;
 	}
 
-	event.respondWith(staleWhileRevalidate(request));
+	event.respondWith(staleWhileRevalidate(request, DATA_CACHE_NAME));
 });
 
-async function cacheFirst(request: Request) {
-	const cache = await caches.open(CACHE_NAME);
+
+async function cacheFirst(request: Request, cacheName: string): Promise<Response> {
+	const cache = await caches.open(cacheName);
 	const cachedResponse = await cache.match(request);
+
 	if (cachedResponse) {
 		return cachedResponse;
 	}
-	const response = await fetch(request);
-	if (response && response.ok) {
-		cache.put(request, response.clone());
+
+	const networkResponse = await fetch(request);
+	if (networkResponse.ok) {
+		await cache.put(request, networkResponse.clone());
 	}
-	return response;
+	return networkResponse;
 }
 
-async function networkFirst(request: Request) {
-	const cache = await caches.open(CACHE_NAME);
+async function networkFirst(request: Request, cacheName: string): Promise<Response> {
 	try {
-		const response = await fetch(request);
-		cache.put(request, response.clone());
-		return response;
+		const networkResponse = await fetch(request);
+		if (networkResponse.ok) {
+			const cache = await caches.open(cacheName);
+			await cache.put(request, networkResponse.clone());
+		}
+		return networkResponse;
 	} catch (error) {
-		const cached = await cache.match(request);
-		if (cached) {
-			return cached;
-		}
-		const fallback = await cache.match('/offline.html');
-		if (fallback) {
-			return fallback;
-		}
-		throw error;
+		const cache = await caches.open(cacheName);
+		const cachedResponse = await cache.match(request);
+		// Fallback to offline page if both network and cache fail
+		return cachedResponse || (await cache.match('/offline.html'))!;
 	}
 }
 
-async function staleWhileRevalidate(request: Request) {
-	const cache = await caches.open(CACHE_NAME);
-	const cached = await cache.match(request);
-	const fetchPromise = fetch(request)
-		.then((response) => {
-			if (response && response.ok) {
-				cache.put(request, response.clone());
-			}
-			return response;
-		})
-		.catch(() => undefined);
+async function staleWhileRevalidate(request: Request, cacheName: string): Promise<Response> {
+	const cache = await caches.open(cacheName);
+	const cachedResponse = await cache.match(request);
 
-	return cached ?? (await fetchPromise) ?? (await networkFirst(request));
+	const fetchPromise = fetch(request).then((networkResponse) => {
+		if (networkResponse.ok) {
+			cache.put(request, networkResponse.clone());
+		}
+		return networkResponse;
+	});
+
+	// Return cached response immediately if available, otherwise wait for the network
+	return cachedResponse || (await fetchPromise);
 }
