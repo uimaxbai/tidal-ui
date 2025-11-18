@@ -2,14 +2,21 @@
 	import SearchInterface from '$lib/components/SearchInterface.svelte';
 	import type { Track } from '$lib/types';
 	import { playerStore } from '$lib/stores/player';
+	import { get } from 'svelte/store';
 
 	let { data } = $props();
 
 	function handleTrackSelect(track: Track) {
-		playerStore.setQueue([track], 0);
-		playerStore.play();
-	}
+		const { queue, queueIndex } = get(playerStore);
 
+        const newQueue = [...queue];
+        const insertPosition = queueIndex + 1;
+        newQueue.splice(insertPosition, 0, track);
+
+        playerStore.setQueue(newQueue, insertPosition);
+        
+        playerStore.play();
+    }
 </script>
 
 <svelte:head>
