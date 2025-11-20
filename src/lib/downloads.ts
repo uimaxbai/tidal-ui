@@ -133,19 +133,28 @@ async function downloadTrackWithRetry(
 ): Promise<DownloadTrackResult> {
 	const maxAttempts = 3;
 	const baseDelay = 1000; // 1 second
+	const trackTitle = track.title ?? 'Unknown Track';
+	const artistName = formatArtists(track.artists);
+
+	console.log(`[Track Download] Starting download: "${trackTitle}" by ${artistName} (ID: ${trackId}, Quality: ${quality})`);
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 		try {
+			if (attempt > 1) {
+				console.log(`[Track Download] Retry attempt ${attempt}/${maxAttempts} for "${trackTitle}"`);
+			}
+
 			const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 				ffmpegAutoTriggered: false,
 				convertAacToMp3: options?.convertAacToMp3
 			});
+
+			console.log(`[Track Download] ✓ Success: "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${attempt > 1 ? ` - succeeded on attempt ${attempt}` : ''}`);
 			return { success: true, blob };
 		} catch (error) {
 			const errorObj = error instanceof Error ? error : new Error(String(error));
 			console.warn(
-				`[Download Retry] Attempt ${attempt}/${maxAttempts} failed for track "${track.title}":`,
-				errorObj.message
+				`[Track Download] ✗ Attempt ${attempt}/${maxAttempts} failed for "${trackTitle}": ${errorObj.message}`
 			);
 
 			callbacks?.onTrackFailed?.(track, errorObj, attempt);
@@ -153,11 +162,11 @@ async function downloadTrackWithRetry(
 			if (attempt < maxAttempts) {
 				// Exponential backoff: 1s, 2s, 4s
 				const delay = baseDelay * Math.pow(2, attempt - 1);
-				console.log(`[Download Retry] Waiting ${delay}ms before retry...`);
+				console.log(`[Track Download] Waiting ${delay}ms before retry...`);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 			} else {
 				console.error(
-					`[Download Retry] All ${maxAttempts} attempts failed for track "${track.title}"`
+					`[Track Download] ✗✗✗ All ${maxAttempts} attempts failed for "${trackTitle}" - giving up`
 				);
 				return { success: false, error: errorObj };
 			}
@@ -198,6 +207,12 @@ export async function downloadAlbum(
 		preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist'
 	);
 	const albumTitle = sanitizeForFilename(canonicalAlbum.title ?? 'Unknown Album');
+
+	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+	console.log(`[Album Download] Starting: "${albumTitle}" by ${artistName}`);
+	console.log(`[Album Download] Tracks: ${total} | Quality: ${quality} | Mode: ${mode}`);
+	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
 
 	if (useCsv) {
 		let completed = 0;
@@ -376,11 +391,22 @@ export async function downloadAlbum(
 			compression: 'DEFLATE',
 			compressionOptions: { level: 6 }
 		});
+
+		const successCount = completed - failedTracks.length;
+		console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+		console.log(`[Album Download] ZIP Complete: "${albumTitle}"`);
+		console.log(`[Album Download] ✓ Success: ${successCount}/${total} tracks | ZIP size: ${(zipBlob.size / 1024 / 1024).toFixed(2)} MB`);
+		if (failedTracks.length > 0) {
+			console.log(`[Album Download] ✗ Failed: ${failedTracks.length} track(s) - see _DOWNLOAD_ERRORS.txt in ZIP`);
+		}
+		console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
 		triggerFileDownload(zipBlob, `${artistName} - ${albumTitle}.zip`);
 		return;
 	}
 
 	let completed = 0;
+	let failedCount = 0;
 
 	for (const track of tracks) {
 		const filename = buildTrackFilename(
@@ -488,9 +514,20 @@ export async function downloadAlbum(
 			}
 		} else {
 			console.error(`[Individual Download] Track failed: ${track.title}`, result.error);
+			failedCount++;
 		}
 
 		completed += 1;
 		callbacks?.onTrackDownloaded?.(completed, total, track);
 	}
+
+	// Summary logging
+	const successCount = total - failedCount;
+	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+	console.log(`[Album Download] Individual Downloads Complete: "${albumTitle}"`);
+	console.log(`[Album Download] ✓ Success: ${successCount}/${total} tracks`);
+	if (failedCount > 0) {
+		console.log(`[Album Download] ✗ Failed: ${failedCount} track(s)`);
+	}
+	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 }
