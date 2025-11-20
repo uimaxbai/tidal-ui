@@ -3,11 +3,7 @@
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
-	import {
-		losslessAPI,
-		DASH_MANIFEST_UNAVAILABLE_CODE,
-		type TrackDownloadProgress
-	} from '$lib/api';
+	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
 	import type { DashManifestResult } from '$lib/api';
 	import { getProxiedUrl } from '$lib/config';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
