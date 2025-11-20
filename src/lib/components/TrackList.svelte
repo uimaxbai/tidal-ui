@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Track } from '$lib/types';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-	import { getExtensionForQuality } from '$lib/downloads';
+	import { getExtensionForQuality, buildTrackFilename } from '$lib/downloads';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -96,8 +96,13 @@
 		downloadingIds = next;
 
 		const quality = $playerStore.quality;
-		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-		const filename = `${formatArtists(track.artists)} - ${track.title}.${extension}`;
+		const filename = buildTrackFilename(
+			track.album,
+			track,
+			quality,
+			formatArtists(track.artists),
+			convertAacToMp3Preference
+		);
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 			subtitle: showAlbum ? (track.album?.title ?? track.artist?.name) : track.artist?.name
 		});
