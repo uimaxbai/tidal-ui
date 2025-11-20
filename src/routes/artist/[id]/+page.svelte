@@ -27,6 +27,7 @@
 		completed: number;
 		total: number;
 		error: string | null;
+		failedTracks: number;
 	};
 
 	let isDownloadingDiscography = $state(false);
@@ -67,7 +68,8 @@
 			downloading: false,
 			completed: 0,
 			total: 0,
-			error: null
+			error: null,
+			failedTracks: 0
 		};
 		albumDownloadStates = {
 			...albumDownloadStates,
@@ -93,6 +95,7 @@
 		const quality = downloadQuality;
 
 		try {
+			let failedCount = 0;
 			await downloadAlbum(
 				album,
 				quality,
@@ -102,6 +105,12 @@
 					},
 					onTrackDownloaded: (completed, total) => {
 						patchAlbumDownloadState(album.id, { completed, total });
+					},
+					onTrackFailed: (track, error, attempt) => {
+						if (attempt >= 3) {
+							failedCount++;
+							patchAlbumDownloadState(album.id, { failedTracks: failedCount });
+						}
 					}
 				},
 				artist?.name,
@@ -111,7 +120,9 @@
 			patchAlbumDownloadState(album.id, {
 				downloading: false,
 				completed: finalState?.total ?? finalState?.completed ?? 0,
-				error: null
+				error: failedCount > 0 
+					? `${failedCount} track${failedCount > 1 ? 's' : ''} failed after 3 attempts`
+					: null
 			});
 		} catch (err) {
 			console.error('Failed to download album:', err);
@@ -143,6 +154,7 @@
 
 		for (const album of discography) {
 			let albumEstimate = album.numberOfTracks ?? 0;
+			let albumFailedCount = 0;
 			try {
 				await downloadAlbum(
 					album,
@@ -161,11 +173,19 @@
 						onTrackDownloaded: () => {
 							completed += 1;
 							discographyProgress = { completed, total };
+						},
+						onTrackFailed: (track, error, attempt) => {
+							if (attempt >= 3) {
+								albumFailedCount++;
+							}
 						}
 					},
 					artist?.name,
 					{ mode: downloadMode, convertAacToMp3: convertAacToMp3Preference }
 				);
+				if (albumFailedCount > 0) {
+					console.warn(`[Discography] ${albumFailedCount} track(s) failed in album: ${album.title}`);
+				}
 			} catch (err) {
 				console.error('Failed to download discography album:', err);
 				const message =
