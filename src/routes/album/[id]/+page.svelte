@@ -87,6 +87,7 @@
 		const mode = albumDownloadMode;
 
 		try {
+			let failedCount = 0;
 			await downloadAlbum(
 				album,
 				quality,
@@ -96,11 +97,20 @@
 					},
 					onTrackDownloaded: (completed) => {
 						downloadedCount = completed;
+					},
+					onTrackFailed: (track, error, attempt) => {
+						if (attempt >= 3) {
+							failedCount++;
+						}
 					}
 				},
 				album.artist?.name,
 				{ mode, convertAacToMp3: convertAacToMp3Preference }
 			);
+			
+			if (failedCount > 0) {
+				downloadError = `Download completed. ${failedCount} track${failedCount > 1 ? 's' : ''} failed after 3 attempts.`;
+			}
 		} catch (err) {
 			console.error('Failed to download album:', err);
 			downloadError =

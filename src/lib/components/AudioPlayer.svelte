@@ -8,7 +8,7 @@
 	import { getProxiedUrl } from '$lib/config';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
-	import { sanitizeForFilename, getExtensionForQuality } from '$lib/downloads';
+	import { sanitizeForFilename, getExtensionForQuality, buildTrackFilename } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
 	import type { Track, AudioQuality } from '$lib/types';
 	import { slide } from 'svelte/transition';
@@ -134,7 +134,8 @@
 		if (!shakaNamespace) {
 			// @ts-expect-error Shaka Player's compiled bundle does not expose module typings.
 			const module = await import('shaka-player/dist/shaka-player.compiled.js');
-			const resolved = (module as ShakaModule | { default: ShakaNamespace }).default ??
+			const resolved =
+				(module as ShakaModule | { default: ShakaNamespace }).default ??
 				(module as unknown as ShakaNamespace);
 			shakaNamespace = resolved;
 			if (shakaNamespace?.polyfill?.installAll) {
@@ -190,7 +191,9 @@
 		if (result.kind !== 'flac') {
 			return;
 		}
-		const fallbackUrl = result.urls.find((candidate) => typeof candidate === 'string' && candidate.length > 0);
+		const fallbackUrl = result.urls.find(
+			(candidate) => typeof candidate === 'string' && candidate.length > 0
+		);
 		if (!fallbackUrl) {
 			return;
 		}
@@ -512,7 +515,11 @@
 			scheduleSampleRateUpdate(requestedQuality);
 		} catch (error) {
 			console.error('Failed to load track:', error);
-			if (sequence === loadSequence && requestedQuality !== 'LOSSLESS' && !isHiResQuality(requestedQuality)) {
+			if (
+				sequence === loadSequence &&
+				requestedQuality !== 'LOSSLESS' &&
+				!isHiResQuality(requestedQuality)
+			) {
 				try {
 					await loadStandardTrack(track, 'LOSSLESS', sequence);
 					scheduleSampleRateUpdate('LOSSLESS');
@@ -576,9 +583,10 @@
 		const mediaError = element?.error ?? null;
 		const code = mediaError?.code;
 		const decodeConstant = mediaError?.MEDIA_ERR_DECODE;
-		const isDecodeError = typeof code === 'number' && typeof decodeConstant === 'number'
-			? code === decodeConstant
-			: false;
+		const isDecodeError =
+			typeof code === 'number' && typeof decodeConstant === 'number'
+				? code === decodeConstant
+				: false;
 		const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
 		void fallbackToLosslessAfterDashError(reason);
 	}
@@ -641,7 +649,7 @@
 
 	function handleSeek(event: MouseEvent | TouchEvent) {
 		if (!seekBarElement) return;
-		
+
 		const rect = seekBarElement.getBoundingClientRect();
 		const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
 		const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
@@ -658,13 +666,13 @@
 		event.preventDefault();
 		isSeeking = true;
 		handleSeek(event);
-		
+
 		const handleMove = (e: MouseEvent | TouchEvent) => {
 			if (isSeeking) {
 				handleSeek(e);
 			}
 		};
-		
+
 		const handleEnd = () => {
 			isSeeking = false;
 			document.removeEventListener('mousemove', handleMove as EventListener);
@@ -672,7 +680,7 @@
 			document.removeEventListener('touchmove', handleMove as EventListener);
 			document.removeEventListener('touchend', handleEnd);
 		};
-		
+
 		document.addEventListener('mousemove', handleMove as EventListener);
 		document.addEventListener('mouseup', handleEnd);
 		document.addEventListener('touchmove', handleMove as EventListener);
@@ -717,15 +725,18 @@
 		const quality = $playerStore.quality;
 		const convertAacToMp3 = $userPreferencesStore.convertAacToMp3;
 		const downloadCoverSeperately = $userPreferencesStore.downloadCoversSeperately;
-		const artistName = formatArtists(track.artists);
-		const titleName = track.title ?? 'Unknown Track';
-		const ext = getExtensionForQuality(quality, convertAacToMp3);
-		const filename = `${sanitizeForFilename(artistName)} - ${sanitizeForFilename(titleName)}.${ext}`;
+		const filename = buildTrackFilename(
+			track.album,
+			track,
+			quality,
+			formatArtists(track.artists),
+			convertAacToMp3
+		);
 
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 			subtitle: track.album?.title ?? track.artist?.name
 		});
-		
+
 		downloadTaskIdForCurrentTrack = taskId;
 		isDownloadingCurrentTrack = true;
 		downloadUiStore.skipFfmpegCountdown();
@@ -811,7 +822,8 @@
 			return null;
 		}
 		const kilohertz = value / 1000;
-		const precision = kilohertz >= 100 || Math.abs(kilohertz - Math.round(kilohertz)) < 0.05 ? 0 : 1;
+		const precision =
+			kilohertz >= 100 || Math.abs(kilohertz - Math.round(kilohertz)) < 0.05 ? 0 : 1;
 		const formatted = kilohertz.toFixed(precision).replace(/\.0$/, '');
 		return `${formatted} kHz`;
 	}
@@ -1375,28 +1387,54 @@
 									>
 										{formatArtists($playerStore.currentTrack.artists)}
 									</a>
-									<p class="text-xs text-gray-500">
-										<a
-											href={`/album/${$playerStore.currentTrack.album.id}`}
-											class="hover:text-blue-400 hover:underline"
-											data-sveltekit-preload-data
-										>
-											{$playerStore.currentTrack.album.title}
-										</a>
-										<span class="mx-1" aria-hidden="true">•</span>
-										<span>{formatQualityLabel(currentPlaybackQuality ?? undefined)}</span>
-										{#if currentPlaybackQuality && $playerStore.currentTrack.audioQuality && currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
-											<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-											<span class="text-gray-500">
-												({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
-											</span>
-										{/if}
-										{#if sampleRateLabel}
-											<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-											<span>{sampleRateLabel}</span>
-										{/if}
-									</p>
-								</div>
+									<span class="mx-1" aria-hidden="true">•</span>
+									<span>{formatQualityLabel(currentPlaybackQuality ?? undefined)}</span>
+									{#if currentPlaybackQuality && $playerStore.currentTrack.audioQuality && currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
+										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+										<span class="text-gray-500">
+											({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
+										</span>
+									{/if}
+									{#if sampleRateLabel}
+										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+										<span>{sampleRateLabel}</span>
+									{/if}
+								</p>
+							</div>
+						</div>
+
+						<div class="flex flex-nowrap items-center justify-between gap-2 sm:gap-4">
+							<!-- Controls -->
+							<div class="flex items-center justify-center gap-1 sm:gap-2">
+								<button
+									onclick={() => playerStore.previous()}
+									class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+									disabled={$playerStore.queueIndex <= 0}
+									aria-label="Previous track"
+								>
+									<SkipBack size={18} class="sm:w-5 sm:h-5" />
+								</button>
+
+								<button
+									onclick={() => playerStore.togglePlay()}
+									class="rounded-full bg-white p-2.5 sm:p-3 text-gray-900 transition-transform hover:scale-105"
+									aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
+								>
+									{#if $playerStore.isPlaying}
+										<Pause size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
+									{:else}
+										<Play size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
+									{/if}
+								</button>
+
+								<button
+									onclick={() => playerStore.next()}
+									class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+									disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
+									aria-label="Next track"
+								>
+									<SkipForward size={18} class="sm:w-5 sm:h-5" />
+								</button>
 							</div>
 
 							<div class="flex flex-nowrap items-center justify-between gap-2 sm:gap-4">
@@ -1630,11 +1668,11 @@
 		border-color: rgba(148, 163, 184, 0.2);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
+		box-shadow:
 			0 30px 80px rgba(2, 6, 23, 0.6),
 			0 4px 18px rgba(15, 23, 42, 0.45),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -1643,11 +1681,12 @@
 		background: transparent;
 		border-color: rgba(148, 163, 184, 0.2);
 		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
+			saturate(var(--perf-saturate, 160%));
+		box-shadow:
 			0 8px 24px rgba(2, 6, 23, 0.4),
 			inset 0 1px 0 rgba(255, 255, 255, 0.05);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -1657,12 +1696,12 @@
 		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.7));
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
+		box-shadow:
 			0 12px 32px rgba(2, 6, 23, 0.5),
 			0 2px 8px rgba(59, 130, 246, 0.2),
 			inset 0 1px 0 rgba(255, 255, 255, 0.08),
 			inset 0 0 30px rgba(59, 130, 246, 0.08);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -1672,11 +1711,11 @@
 		border-color: rgba(148, 163, 184, 0.2);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
+		box-shadow:
 			0 12px 32px rgba(2, 6, 23, 0.5),
 			0 2px 8px rgba(15, 23, 42, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -1767,7 +1806,7 @@
 
 	/* Dynamic button styles */
 	button.rounded-full {
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			color 0.2s ease,
 			background 0.2s ease;
@@ -1790,7 +1829,7 @@
 		padding: 0.5rem 0.75rem;
 		font-size: 0.875rem;
 		color: rgba(209, 213, 219, 0.85);
-		transition: 
+		transition:
 			border-color 200ms ease,
 			color 200ms ease,
 			box-shadow 200ms ease;
