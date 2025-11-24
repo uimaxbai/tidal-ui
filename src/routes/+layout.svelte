@@ -3,7 +3,6 @@
 	import { get } from 'svelte/store';
 	import { fade } from 'svelte/transition';
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
 	import DynamicBackgroundWebGL from '$lib/components/DynamicBackground.svelte';
@@ -28,6 +27,7 @@
 	} from 'lucide-svelte';
 	import type { Navigation } from '@sveltejs/kit';
 	import type { Track, AudioQuality } from '$lib/types';
+	import { apiHealthStore } from '$lib/stores/apiHealth'; 
 
 	let { children, data } = $props();
 	const pageTitle = $derived(data?.title ?? 'BiniTidal');
@@ -41,6 +41,39 @@
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
 	let settingsMenuContainer: HTMLDivElement | null = null;
+	let lastScrollY = $state(0);
+	let isHeaderVisible = $state(true);
+	let isMobile = $state(false);
+	const SCROLL_THRESHOLD = 5;
+	const MOBILE_BREAKPOINT = 768;
+
+	function handleScroll() {
+		if (!isMobile) {
+			isHeaderVisible = true;
+			return;
+		}
+		
+		const currentScrollY = window.scrollY;
+
+		if (currentScrollY < headerHeight) {
+			isHeaderVisible = true;
+			return;
+		}
+
+		if (Math.abs(currentScrollY - lastScrollY) < SCROLL_THRESHOLD) {
+			return;
+		}
+
+		if (currentScrollY > lastScrollY) {
+			isHeaderVisible = false; // Scrolling Down
+		} else {
+			isHeaderVisible = true; // Scrolling Up
+		}
+
+		lastScrollY = currentScrollY;
+	}
+
+
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'
@@ -364,6 +397,19 @@
 	let controllerChangeHandler: (() => void) | null = null;
 
 	onMount(() => {
+		const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+		const updateIsMobile = () => {
+			isMobile = mediaQuery.matches;
+			if (!isMobile) {
+				isHeaderVisible = true;
+			}
+		};
+
+		updateIsMobile();
+
+		mediaQuery.addEventListener('change', updateIsMobile);
+		window.addEventListener('scroll', handleScroll, { passive: true });
+
 		// Subscribe to performance level and update data attribute
 		const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
 			performanceLevel = level;
@@ -371,6 +417,8 @@
 				document.documentElement.setAttribute('data-performance', level);
 			}
 		});
+
+		apiHealthStore.initialize();
 
 		const updateViewportHeight = () => {
 			viewportHeight = window.innerHeight;
@@ -391,61 +439,18 @@
 			navigationState = value;
 		});
 
-		if ('serviceWorker' in navigator) {
-			const registerServiceWorker = async () => {
-				try {
-					const registration = await navigator.serviceWorker.register('/service-worker.js');
-					const sendSkipWaiting = () => {
-						if (registration.waiting) {
-							registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-						}
-					};
-
-					if (registration.waiting) {
-						sendSkipWaiting();
-					}
-
-					registration.addEventListener('updatefound', () => {
-						const newWorker = registration.installing;
-						if (!newWorker) return;
-						newWorker.addEventListener('statechange', () => {
-							if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-								sendSkipWaiting();
-							}
-						});
-					});
-				} catch (error) {
-					console.error('Service worker registration failed', error);
-				}
-			};
-
-			registerServiceWorker();
-
-			let refreshing = false;
-			controllerChangeHandler = () => {
-				if (refreshing) return;
-				refreshing = true;
-				window.location.reload();
-			};
-			navigator.serviceWorker.addEventListener('controllerchange', controllerChangeHandler);
-		}
 		return () => {
-			window.removeEventListener('resize', updateViewportHeight);
-			document.removeEventListener('click', handleDocumentClick);
+			window.removeEventListener('scroll', handleScroll);
+			mediaQuery.removeEventListener('change', updateIsMobile);
 			unsubscribe();
-			unsubPerf();
-			if (controllerChangeHandler) {
-				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
-			}
 		};
 	});
 </script>
 
 <svelte:head>
 	<title>{pageTitle}</title>
-	<link rel="icon" href={favicon} />
-	<link rel="manifest" href="/manifest.webmanifest" />
-	<link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+	<link rel="manifest" href="/site.webmanifest" />
+	<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
 	<meta name="theme-color" content="#0f172a" />
 	<meta name="apple-mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -454,7 +459,10 @@
 <div class="app-root">
 	<DynamicBackgroundWebGL />
 	<div class="app-shell">
-		<header class="app-header glass-panel" bind:clientHeight={headerHeight}>
+		<header
+			class="app-header glass-panel transition-transform duration-300 {isHeaderVisible ? 'translate-y-0' : '-translate-y-full'}"
+			bind:clientHeight={headerHeight}
+		>
 			<div class="app-header__inner">
 				<a href="/" class="brand" aria-label="Home">
 					<div class="brand__text">

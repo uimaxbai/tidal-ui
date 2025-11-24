@@ -1,5 +1,5 @@
-// CORS Proxy Configuration
-// If you're experiencing CORS issues with the HIFI API, you can set up a proxy
+import { get } from 'svelte/store';
+import { apiHealthStore } from './stores/apiHealth';
 
 type RegionPreference = 'auto' | 'us' | 'eu';
 
@@ -11,7 +11,7 @@ export interface ApiClusterTarget {
 	category: 'auto-only';
 }
 
-const ALL_API_TARGETS = [
+export const ALL_API_TARGETS = [
 	{
 		name: 'new-squid',
 		baseUrl: 'https://kraken.squid.wtf',
@@ -172,7 +172,7 @@ const ALL_API_TARGETS = [
 		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
-	},
+	}
 ] satisfies ApiClusterTarget[];
 
 const US_API_TARGETS = [
@@ -219,13 +219,9 @@ const TARGET_COLLECTIONS: Record<RegionPreference, ApiClusterTarget[]> = {
 	us: [...US_API_TARGETS]
 };
 
-const TARGETS = TARGET_COLLECTIONS.auto;
-
 export const API_CONFIG = {
-	// Cluster of target endpoints for load distribution and redundancy
-	targets: TARGETS,
-	baseUrl: TARGETS[0]?.baseUrl ?? 'https://tidal.401658.xyz',
-	// Proxy configuration for endpoints that need it
+	targets: ALL_API_TARGETS,
+	baseUrl: ALL_API_TARGETS[0]?.baseUrl ?? 'https://tidal.401658.xyz',
 	useProxy: true,
 	proxyUrl: '/api/proxy'
 };
@@ -234,30 +230,23 @@ type WeightedTarget = ApiClusterTarget & { cumulativeWeight: number };
 
 let weightedTargets: WeightedTarget[] | null = null;
 
-function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
-	const validTargets = targets.filter((target) => {
-		if (!target?.baseUrl || typeof target.baseUrl !== 'string') {
-			return false;
-		}
-		if (target.weight <= 0) {
-			return false;
-		}
-		try {
-			new URL(target.baseUrl);
-			return true;
-		} catch (error) {
-			console.error(`Invalid API target URL for ${target.name}:`, error);
-			return false;
-		}
-	});
-
-	if (validTargets.length === 0) {
-		throw new Error('No valid API targets configured');
+function getActiveTargets(): ApiClusterTarget[] {
+	const { healthyTargets, status } = get(apiHealthStore);
+	if (healthyTargets.length > 0) {
+		return healthyTargets;
 	}
 
+	if (status === 'complete') {
+		return [];
+	}
+
+	return ALL_API_TARGETS;
+}
+
+function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
 	let cumulative = 0;
 	const collected: WeightedTarget[] = [];
-	for (const target of validTargets) {
+	for (const target of targets) {
 		cumulative += target.weight;
 		collected.push({ ...target, cumulativeWeight: cumulative });
 	}
@@ -282,7 +271,7 @@ export function getPrimaryTarget(): ApiClusterTarget {
 
 function selectFromWeightedTargets(weighted: WeightedTarget[]): ApiClusterTarget {
 	if (weighted.length === 0) {
-		throw new Error('No weighted targets available for selection');
+		throw new Error('No API targets available for selection');
 	}
 
 	const totalWeight = weighted[weighted.length - 1]?.cumulativeWeight ?? 0;
@@ -296,10 +285,8 @@ function selectFromWeightedTargets(weighted: WeightedTarget[]): ApiClusterTarget
 			return target;
 		}
 	}
-
 	return weighted[0];
 }
-
 export function getTargetsForRegion(region: RegionPreference = 'auto'): ApiClusterTarget[] {
 	const targets = TARGET_COLLECTIONS[region];
 	return Array.isArray(targets) ? targets : [];
@@ -336,42 +323,9 @@ function parseTargetBase(target: ApiClusterTarget): URL | null {
 	}
 }
 
-function getBaseApiUrl(target?: ApiClusterTarget): URL | null {
-	const chosen = target ?? getPrimaryTarget();
-	return parseTargetBase(chosen);
-}
-
 function stripTrailingSlash(path: string): string {
 	if (path === '/') return path;
 	return path.replace(/\/+$/, '') || '/';
-}
-
-function combinePaths(basePath: string, relativePath: string): string {
-	const trimmedBase = stripTrailingSlash(basePath || '/');
-	const normalizedRelative = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
-	if (trimmedBase === '/' || trimmedBase === '') {
-		return normalizedRelative;
-	}
-	if (normalizedRelative === '/') {
-		return `${trimmedBase}/`;
-	}
-	return `${trimmedBase}${normalizedRelative}`;
-}
-
-function getRelativePath(url: URL, targetBase: URL): string {
-	const basePath = stripTrailingSlash(targetBase.pathname || '/');
-	const currentPath = url.pathname || '/';
-	if (basePath === '/' || basePath === '') {
-		return currentPath.startsWith('/') ? currentPath : `/${currentPath}`;
-	}
-	if (!currentPath.startsWith(basePath)) {
-		return currentPath;
-	}
-	const relative = currentPath.slice(basePath.length);
-	if (!relative) {
-		return '/';
-	}
-	return relative.startsWith('/') ? relative : `/${relative}`;
 }
 
 function matchesTarget(url: URL, target: ApiClusterTarget): boolean {
@@ -407,38 +361,12 @@ export function isProxyTarget(url: URL): boolean {
 	return target?.requiresProxy === true;
 }
 
-function shouldPreferPrimaryTarget(url: URL): boolean {
-	const path = url.pathname.toLowerCase();
-
-	// Prefer the proxied primary target for endpoints that routinely require the legacy domain
-	if (path.includes('/album/') || path.includes('/artist/') || path.includes('/playlist/')) {
-		return true;
-	}
-
-	if (path.includes('/search/')) {
-		const params = url.searchParams;
-		if (params.has('a') || params.has('al') || params.has('p')) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-function resolveUrl(url: string): URL | null {
+function resolveUrl(url: string): URL {
 	try {
 		return new URL(url);
 	} catch {
-		const baseApiUrl = getBaseApiUrl();
-		if (!baseApiUrl) {
-			return null;
-		}
-
-		try {
-			return new URL(url, baseApiUrl);
-		} catch {
-			return null;
-		}
+		const primaryTarget = getActiveTargets()[0] ?? ALL_API_TARGETS[0];
+		return new URL(url, primaryTarget.baseUrl);
 	}
 }
 
@@ -523,88 +451,77 @@ async function isUnexpectedProxyResponse(response: Response): Promise<boolean> {
 	}
 }
 
+function shouldPreferPrimaryTarget(url: URL): boolean {
+	const path = url.pathname.toLowerCase();
+
+	// Prefer the primary target for endpoints that may require a legacy domain or specific handling
+	if (path.includes('/album/') || path.includes('/artist/') || path.includes('/playlist/')) {
+		return true;
+	}
+
+	if (path.includes('/search/')) {
+		const params = url.searchParams;
+		if (params.has('a') || params.has('al') || params.has('p')) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /**
  * Fetch with CORS handling
  */
 export async function fetchWithCORS(url: string, options?: RequestInit): Promise<Response> {
-	const resolvedUrl = resolveUrl(url);
-	if (!resolvedUrl) {
-		throw new Error(`Unable to resolve URL: ${url}`);
+	const activeTargets = getActiveTargets();
+	if (activeTargets.length === 0) {
+		throw new Error('All API endpoints are currently unavailable. Please try again later.');
 	}
 
-	const originTarget = findTargetForUrl(resolvedUrl);
-	if (!originTarget) {
-		return fetch(getProxiedUrl(resolvedUrl.toString()), {
-			...options
-		});
-	}
+	// Handles relative URLs like "/track/123" by giving them a dummy base
+	const originUrl = new URL(url, 'http://dummybase');
 
-	const weightedTargets = ensureWeightedTargets();
 	const attemptOrder: ApiClusterTarget[] = [];
-	if (shouldPreferPrimaryTarget(resolvedUrl)) {
+
+	if (shouldPreferPrimaryTarget(originUrl)) {
 		const primary = getPrimaryTarget();
-		if (!attemptOrder.some((candidate) => candidate.name === primary.name)) {
+		if (activeTargets.some((t) => t.name === primary.name)) {
 			attemptOrder.push(primary);
 		}
 	}
 
-	const selected = selectApiTarget();
+	const weightedActiveTargets = buildWeightedTargets(activeTargets);
+	const selected = selectFromWeightedTargets(weightedActiveTargets);
 	if (!attemptOrder.some((candidate) => candidate.name === selected.name)) {
 		attemptOrder.push(selected);
 	}
 
-	for (const target of weightedTargets) {
+	for (const target of activeTargets) {
 		if (!attemptOrder.some((candidate) => candidate.name === target.name)) {
 			attemptOrder.push(target);
 		}
 	}
 
-	let uniqueTargets = attemptOrder.filter(
-		(target, index, array) => array.findIndex((entry) => entry.name === target.name) === index
-	);
-
-	if (uniqueTargets.length === 0) {
-		uniqueTargets = [getPrimaryTarget()];
-	}
-
-	const originBase = parseTargetBase(originTarget);
-	if (!originBase) {
-		throw new Error('Invalid origin target configuration.');
-	}
-
-	const totalAttempts = Math.max(3, uniqueTargets.length);
 	let lastError: unknown = null;
 	let lastResponse: Response | null = null;
 	let lastUnexpectedResponse: Response | null = null;
 
-	for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
-		const target = uniqueTargets[attempt % uniqueTargets.length];
-		const targetBase = parseTargetBase(target);
-		if (!targetBase) {
-			continue;
-		}
-
-		const relativePath = getRelativePath(resolvedUrl, originBase);
-		const rewrittenPath = combinePaths(targetBase.pathname || '/', relativePath);
-		const rewrittenUrl = new URL(
-			rewrittenPath + resolvedUrl.search + resolvedUrl.hash,
-			targetBase.origin
-		);
-		const finalUrl = getProxiedUrl(rewrittenUrl.toString());
+	for (const target of attemptOrder) {
+		const targetUrl = new URL(originUrl.pathname + originUrl.search + originUrl.hash, target.baseUrl);
+		const finalUrl = target.requiresProxy
+			? getProxiedUrl(targetUrl.toString())
+			: targetUrl.toString();
 
 		try {
-			const response = await fetch(finalUrl, {
-				...options
-			});
+			const response = await fetch(finalUrl, options);
 			if (response.ok) {
 				const unexpected = await isUnexpectedProxyResponse(response);
 				if (!unexpected) {
-					return response;
+					return response; // This is a genuine success.
 				}
 				lastUnexpectedResponse = response;
 				continue;
 			}
-
 			lastResponse = response;
 		} catch (error) {
 			lastError = error;
@@ -617,11 +534,9 @@ export async function fetchWithCORS(url: string, options?: RequestInit): Promise
 	if (lastUnexpectedResponse) {
 		return lastUnexpectedResponse;
 	}
-
 	if (lastResponse) {
 		return lastResponse;
 	}
-
 	if (lastError) {
 		if (
 			lastError instanceof TypeError &&
@@ -629,11 +544,11 @@ export async function fetchWithCORS(url: string, options?: RequestInit): Promise
 			lastError.message.includes('CORS')
 		) {
 			throw new Error(
-				'CORS error detected. Please configure a proxy in src/lib/config.ts or enable CORS on your backend.'
+				'CORS error detected'
 			);
 		}
 		throw lastError;
 	}
 
-	throw new Error('All API targets failed without response.');
+	throw new Error('All API targets failed without response');
 }

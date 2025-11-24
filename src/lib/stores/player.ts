@@ -1,5 +1,5 @@
-// Audio player store for managing playback state
 import { writable, derived, get } from 'svelte/store';
+import { browser } from '$app/environment';
 import type { Track, AudioQuality } from '$lib/types';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -18,24 +18,67 @@ interface PlayerState {
 	sampleRate: number | null;
 }
 
+const STORAGE_KEY = 'tidal-ui.playerState';
+
+function saveState(state: PlayerState) {
+	if (!browser) return;
+	try {
+		const stateToSave = {
+			currentTrack: state.currentTrack,
+			currentTime: state.currentTime,
+			volume: state.volume,
+			queue: state.queue,
+			queueIndex: state.queueIndex
+		};
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+	} catch (error) {
+		console.warn('Failed to save player state:', error);
+	}
+}
+
+function loadState(): Partial<PlayerState> {
+	if (!browser) return {};
+	try {
+		const savedState = localStorage.getItem(STORAGE_KEY);
+		if (savedState) {
+			const parsed = JSON.parse(savedState);
+
+			return { ...parsed, isPlaying: false, isLoading: !!parsed.currentTrack };
+		}
+	} catch (error) {
+		console.warn('Failed to load player state:', error);
+	}
+	return {};
+}
+
 const initialPreferences = get(userPreferencesStore);
+const loadedState = loadState();
 
 const initialState: PlayerState = {
 	currentTrack: null,
 	isPlaying: false,
 	currentTime: 0,
-	duration: 0,
+	duration: loadedState.currentTrack?.duration ?? 0,
 	volume: 0.8,
 	quality: initialPreferences.playbackQuality,
 	qualitySource: 'manual',
 	isLoading: false,
 	queue: [],
 	queueIndex: -1,
-	sampleRate: null
+	sampleRate: null,
+	...loadedState, // Overwrite defaults with any loaded state
 };
 
 function createPlayerStore() {
-	const { subscribe, set, update } = writable<PlayerState>(initialState);
+	const store = writable<PlayerState>(initialState);
+	const { subscribe, set, update } = store;
+
+	// Persist state changes to localStorage
+	if (browser) {
+		store.subscribe((state) => {
+			saveState(state);
+		});
+	}
 
 	const applyAutoQuality = (state: PlayerState, track: Track | null): PlayerState => {
 		if (state.qualitySource === 'manual') {
@@ -96,7 +139,7 @@ function createPlayerStore() {
 					currentTrack: nextTrack,
 					isPlaying: hasTracks ? state.isPlaying : false,
 					isLoading: hasTracks,
-					currentTime: hasTracks ? state.currentTime : 0,
+					currentTime: 0, // Reset time when setting a new queue
 					duration: nextTrack?.duration ?? 0,
 					sampleRate: resolveSampleRate(state, nextTrack)
 				};
@@ -366,7 +409,10 @@ function createPlayerStore() {
 				};
 				return applyAutoQuality(nextState, null);
 			}),
-		reset: () => set(initialState)
+		reset: () => {
+			if (browser) localStorage.removeItem(STORAGE_KEY);
+			set(initialState);
+		}
 	};
 }
 
