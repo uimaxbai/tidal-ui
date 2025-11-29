@@ -170,12 +170,20 @@ export interface SonglinkEntity {
 	platforms: string[];
 }
 
+export interface SonglinkPlatformLink {
+	country: string;
+	url: string;
+	nativeAppUriMobile?: string;
+	nativeAppUriDesktop?: string;
+	entityUniqueId: string;
+}
+
 export interface SonglinkResponse {
 	entityUniqueId: string;
 	userCountry: string;
 	pageUrl: string;
 	entitiesByUniqueId: Record<string, SonglinkEntity>;
-	linksByPlatform: Record<string, unknown>;
+	linksByPlatform: Record<string, SonglinkPlatformLink>;
 }
 
 /**
@@ -196,6 +204,8 @@ export interface SonglinkTrack {
 	songlinkData: SonglinkResponse;
 	// Flag to identify this as a Songlink track
 	isSonglinkTrack: true;
+	// Optional Tidal ID if available
+	tidalId?: number;
 	// Assume CD quality for display purposes
 	audioQuality: 'LOSSLESS';
 }

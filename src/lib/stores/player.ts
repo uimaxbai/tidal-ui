@@ -239,7 +239,7 @@ function createPlayerStore() {
 				}
 
 				const queue = originalQueue.slice();
-				let pinnedTrack: Track | null = null;
+				let pinnedTrack: PlayableTrack | null = null;
 
 				if (originalCurrent) {
 					const locatedIndex = queue.findIndex((track) => track.id === originalCurrent.id);

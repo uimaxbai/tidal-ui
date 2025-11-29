@@ -1,11 +1,11 @@
 <script lang="ts">
 	import SearchInterface from '$lib/components/SearchInterface.svelte';
-	import type { Track } from '$lib/types';
+	import type { Track, PlayableTrack } from '$lib/types';
 	import { playerStore } from '$lib/stores/player';
 
 	let { data } = $props();
 
-	function handleTrackSelect(track: Track) {
+	function handleTrackSelect(track: PlayableTrack) {
 		playerStore.setQueue([track], 0);
 		playerStore.play();
 	}

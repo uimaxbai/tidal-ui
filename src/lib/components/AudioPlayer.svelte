@@ -10,7 +10,7 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackFilename } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
-	import type { Track, AudioQuality, SonglinkTrack } from '$lib/types';
+	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	import { convertToTidal, extractTidalInfo } from '$lib/utils/songlink';
 	import { slide } from 'svelte/transition';
@@ -58,7 +58,7 @@
 	let currentTrackId: number | null = null;
 	let loadSequence = 0;
 	let bufferedPercent = $state(0);
-	let lastQualityTrackId: number | null = null;
+	let lastQualityTrackId: number | string | null = null;
 	let lastQualityForTrack: AudioQuality | null = null;
 	let currentPlaybackQuality = $state<AudioQuality | null>(null);
 	let isDownloadingCurrentTrack = $state(false);
@@ -80,11 +80,11 @@
 	const sampleRateLabel = $derived(formatSampleRate($playerStore.sampleRate));
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let dashPlaybackActive = false;
-	let dashFallbackAttemptedTrackId: number | null = null;
+	let dashFallbackAttemptedTrackId: number | string | null = null;
 	let dashFallbackInFlight = false;
 
 	const canUseMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
-	let mediaSessionTrackId: number | null = null;
+	let mediaSessionTrackId: number | string | null = null;
 	let cleanupMediaSessionHandlers: (() => void) | null = null;
 	let lastKnownPlaybackState: 'none' | 'paused' | 'playing' = 'none';
 	let isSeeking = false;
@@ -164,12 +164,12 @@
 		const keepKeys = new Set<string>();
 		const dashQuality: AudioQuality = 'HI_RES_LOSSLESS';
 		const current = $playerStore.currentTrack;
-		if (current) {
+		if (current && !isSonglinkTrack(current)) {
 			keepKeys.add(getCacheKey(current.id, dashQuality));
 		}
 		const { queue, queueIndex } = $playerStore;
 		const nextTrack = queue[queueIndex + 1];
-		if (nextTrack) {
+		if (nextTrack && !isSonglinkTrack(nextTrack)) {
 			keepKeys.add(getCacheKey(nextTrack.id, dashQuality));
 		}
 		for (const key of dashManifestCache.keys()) {
@@ -219,14 +219,14 @@
 		const keepKeys = new Set<string>();
 		const baseQualities: AudioQuality[] = isHiResQuality(quality) ? ['LOSSLESS'] : [quality];
 		const current = $playerStore.currentTrack;
-		if (current) {
+		if (current && !isSonglinkTrack(current)) {
 			for (const base of baseQualities) {
 				keepKeys.add(getCacheKey(current.id, base));
 			}
 		}
 		const { queue, queueIndex } = $playerStore;
 		const nextTrack = queue[queueIndex + 1];
-		if (nextTrack) {
+		if (nextTrack && !isSonglinkTrack(nextTrack)) {
 			for (const base of baseQualities) {
 				keepKeys.add(getCacheKey(nextTrack.id, base));
 			}
@@ -278,6 +278,18 @@
 	 */
 	async function convertSonglinkTrackToTidal(songlinkTrack: SonglinkTrack): Promise<Track> {
 		console.log('Converting SonglinkTrack to TIDAL:', songlinkTrack.title);
+
+		// Optimization: Use pre-calculated tidalId if available
+		if (songlinkTrack.tidalId) {
+			try {
+				const trackLookup = await losslessAPI.getTrack(songlinkTrack.tidalId);
+				if (trackLookup?.track) {
+					return trackLookup.track;
+				}
+			} catch (e) {
+				console.warn('Failed to fetch track using pre-calculated tidalId, falling back to extraction', e);
+			}
+		}
 
 		// Use the stored Songlink data to find the TIDAL URL
 		const tidalInfo = extractTidalInfo(songlinkTrack.songlinkData);
@@ -611,17 +623,18 @@
 		}
 	}
 
-	async function loadTrack(track: Track) {
+	async function loadTrack(track: PlayableTrack) {
 		// CRITICAL: Never try to load a SonglinkTrack - it must be converted first
-		if ('isSonglinkTrack' in track && (track as any).isSonglinkTrack) {
+		if (isSonglinkTrack(track)) {
 			console.error('Attempted to load SonglinkTrack directly - this should not happen!', track);
 			return;
 		}
+		const tidalTrack = track as Track;
 
 		// Validate that we have a numeric track ID
-		const trackId = Number(track.id);
+		const trackId = Number(tidalTrack.id);
 		if (!Number.isFinite(trackId) || trackId <= 0) {
-			console.error('Invalid track ID - must be numeric:', track.id);
+			console.error('Invalid track ID - must be numeric:', tidalTrack.id);
 			return;
 		}
 
@@ -631,9 +644,9 @@
 		currentPlaybackQuality = null;
 		const requestedQuality = $playerStore.quality;
 		const scheduleMetadataUpdate = (quality: AudioQuality) => {
-			void updateTrackMetadata(track, quality, sequence);
+			void updateTrackMetadata(tidalTrack, quality, sequence);
 		};
-		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== track.id) {
+		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== tidalTrack.id) {
 			dashFallbackAttemptedTrackId = null;
 		}
 
@@ -641,7 +654,7 @@
 			if (isHiResQuality(requestedQuality)) {
 				try {
 					const hiResQuality: AudioQuality = 'HI_RES_LOSSLESS';
-					const result = await loadDashTrack(track, hiResQuality, sequence);
+					const result = await loadDashTrack(tidalTrack, hiResQuality, sequence);
 					if (result.kind === 'dash') {
 						scheduleMetadataUpdate(hiResQuality);
 						return;
@@ -650,16 +663,16 @@
 				} catch (dashError) {
 					const coded = dashError as { code?: string };
 					if (coded?.code === DASH_MANIFEST_UNAVAILABLE_CODE) {
-						dashManifestCache.delete(getCacheKey(track.id, 'HI_RES_LOSSLESS'));
+						dashManifestCache.delete(getCacheKey(tidalTrack.id, 'HI_RES_LOSSLESS'));
 					}
 					console.warn('DASH playback failed, falling back to lossless stream.', dashError);
 				}
 				scheduleMetadataUpdate('LOSSLESS');
-				await loadStandardTrack(track, 'LOSSLESS', sequence);
+				await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
 				return;
 			}
 
-			await loadStandardTrack(track, requestedQuality, sequence);
+			await loadStandardTrack(tidalTrack, requestedQuality, sequence);
 			scheduleMetadataUpdate(requestedQuality);
 		} catch (error) {
 			console.error('Failed to load track:', error);
@@ -669,7 +682,7 @@
 				!isHiResQuality(requestedQuality)
 			) {
 				try {
-					await loadStandardTrack(track, 'LOSSLESS', sequence);
+					await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
 					scheduleMetadataUpdate('LOSSLESS');
 				} catch (fallbackError) {
 					console.error('Secondary lossless fallback failed:', fallbackError);
@@ -711,8 +724,8 @@
 			dashPlaybackActive = false;
 			playerStore.setLoading(true);
 			bufferedPercent = 0;
-			await loadStandardTrack(track, 'LOSSLESS', sequence);
-			await updateTrackMetadata(track, 'LOSSLESS', sequence);
+			await loadStandardTrack(track as Track, 'LOSSLESS', sequence);
+			await updateTrackMetadata(track as Track, 'LOSSLESS', sequence);
 		} catch (fallbackError) {
 			console.error('Lossless fallback after DASH playback error failed', fallbackError);
 			if (sequence === loadSequence) {
@@ -866,7 +879,7 @@
 
 	async function handleDownloadCurrentTrack() {
 		const track = $playerStore.currentTrack;
-		if (!track || isDownloadingCurrentTrack) {
+		if (!track || isDownloadingCurrentTrack || isSonglinkTrack(track)) {
 			return;
 		}
 
@@ -1008,7 +1021,18 @@
 		}
 	});
 
-	function getMediaSessionArtwork(track: Track): MediaImage[] {
+	function getMediaSessionArtwork(track: PlayableTrack): MediaImage[] {
+		if (isSonglinkTrack(track)) {
+			if (track.thumbnailUrl) {
+				return [{
+					src: track.thumbnailUrl,
+					sizes: '640x640',
+					type: 'image/jpeg'
+				}];
+			}
+			return [];
+		}
+
 		if (!track.album?.cover) {
 			return [];
 		}
@@ -1030,7 +1054,7 @@
 		return artwork;
 	}
 
-	function updateMediaSessionMetadata(track: Track | null) {
+	function updateMediaSessionMetadata(track: PlayableTrack | null) {
 		if (!canUseMediaSession) {
 			return;
 		}
@@ -1056,8 +1080,8 @@
 		try {
 			navigator.mediaSession.metadata = new MediaMetadata({
 				title: track.title,
-				artist: formatArtists(track.artists),
-				album: track.album?.title ?? '',
+				artist: isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists),
+				album: isSonglinkTrack(track) ? '' : (track.album?.title ?? ''),
 				artwork: getMediaSessionArtwork(track)
 			});
 		} catch (error) {
@@ -1269,6 +1293,10 @@
 			}
 		}
 	}
+
+	function asTrack(track: PlayableTrack): Track {
+		return track as Track;
+	}
 </script>
 
 <audio
@@ -1431,20 +1459,20 @@
 						<!-- Track Info -->
 						{#if $playerStore.currentTrack}
 							<div class="flex min-w-0 items-center gap-3 sm:flex-1">
-								{#if !('isSonglinkTrack' in $playerStore.currentTrack && $playerStore.currentTrack.isSonglinkTrack)}
+								{#if !isSonglinkTrack($playerStore.currentTrack)}
 									<!-- Only show album cover for regular tracks -->
-									{#if $playerStore.currentTrack.album.videoCover}
+									{#if asTrack($playerStore.currentTrack).album.videoCover}
 										<video
-											src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.videoCover, '640')}
+											src={losslessAPI.getCoverUrl(asTrack($playerStore.currentTrack).album.videoCover!, '640')}
 											autoplay
 											loop
 											muted
 											playsinline
 											class="h-16 w-16 flex-shrink-0 rounded-md object-cover"
 										></video>
-									{:else if $playerStore.currentTrack.album.cover}
+									{:else if asTrack($playerStore.currentTrack).album.cover}
 										<img
-											src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
+											src={losslessAPI.getCoverUrl(asTrack($playerStore.currentTrack).album.cover!, '640')}
 											alt={$playerStore.currentTrack.title}
 											class="h-16 w-16 flex-shrink-0 rounded-md object-cover"
 										/>
@@ -1454,7 +1482,7 @@
 									<h3 class="truncate font-semibold text-white">
 										{$playerStore.currentTrack.title}
 									</h3>
-									{#if 'isSonglinkTrack' in $playerStore.currentTrack && $playerStore.currentTrack.isSonglinkTrack}
+									{#if isSonglinkTrack($playerStore.currentTrack)}
 										<!-- Display for SonglinkTrack -->
 										<p class="truncate text-sm text-gray-400">
 											{$playerStore.currentTrack.artistName}
@@ -1462,28 +1490,28 @@
 									{:else}
 										<!-- Display for regular Track -->
 										<a
-											href={`/artist/${$playerStore.currentTrack.artist.id}`}
+											href={`/artist/${asTrack($playerStore.currentTrack).artist.id}`}
 											class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
 											data-sveltekit-preload-data
 										>
-											{formatArtists($playerStore.currentTrack.artists)}
+											{formatArtists(asTrack($playerStore.currentTrack).artists)}
 										</a>
 										<p class="text-xs text-gray-500">
 											<a
-												href={`/album/${$playerStore.currentTrack.album.id}`}
+												href={`/album/${asTrack($playerStore.currentTrack).album.id}`}
 												class="hover:text-blue-400 hover:underline"
 												data-sveltekit-preload-data
 											>
-												{$playerStore.currentTrack.album.title}
+												{asTrack($playerStore.currentTrack).album.title}
 											</a>
 											{#if currentPlaybackQuality}
 												<span class="mx-1" aria-hidden="true">•</span>
 												<span>{formatQualityLabel(currentPlaybackQuality)}</span>
 											{/if}
-											{#if currentPlaybackQuality && $playerStore.currentTrack.audioQuality && currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
+											{#if currentPlaybackQuality && asTrack($playerStore.currentTrack).audioQuality && currentPlaybackQuality !== asTrack($playerStore.currentTrack).audioQuality}
 												<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
 												<span class="text-gray-500">
-													({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
+													({formatQualityLabel(asTrack($playerStore.currentTrack).audioQuality)} available)
 												</span>
 											{/if}
 											{#if sampleRateLabel}
@@ -1669,14 +1697,20 @@
 													<p class="truncate text-sm font-medium">
 														{queuedTrack.title}
 													</p>
-													<a
-														href={`/artist/${queuedTrack.artist.id}`}
-														onclick={(e) => e.stopPropagation()}
-														class="truncate text-xs text-gray-400 hover:text-blue-400 hover:underline inline-block"
-														data-sveltekit-preload-data
-													>
-														{formatArtists(queuedTrack.artists)}
-													</a>
+													{#if isSonglinkTrack(queuedTrack)}
+														<p class="truncate text-xs text-gray-400">
+															{queuedTrack.artistName}
+														</p>
+													{:else}
+														<a
+															href={`/artist/${asTrack(queuedTrack).artist.id}`}
+															onclick={(e) => e.stopPropagation()}
+															class="truncate text-xs text-gray-400 hover:text-blue-400 hover:underline inline-block"
+															data-sveltekit-preload-data
+														>
+															{formatArtists(asTrack(queuedTrack).artists)}
+														</a>
+													{/if}
 												</div>
 												<button
 													onclick={(event) => removeFromQueue(index, event)}

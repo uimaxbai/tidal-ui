@@ -19,7 +19,8 @@
 		fetchSonglinkData,
 		extractTidalSongEntity
 	} from '$lib/utils/songlink';
-	import type { Track, Album, Artist, Playlist, AudioQuality, SonglinkTrack } from '$lib/types';
+	import type { Track, Album, Artist, Playlist, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
+	import { isSonglinkTrack } from '$lib/types';
 	import {
 		Search,
 		ChevronDown,
@@ -50,9 +51,9 @@
 	let albums = $state<Album[]>([]);
 	let artists = $state<Artist[]>([]);
 	let playlists = $state<Playlist[]>([]);
-	let downloadingIds = $state(new Set<number>());
-	let downloadTaskIds = $state(new Map<number, string>());
-	let cancelledIds = $state(new Set<number>());
+	let downloadingIds = $state(new Set<number | string>());
+	let downloadTaskIds = $state(new Map<number | string, string>());
+	let cancelledIds = $state(new Set<number | string>());
 	let error = $state<string | null>(null);
 	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
@@ -151,7 +152,7 @@
 	const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 
 	interface Props {
-		onTrackSelect?: (track: Track) => void;
+		onTrackSelect?: (track: PlayableTrack) => void;
 	}
 
 	let { onTrackSelect }: Props = $props();
@@ -197,7 +198,7 @@
 		throw lastError instanceof Error ? lastError : new Error('Request failed');
 	}
 
-	function markCancelled(trackId: number) {
+	function markCancelled(trackId: number | string) {
 		const next = new Set(cancelledIds);
 		next.add(trackId);
 		cancelledIds = next;
@@ -208,7 +209,7 @@
 		}, 1500);
 	}
 
-	function handleCancelDownload(trackId: number, event: MouseEvent) {
+	function handleCancelDownload(trackId: number | string, event: MouseEvent) {
 		event.stopPropagation();
 		const taskId = downloadTaskIds.get(trackId);
 		if (taskId) {
@@ -228,41 +229,58 @@
 			event.stopPropagation();
 		}
 
-		// Don't allow downloading SonglinkTracks - they must be converted first
+		let trackId: number;
+		let artistName: string;
+		let albumTitle: string | undefined;
+
+		// Handle SonglinkTracks
 		if (isSonglinkTrack(track)) {
-			console.warn('Cannot download SonglinkTrack directly - play it first to convert to TIDAL');
-			alert('This track needs to be played first before it can be downloaded. Click to play it, then download.');
-			return;
+			if (track.tidalId) {
+				trackId = track.tidalId;
+				artistName = track.artistName;
+				albumTitle = undefined;
+			} else {
+				console.warn('Cannot download SonglinkTrack directly - play it first to convert to TIDAL');
+				alert('This track needs to be played first before it can be downloaded. Click to play it, then download.');
+				return;
+			}
+		} else {
+			trackId = track.id;
+			artistName = formatArtists(track.artists);
+			albumTitle = track.album?.title;
 		}
 
 		// Guard against non-numeric IDs
-		const trackId = Number(track.id);
 		if (!Number.isFinite(trackId) || trackId <= 0) {
 			console.error('Cannot download track with invalid ID:', track.id);
 			alert('Cannot download this track - invalid track ID');
 			return;
 		}
 
-		if (downloadingIds.has(track.id)) {
+		// Use the original ID for tracking active downloads in the UI to avoid confusion
+		// (since the UI list might still be using the string ID)
+		const uiTrackId = track.id;
+
+		if (downloadingIds.has(uiTrackId)) {
 			return;
 		}
 		const next = new Set(downloadingIds);
-		next.add(track.id);
+		next.add(uiTrackId);
 		downloadingIds = next;
 
 		const quality = $playerStore.quality;
 		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-		const filename = `${formatArtists(track.artists)} - ${track.title}.${extension}`;
+		const filename = `${artistName} - ${track.title}.${extension}`;
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: track.album?.title ?? formatArtists(track.artists)
+			subtitle: albumTitle ?? artistName
 		});
 		const taskMap = new Map(downloadTaskIds);
-		taskMap.set(track.id, taskId);
+		taskMap.set(uiTrackId, taskId);
 		downloadTaskIds = taskMap;
 		downloadUiStore.skipFfmpegCountdown();
 
 		try {
-			await losslessAPI.downloadTrack(track.id, quality, filename, {
+			await losslessAPI.downloadTrack(trackId, quality, filename, {
 				signal: controller.signal,
 				onProgress: (progress: TrackDownloadProgress) => {
 					if (progress.stage === 'downloading') {
@@ -290,25 +308,25 @@
 				convertAacToMp3: convertAacToMp3Preference,
 				downloadCoverSeperately: downloadCoverSeperatelyPreference
 			});
+
 			downloadUiStore.completeTrackDownload(taskId);
-		} catch (err) {
-			if (err instanceof DOMException && err.name === 'AbortError') {
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
 				downloadUiStore.completeTrackDownload(taskId);
-				markCancelled(track.id);
 			} else {
-				console.error('Failed to download track:', err);
+				console.error('Failed to download track:', error);
 				const fallbackMessage = 'Failed to download track. Please try again.';
-				const message = err instanceof Error && err.message ? err.message : fallbackMessage;
+				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
 				downloadUiStore.errorTrackDownload(taskId, message);
 				alert(message);
 			}
 		} finally {
-			const updated = new Set(downloadingIds);
-			updated.delete(track.id);
-			downloadingIds = updated;
-			const ids = new Map(downloadTaskIds);
-			ids.delete(track.id);
-			downloadTaskIds = ids;
+			const next = new Set(downloadingIds);
+			next.delete(uiTrackId);
+			downloadingIds = next;
+			const taskMap = new Map(downloadTaskIds);
+			taskMap.delete(uiTrackId);
+			downloadTaskIds = taskMap;
 		}
 	}
 
@@ -377,21 +395,21 @@
 		}
 	}
 
-	function handleTrackActivation(track: Track) {
+	function handleTrackActivation(track: PlayableTrack) {
 		onTrackSelect?.(track);
 	}
 
-	function handleAddToQueue(track: Track, event: MouseEvent) {
+	function handleAddToQueue(track: PlayableTrack, event: MouseEvent) {
 		event.stopPropagation();
 		playerStore.enqueue(track);
 	}
 
-	function handlePlayNext(track: Track, event: MouseEvent) {
+	function handlePlayNext(track: PlayableTrack, event: MouseEvent) {
 		event.stopPropagation();
 		playerStore.enqueueNext(track);
 	}
 
-	function handleTrackKeydown(event: KeyboardEvent, track: Track) {
+	function handleTrackKeydown(event: KeyboardEvent, track: PlayableTrack) {
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
 			handleTrackActivation(track);
@@ -647,6 +665,7 @@
 							sourceUrl: trackUrl,
 							songlinkData,
 							isSonglinkTrack: true,
+							tidalId: tidalEntity.id ? Number(tidalEntity.id) : undefined,
 							audioQuality: 'LOSSLESS'
 						};
 
@@ -668,7 +687,7 @@
 			const failedTracks: string[] = [];
 
 			results.forEach((result, index) => {
-				if (result.status === 'fulfilled' && result.value.success) {
+				if (result.status === 'fulfilled' && result.value.success && result.value.track) {
 					successfulTracks.push(result.value.track);
 				} else {
 					failedTracks.push(spotifyTrackUrls[index]);
@@ -722,10 +741,39 @@
 		if (tracks.length > 0) {
 			// Shuffle the tracks
 			const shuffled = [...tracks].sort(() => Math.random() - 0.5);
-					subtitle: track.album?.title ?? formatArtists(track.artists)
+			playerStore.setQueue(shuffled, 0);
+			playerStore.play();
+		}
+	}
+
+	async function handleDownloadAll() {
+		if (tracks.length === 0) return;
+
+		const quality = $playerStore.quality;
+		const convertAacToMp3Preference = $userPreferencesStore.convertAacToMp3;
+		const downloadCoverSeperatelyPreference = $userPreferencesStore.downloadCoversSeperately;
+
+		for (const track of tracks) {
+			try {
+				// Use tidalId if available (for Songlink tracks), otherwise use id
+				const trackId = 'tidalId' in track && track.tidalId ? track.tidalId : track.id;
+				
+				// Skip if we don't have a valid numeric ID (e.g. unconverted Songlink track)
+				if (typeof trackId !== 'number') {
+					console.warn(`Skipping download for track ${track.title}: No valid TIDAL ID`);
+					continue;
+				}
+
+				const artistName = 'artistName' in track ? track.artistName : formatArtists(track.artists);
+				const albumTitle = 'album' in track ? track.album?.title : undefined;
+				
+				const filename = `${artistName} - ${track.title}.${getExtensionForQuality(quality)}`;
+				
+				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+					subtitle: albumTitle ?? artistName
 				});
 
-				await losslessAPI.downloadTrack(track.id, quality, filename, {
+				await losslessAPI.downloadTrack(trackId, quality, filename, {
 					signal: controller.signal,
 					onProgress: (progress: TrackDownloadProgress) => {
 						if (progress.stage === 'downloading') {
@@ -812,6 +860,10 @@
 			return 'Hi-Res • up to 24-bit/192 kHz FLAC';
 		}
 		return quality;
+	}
+
+	function asTrack(track: PlayableTrack): Track {
+		return track as Track;
 	}
 </script>
 
@@ -1051,7 +1103,7 @@
 						onkeydown={(event) => handleTrackKeydown(event, track)}
 						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 					>
-						{#if 'isSonglinkTrack' in track && track.isSonglinkTrack}
+						{#if isSonglinkTrack(track)}
 							<!-- Display for SonglinkTrack -->
 							<img
 								src={track.thumbnailUrl || '/placeholder-album.jpg'}
@@ -1117,9 +1169,9 @@
 							</div>
 						{:else}
 							<!-- Display for regular Track -->
-							{#if track.album.cover}
+							{#if asTrack(track).album.cover}
 								<img
-									src={losslessAPI.getCoverUrl(track.album.cover, '160')}
+									src={losslessAPI.getCoverUrl(asTrack(track).album.cover, '160')}
 									alt={track.title}
 									class="h-12 w-12 rounded object-cover"
 								/>
@@ -1127,7 +1179,7 @@
 							<div class="min-w-0 flex-1">
 								<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
 									{track.title}
-									{#if track.explicit}
+									{#if asTrack(track).explicit}
 										<svg
 											class="inline h-4 w-4 flex-shrink-0 align-middle"
 											xmlns="http://www.w3.org/2000/svg"
@@ -1144,21 +1196,21 @@
 									{/if}
 								</h3>
 								<a
-									href={`/artist/${track.artist.id}`}
+									href={`/artist/${asTrack(track).artist.id}`}
 									onclick={(e) => e.stopPropagation()}
 									class="inline-block truncate text-sm text-gray-400 hover:text-blue-400 hover:underline"
 									data-sveltekit-preload-data
 								>
-									{formatArtists(track.artists)}
+									{formatArtists(asTrack(track).artists)}
 								</a>
 								<p class="text-xs text-gray-500">
 									<a
-										href={`/album/${track.album.id}`}
+										href={`/album/${asTrack(track).album.id}`}
 										onclick={(e) => e.stopPropagation()}
 										class="hover:text-blue-400 hover:underline"
 										data-sveltekit-preload-data
 									>
-										{track.album.title}
+										{asTrack(track).album.title}
 									</a>
 									• {formatQualityLabel(track.audioQuality)}
 								</p>
@@ -1384,7 +1436,7 @@
 						<p class="truncate text-sm text-gray-400">{playlist.creator.name}</p>
 						<p class="text-xs text-gray-500">{playlist.numberOfTracks} tracks</p>
 					</a>
-				{/each}
+			{/each}
 			</div>
 			<!-- News Section -->
 		{:else if !query.trim()}

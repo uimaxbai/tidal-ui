@@ -545,6 +545,10 @@
 	const resolveArtworkUrl = (track: PlayerStateShape['currentTrack']): string | null => {
 		if (!track) return null;
 
+		if (track.thumbnailUrl) {
+			return track.thumbnailUrl;
+		}
+
 		const albumCover = track.album?.cover ?? null;
 		if (albumCover) {
 			const imageSize = performanceLevel === 'low' ? '320' : performanceLevel === 'medium' ? '640' : '1280';
@@ -643,6 +647,7 @@
 
 	type PlayerStateShape = {
 		currentTrack: {
+			thumbnailUrl?: string | null;
 			album?: {
 				cover?: string | null;
 				videoCover?: string | null;
@@ -662,18 +667,19 @@
 			const snapshot: PlayerStateShape = {
 				currentTrack: $state.currentTrack
 					? {
-						album: {
+						thumbnailUrl: 'thumbnailUrl' in $state.currentTrack ? $state.currentTrack.thumbnailUrl : null,
+						album: 'album' in $state.currentTrack ? {
 							cover: $state.currentTrack.album?.cover ?? null,
 							videoCover: $state.currentTrack.album?.videoCover ?? null
-						},
-						artist: $state.currentTrack.artist
+						} : undefined,
+						artist: 'artist' in $state.currentTrack && $state.currentTrack.artist
 							? {
 								picture: $state.currentTrack.artist.picture ?? null
 							}
 							: null,
-						artists: $state.currentTrack.artists?.map((artist) => ({
+						artists: 'artists' in $state.currentTrack ? $state.currentTrack.artists?.map((artist) => ({
 							picture: artist.picture ?? null
-						})) ?? null
+						})) ?? null : null
 					}
 					: null,
 				isPlaying: $state.isPlaying
@@ -741,18 +747,19 @@
 		if (currentState.currentTrack) {
 			const snapshot: PlayerStateShape = {
 				currentTrack: {
-					album: {
+					thumbnailUrl: 'thumbnailUrl' in currentState.currentTrack ? currentState.currentTrack.thumbnailUrl : null,
+					album: 'album' in currentState.currentTrack ? {
 						cover: currentState.currentTrack.album?.cover ?? null,
 						videoCover: currentState.currentTrack.album?.videoCover ?? null
-					},
-					artist: currentState.currentTrack.artist
+					} : undefined,
+					artist: 'artist' in currentState.currentTrack && currentState.currentTrack.artist
 						? {
 							picture: currentState.currentTrack.artist.picture ?? null
 						}
 						: null,
-					artists: currentState.currentTrack.artists?.map((artist) => ({
+					artists: 'artists' in currentState.currentTrack ? currentState.currentTrack.artists?.map((artist) => ({
 						picture: artist.picture ?? null
-					})) ?? null
+					})) ?? null : null
 				},
 				isPlaying: currentState.isPlaying
 			};
