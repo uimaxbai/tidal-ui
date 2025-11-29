@@ -66,7 +66,7 @@
 	let containerElement: HTMLDivElement | null = null;
 	let resizeObserver: ResizeObserver | null = null;
 	let showQueuePanel = $state(false);
-	const streamCache = new Map<string, string>();
+	const streamCache = new Map<string, { url: string; replayGain: number | null }>();
 	let preloadingCacheKey: string | null = null;
 	const PRELOAD_THRESHOLD_SECONDS = 12;
 	const hiResQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS']);
@@ -188,10 +188,13 @@
 			return;
 		}
 		const proxied = getProxiedUrl(fallbackUrl);
-		streamCache.set(getCacheKey(trackId, 'LOSSLESS'), proxied);
+		streamCache.set(getCacheKey(trackId, 'LOSSLESS'), { url: proxied, replayGain: null });
 	}
 
-	async function resolveStream(track: Track, overrideQuality?: AudioQuality): Promise<string> {
+	async function resolveStream(
+		track: Track,
+		overrideQuality?: AudioQuality
+	): Promise<{ url: string; replayGain: number | null }> {
 		const quality = overrideQuality ?? $playerStore.quality;
 		if (isHiResQuality(quality)) {
 			throw new Error('Attempted to resolve hi-res stream via standard resolver');
@@ -202,10 +205,11 @@
 			return cached;
 		}
 
-		const rawUrl = await losslessAPI.getStreamUrl(track.id, quality);
-		const proxied = getProxiedUrl(rawUrl);
-		streamCache.set(cacheKey, proxied);
-		return proxied;
+		const data = await losslessAPI.getStreamData(track.id, quality);
+		const proxied = getProxiedUrl(data.url);
+		const entry = { url: proxied, replayGain: data.replayGain };
+		streamCache.set(cacheKey, entry);
+		return entry;
 	}
 
 	function pruneStreamCache() {
@@ -374,7 +378,17 @@
 
 	$effect(() => {
 		if (audioElement) {
-			audioElement.volume = $playerStore.volume;
+			const baseVolume = $playerStore.volume;
+			const replayGain = $playerStore.replayGain;
+
+			if (replayGain !== null && typeof replayGain === 'number') {
+				// Apply replay gain: volume * 10^(gain / 20)
+				const gainFactor = Math.pow(10, replayGain / 20);
+				const adjusted = baseVolume * gainFactor;
+				audioElement.volume = Math.min(1, Math.max(0, adjusted));
+			} else {
+				audioElement.volume = baseVolume;
+			}
 		}
 	});
 
@@ -389,12 +403,13 @@
 	async function loadStandardTrack(track: Track, quality: AudioQuality, sequence: number) {
 		await destroyShakaPlayer();
 		dashPlaybackActive = false;
-		const resolvedUrl = await resolveStream(track, quality);
+		const { url, replayGain } = await resolveStream(track, quality);
 		if (sequence !== loadSequence) {
 			return;
 		}
-		streamUrl = resolvedUrl;
+		streamUrl = url;
 		currentPlaybackQuality = quality;
+		playerStore.setReplayGain(replayGain);
 		pruneStreamCache();
 		if (audioElement) {
 			audioElement.crossOrigin = 'anonymous';
@@ -441,7 +456,7 @@
 		return manifestResult;
 	}
 
-	async function updateSampleRateForTrack(
+	async function updateTrackMetadata(
 		track: Track,
 		quality: AudioQuality,
 		sequence: number
@@ -458,10 +473,16 @@
 			const normalized =
 				typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? Math.round(rate) : null;
 			playerStore.setSampleRate(normalized ?? null);
+
+			const gain = metadata.info?.trackReplayGain;
+			if (typeof gain === 'number') {
+				playerStore.setReplayGain(gain);
+			}
 		} catch (error) {
-			console.debug('Failed to update track sample rate', error);
+			console.debug('Failed to update track metadata', error);
 			if (sequence === loadSequence && currentTrackId === track.id) {
 				playerStore.setSampleRate(null);
+				// Don't reset replayGain here as it might have been set by loadStandardTrack
 			}
 		}
 	}
@@ -472,8 +493,8 @@
 		bufferedPercent = 0;
 		currentPlaybackQuality = null;
 		const requestedQuality = $playerStore.quality;
-		const scheduleSampleRateUpdate = (quality: AudioQuality) => {
-			void updateSampleRateForTrack(track, quality, sequence);
+		const scheduleMetadataUpdate = (quality: AudioQuality) => {
+			void updateTrackMetadata(track, quality, sequence);
 		};
 		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== track.id) {
 			dashFallbackAttemptedTrackId = null;
@@ -485,7 +506,7 @@
 					const hiResQuality: AudioQuality = 'HI_RES_LOSSLESS';
 					const result = await loadDashTrack(track, hiResQuality, sequence);
 					if (result.kind === 'dash') {
-						scheduleSampleRateUpdate(hiResQuality);
+						scheduleMetadataUpdate(hiResQuality);
 						return;
 					}
 					console.info('Dash endpoint returned FLAC fallback. Using lossless stream.');
@@ -496,13 +517,13 @@
 					}
 					console.warn('DASH playback failed, falling back to lossless stream.', dashError);
 				}
-				scheduleSampleRateUpdate('LOSSLESS');
+				scheduleMetadataUpdate('LOSSLESS');
 				await loadStandardTrack(track, 'LOSSLESS', sequence);
 				return;
 			}
 
 			await loadStandardTrack(track, requestedQuality, sequence);
-			scheduleSampleRateUpdate(requestedQuality);
+			scheduleMetadataUpdate(requestedQuality);
 		} catch (error) {
 			console.error('Failed to load track:', error);
 			if (
@@ -512,7 +533,7 @@
 			) {
 				try {
 					await loadStandardTrack(track, 'LOSSLESS', sequence);
-					scheduleSampleRateUpdate('LOSSLESS');
+					scheduleMetadataUpdate('LOSSLESS');
 				} catch (fallbackError) {
 					console.error('Secondary lossless fallback failed:', fallbackError);
 				}
@@ -554,7 +575,7 @@
 			playerStore.setLoading(true);
 			bufferedPercent = 0;
 			await loadStandardTrack(track, 'LOSSLESS', sequence);
-			await updateSampleRateForTrack(track, 'LOSSLESS', sequence);
+			await updateTrackMetadata(track, 'LOSSLESS', sequence);
 		} catch (fallbackError) {
 			console.error('Lossless fallback after DASH playback error failed', fallbackError);
 			if (sequence === loadSequence) {

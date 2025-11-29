@@ -939,12 +939,26 @@ class LosslessAPI {
 	}
 
 	/**
-	 * Get stream URL for a track
+	 * Get stream data including URL and replay gain
 	 */
-	async getStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
+	async getStreamData(
+		trackId: number,
+		quality: AudioQuality = 'LOSSLESS'
+	): Promise<{ url: string; replayGain: number | null }> {
+		let replayGain: number | null = null;
+
 		if (this.isHiResQuality(quality)) {
 			try {
-				return await this.resolveHiResStreamFromDash(trackId);
+				// Try to fetch metadata for replay gain, but don't fail if it fails
+				try {
+					const lookup = await this.getTrack(trackId, quality);
+					replayGain = lookup.info.trackReplayGain ?? null;
+				} catch {
+					// Ignore metadata fetch failure for HiRes
+				}
+
+				const url = await this.resolveHiResStreamFromDash(trackId);
+				return { url, replayGain };
 			} catch (error) {
 				console.warn('Failed to resolve hi-res stream via DASH manifest', error);
 				quality = 'LOSSLESS';
@@ -956,13 +970,15 @@ class LosslessAPI {
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
 			try {
 				const lookup = await this.getTrack(trackId, quality);
+				replayGain = lookup.info.trackReplayGain ?? null;
+
 				if (lookup.originalTrackUrl) {
-					return lookup.originalTrackUrl;
+					return { url: lookup.originalTrackUrl, replayGain };
 				}
 
 				const manifestUrl = this.extractStreamUrlFromManifest(lookup.info.manifest);
 				if (manifestUrl) {
-					return manifestUrl;
+					return { url: manifestUrl, replayGain };
 				}
 
 				lastError = new Error('Unable to resolve stream URL for track');
@@ -976,6 +992,14 @@ class LosslessAPI {
 		}
 
 		throw lastError ?? new Error('Unable to resolve stream URL for track');
+	}
+
+	/**
+	 * Get stream URL for a track
+	 */
+	async getStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
+		const data = await this.getStreamData(trackId, quality);
+		return data.url;
 	}
 
 	/**

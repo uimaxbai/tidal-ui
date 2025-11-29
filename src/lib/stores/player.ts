@@ -16,6 +16,7 @@ interface PlayerState {
 	queue: Track[];
 	queueIndex: number;
 	sampleRate: number | null;
+	replayGain: number | null;
 }
 
 const initialPreferences = get(userPreferencesStore);
@@ -31,7 +32,8 @@ const initialState: PlayerState = {
 	isLoading: false,
 	queue: [],
 	queueIndex: -1,
-	sampleRate: null
+	sampleRate: null,
+	replayGain: null
 };
 
 function createPlayerStore() {
@@ -65,7 +67,8 @@ function createPlayerStore() {
 					currentTrack: track,
 					duration: track.duration,
 					isLoading: true,
-					sampleRate: resolveSampleRate(state, track)
+					sampleRate: resolveSampleRate(state, track),
+					replayGain: null
 				};
 				return applyAutoQuality(next, track);
 			}),
@@ -75,6 +78,7 @@ function createPlayerStore() {
 		setCurrentTime: (time: number) => update((state) => ({ ...state, currentTime: time })),
 		setDuration: (duration: number) => update((state) => ({ ...state, duration })),
 		setSampleRate: (sampleRate: number | null) => update((state) => ({ ...state, sampleRate })),
+		setReplayGain: (replayGain: number | null) => update((state) => ({ ...state, replayGain })),
 		setVolume: (volume: number) => update((state) => ({ ...state, volume })),
 		setQuality: (quality: AudioQuality) =>
 			update((state) => {
@@ -98,7 +102,8 @@ function createPlayerStore() {
 					isLoading: hasTracks,
 					currentTime: hasTracks ? state.currentTime : 0,
 					duration: nextTrack?.duration ?? 0,
-					sampleRate: resolveSampleRate(state, nextTrack)
+					sampleRate: resolveSampleRate(state, nextTrack),
+					replayGain: null
 				};
 
 				if (!hasTracks) {
@@ -110,7 +115,8 @@ function createPlayerStore() {
 						isLoading: false,
 						currentTime: 0,
 						duration: 0,
-						sampleRate: null
+						sampleRate: null,
+						replayGain: null
 					};
 				}
 
@@ -129,7 +135,8 @@ function createPlayerStore() {
 						isLoading: true,
 						currentTime: 0,
 						duration: track.duration,
-						sampleRate: resolveSampleRate(state, track)
+						sampleRate: resolveSampleRate(state, track),
+						replayGain: null
 					};
 					return applyAutoQuality(next, track);
 				}
@@ -154,7 +161,8 @@ function createPlayerStore() {
 						isLoading: true,
 						currentTime: 0,
 						duration: track.duration,
-						sampleRate: resolveSampleRate(state, track)
+						sampleRate: resolveSampleRate(state, track),
+						replayGain: null
 					};
 					return applyAutoQuality(next, track);
 				}
@@ -181,7 +189,8 @@ function createPlayerStore() {
 						currentTrack: nextTrack,
 						currentTime: 0,
 						duration: nextTrack?.duration ?? 0,
-						sampleRate: resolveSampleRate(state, nextTrack)
+						sampleRate: resolveSampleRate(state, nextTrack),
+						replayGain: null
 					};
 					return applyAutoQuality(nextState, nextTrack);
 				}
@@ -198,7 +207,8 @@ function createPlayerStore() {
 						currentTrack: nextTrack,
 						currentTime: 0,
 						duration: nextTrack?.duration ?? 0,
-						sampleRate: resolveSampleRate(state, nextTrack)
+						sampleRate: resolveSampleRate(state, nextTrack),
+						replayGain: null
 					};
 					return applyAutoQuality(nextState, nextTrack);
 				}
@@ -253,7 +263,8 @@ function createPlayerStore() {
 					currentTrack: nextCurrentTrack,
 					currentTime: 0,
 					duration: nextCurrentTrack?.duration ?? 0,
-					sampleRate: resolveSampleRate(state, nextCurrentTrack)
+					sampleRate: resolveSampleRate(state, nextCurrentTrack),
+					replayGain: null
 				};
 
 				if (nextQueueIndex === -1) {
@@ -262,7 +273,8 @@ function createPlayerStore() {
 						currentTrack: null,
 						currentTime: 0,
 						duration: 0,
-						sampleRate: null
+						sampleRate: null,
+						replayGain: null
 					};
 				}
 
@@ -283,7 +295,8 @@ function createPlayerStore() {
 					isPlaying: true,
 					isLoading: true,
 					duration: nextTrack?.duration ?? 0,
-					sampleRate: resolveSampleRate(state, nextTrack)
+					sampleRate: resolveSampleRate(state, nextTrack),
+					replayGain: null
 				};
 				return applyAutoQuality(nextState, nextTrack);
 			}),
@@ -312,7 +325,8 @@ function createPlayerStore() {
 						isLoading: false,
 						currentTime: 0,
 						duration: 0,
-						sampleRate: null
+						sampleRate: null,
+						replayGain: null
 					};
 					return applyAutoQuality(nextState, null);
 				}
@@ -347,7 +361,8 @@ function createPlayerStore() {
 					isLoading,
 					currentTime,
 					duration,
-					sampleRate: nextSampleRate
+					sampleRate: nextSampleRate,
+					replayGain: state.replayGain
 				};
 				return applyAutoQuality(nextState, currentTrack);
 			}),
@@ -362,7 +377,8 @@ function createPlayerStore() {
 					isLoading: false,
 					currentTime: 0,
 					duration: 0,
-					sampleRate: null
+					sampleRate: null,
+					replayGain: null
 				};
 				return applyAutoQuality(nextState, null);
 			}),
