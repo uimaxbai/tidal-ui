@@ -24,3 +24,6 @@ vite.config.ts.timestamp-*
 
 # more squidly things
 docker-compose.yml
+
+.venv
+downloaded_files

@@ -10,7 +10,9 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackFilename } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
-	import type { Track, AudioQuality } from '$lib/types';
+	import type { Track, AudioQuality, SonglinkTrack } from '$lib/types';
+	import { isSonglinkTrack } from '$lib/types';
+	import { convertToTidal, extractTidalInfo } from '$lib/utils/songlink';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import {
@@ -41,7 +43,7 @@
 	};
 
 	type ShakaNamespace = {
-		Player: new (mediaElement: HTMLMediaElement) => ShakaPlayerInstance;
+		Player: new (mediaElement: HTMLMediaElement) =>  ShakaPlayerInstance;
 		polyfill?: {
 			installAll?: () => void;
 		};
@@ -270,14 +272,87 @@
 		await preloadDashManifest(track);
 	}
 
+	/**
+	 * Convert a SonglinkTrack to a full TIDAL Track
+	 * This is called when a Songlink track is about to be played
+	 */
+	async function convertSonglinkTrackToTidal(songlinkTrack: SonglinkTrack): Promise<Track> {
+		console.log('Converting SonglinkTrack to TIDAL:', songlinkTrack.title);
+
+		// Use the stored Songlink data to find the TIDAL URL
+		const tidalInfo = extractTidalInfo(songlinkTrack.songlinkData);
+
+		if (!tidalInfo || tidalInfo.type !== 'track') {
+			// Fallback: try converting from the source URL
+			console.warn('No TIDAL track in Songlink data, attempting conversion...');
+			const fallbackTidalInfo = await convertToTidal(songlinkTrack.sourceUrl, {
+				userCountry: 'US',
+				songIfSingle: true
+			});
+
+			if (!fallbackTidalInfo || fallbackTidalInfo.type !== 'track') {
+				throw new Error(`Could not find TIDAL equivalent for: ${songlinkTrack.title}`);
+			}
+
+			// Validate that the ID is numeric (TIDAL tracks have numeric IDs)
+			const trackId = Number(fallbackTidalInfo.id);
+			if (!Number.isFinite(trackId) || trackId <= 0) {
+				throw new Error(`Invalid TIDAL track ID for: ${songlinkTrack.title} (got: ${fallbackTidalInfo.id})`);
+			}
+
+			const trackLookup = await losslessAPI.getTrack(trackId);
+			if (!trackLookup?.track) {
+				throw new Error(`Failed to fetch TIDAL track for: ${songlinkTrack.title}`);
+			}
+
+			return trackLookup.track;
+		}
+
+		// Validate that we have a numeric TIDAL ID
+		const trackId = Number(tidalInfo.id);
+		if (!Number.isFinite(trackId) || trackId <= 0) {
+			// The ID is not numeric, try fallback conversion
+			console.warn(`Non-numeric TIDAL ID (${tidalInfo.id}), attempting fallback conversion...`);
+			const fallbackTidalInfo = await convertToTidal(songlinkTrack.sourceUrl, {
+				userCountry: 'US',
+				songIfSingle: true
+			});
+
+			if (!fallbackTidalInfo || fallbackTidalInfo.type !== 'track') {
+				throw new Error(`Could not find TIDAL equivalent for: ${songlinkTrack.title}`);
+			}
+
+			const fallbackId = Number(fallbackTidalInfo.id);
+			if (!Number.isFinite(fallbackId) || fallbackId <= 0) {
+				throw new Error(`No valid TIDAL track found for: ${songlinkTrack.title}`);
+			}
+
+			const trackLookup = await losslessAPI.getTrack(fallbackId);
+			if (!trackLookup?.track) {
+				throw new Error(`Failed to fetch TIDAL track for: ${songlinkTrack.title}`);
+			}
+
+			return trackLookup.track;
+		}
+
+		// We found TIDAL info in the Songlink data, fetch the full track
+		const trackLookup = await losslessAPI.getTrack(trackId);
+		if (!trackLookup?.track) {
+			throw new Error(`Failed to fetch TIDAL track for: ${songlinkTrack.title}`);
+		}
+
+		console.log('Successfully converted to TIDAL track:', trackLookup.track.title);
+		return trackLookup.track;
+	}
+
 	function maybePreloadNextTrack(remainingSeconds: number) {
 		if (remainingSeconds > PRELOAD_THRESHOLD_SECONDS) {
 			return;
 		}
 		const { queue, queueIndex } = $playerStore;
 		const nextTrack = queue[queueIndex + 1];
-		if (!nextTrack) {
-			return;
+		if (!nextTrack || isSonglinkTrack(nextTrack)) {
+			return; // Don't preload Songlink tracks
 		}
 		const dashKey = getCacheKey(nextTrack.id, 'HI_RES_LOSSLESS');
 		if (dashManifestCache.has(dashKey) || preloadingCacheKey === dashKey) {
@@ -285,6 +360,50 @@
 		}
 		preloadNextTrack(nextTrack);
 	}
+
+	// Track which Songlink tracks are currently being converted to prevent duplicates
+	const convertingTracks = new Set<string>();
+
+	// Effect to convert SonglinkTrack to Track when needed
+	$effect(() => {
+		const current = $playerStore.currentTrack;
+		if (current && isSonglinkTrack(current)) {
+			console.log('[Conversion Effect] Detected SonglinkTrack:', current.title, 'ID:', current.id);
+			
+			// Check if this track is already being converted
+			if (convertingTracks.has(current.id)) {
+				console.log('[Conversion Effect] Track already being converted, skipping');
+				return;
+			}
+
+			// Mark this track as being converted
+			convertingTracks.add(current.id);
+			console.log('[Conversion Effect] Starting conversion for:', current.title);
+
+			// Convert the Songlink track to a TIDAL track and update the store
+			convertSonglinkTrackToTidal(current)
+				.then((tidalTrack) => {
+					console.log('[Conversion Effect] Conversion SUCCESS:', tidalTrack.title, 'TIDAL ID:', tidalTrack.id);
+					// Only update if this is still the current track
+					const state = get(playerStore);
+					if (state.currentTrack && isSonglinkTrack(state.currentTrack) && state.currentTrack.id === current.id) {
+						console.log('[Conversion Effect] Updating player with converted track');
+						playerStore.setTrack(tidalTrack);
+					} else {
+						console.log('[Conversion Effect] Track changed during conversion, not updating');
+					}
+				})
+				.catch((error) => {
+					console.error('[Conversion Effect] Conversion FAILED:', error);
+					alert(`Failed to play track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				})
+				.finally(() => {
+					// Remove from converting set when done
+					convertingTracks.delete(current.id);
+					console.log('[Conversion Effect] Finished conversion attempt for:', current.title);
+				});
+		}
+	});
 
 	$effect(() => {
 		const current = $playerStore.currentTrack;
@@ -301,6 +420,11 @@
 				currentPlaybackQuality = null;
 			}
 		} else if (current.id !== currentTrackId) {
+			// Don't load SonglinkTracks - wait for them to be converted first
+			if (isSonglinkTrack(current)) {
+				return;
+			}
+			
 			currentTrackId = current.id;
 			streamUrl = '';
 			bufferedPercent = 0;
@@ -488,6 +612,19 @@
 	}
 
 	async function loadTrack(track: Track) {
+		// CRITICAL: Never try to load a SonglinkTrack - it must be converted first
+		if ('isSonglinkTrack' in track && (track as any).isSonglinkTrack) {
+			console.error('Attempted to load SonglinkTrack directly - this should not happen!', track);
+			return;
+		}
+
+		// Validate that we have a numeric track ID
+		const trackId = Number(track.id);
+		if (!Number.isFinite(trackId) || trackId <= 0) {
+			console.error('Invalid track ID - must be numeric:', track.id);
+			return;
+		}
+
 		const sequence = ++loadSequence;
 		playerStore.setLoading(true);
 		bufferedPercent = 0;
@@ -1292,65 +1429,72 @@
 
 					<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 						<!-- Track Info -->
-						<div class="flex min-w-0 items-center gap-3 sm:flex-1">
-							{#if $playerStore.currentTrack.album.videoCover}
-								<video
-									src={losslessAPI.getVideoCoverUrl(
-										$playerStore.currentTrack.album.videoCover,
-										'640'
-									)}
-									poster={$playerStore.currentTrack.album.cover
-										? losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')
-										: undefined}
-									aria-label={$playerStore.currentTrack.title}
-									class="h-14 w-14 rounded object-cover shadow-lg"
-									autoplay
-									loop
-									muted
-									playsinline
-									preload="metadata"
-								></video>
-							{:else if $playerStore.currentTrack.album.cover}
-								<img
-									src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
-									alt={$playerStore.currentTrack.title}
-									class="h-14 w-14 rounded object-cover shadow-lg"
-								/>
-							{/if}
-							<div class="min-w-0 flex-1">
-								<h3 class="truncate font-semibold text-white">
-									{$playerStore.currentTrack.title}
-								</h3>
-								<a
-									href={`/artist/${$playerStore.currentTrack.artist.id}`}
-									class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
-									data-sveltekit-preload-data
-								>
-									{formatArtists($playerStore.currentTrack.artists)}
-								</a>
-								<p class="text-xs text-gray-500">
-									<a
-										href={`/album/${$playerStore.currentTrack.album.id}`}
-										class="hover:text-blue-400 hover:underline"
-										data-sveltekit-preload-data
-									>
-										{$playerStore.currentTrack.album.title}
-									</a>
-									<span class="mx-1" aria-hidden="true">•</span>
-									<span>{formatQualityLabel(currentPlaybackQuality ?? undefined)}</span>
-									{#if currentPlaybackQuality && $playerStore.currentTrack.audioQuality && currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
-										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-										<span class="text-gray-500">
-											({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
-										</span>
+						{#if $playerStore.currentTrack}
+							<div class="flex min-w-0 items-center gap-3 sm:flex-1">
+								{#if !('isSonglinkTrack' in $playerStore.currentTrack && $playerStore.currentTrack.isSonglinkTrack)}
+									<!-- Only show album cover for regular tracks -->
+									{#if $playerStore.currentTrack.album.videoCover}
+										<video
+											src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.videoCover, '640')}
+											autoplay
+											loop
+											muted
+											playsinline
+											class="h-16 w-16 flex-shrink-0 rounded-md object-cover"
+										></video>
+									{:else if $playerStore.currentTrack.album.cover}
+										<img
+											src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '640')}
+											alt={$playerStore.currentTrack.title}
+											class="h-16 w-16 flex-shrink-0 rounded-md object-cover"
+										/>
 									{/if}
-									{#if sampleRateLabel}
-										<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-										<span>{sampleRateLabel}</span>
+								{/if}
+								<div class="min-w-0 flex-1">
+									<h3 class="truncate font-semibold text-white">
+										{$playerStore.currentTrack.title}
+									</h3>
+									{#if 'isSonglinkTrack' in $playerStore.currentTrack && $playerStore.currentTrack.isSonglinkTrack}
+										<!-- Display for SonglinkTrack -->
+										<p class="truncate text-sm text-gray-400">
+											{$playerStore.currentTrack.artistName}
+										</p>
+									{:else}
+										<!-- Display for regular Track -->
+										<a
+											href={`/artist/${$playerStore.currentTrack.artist.id}`}
+											class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
+											data-sveltekit-preload-data
+										>
+											{formatArtists($playerStore.currentTrack.artists)}
+										</a>
+										<p class="text-xs text-gray-500">
+											<a
+												href={`/album/${$playerStore.currentTrack.album.id}`}
+												class="hover:text-blue-400 hover:underline"
+												data-sveltekit-preload-data
+											>
+												{$playerStore.currentTrack.album.title}
+											</a>
+											{#if currentPlaybackQuality}
+												<span class="mx-1" aria-hidden="true">•</span>
+												<span>{formatQualityLabel(currentPlaybackQuality)}</span>
+											{/if}
+											{#if currentPlaybackQuality && $playerStore.currentTrack.audioQuality && currentPlaybackQuality !== $playerStore.currentTrack.audioQuality}
+												<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+												<span class="text-gray-500">
+													({formatQualityLabel($playerStore.currentTrack.audioQuality)} available)
+												</span>
+											{/if}
+											{#if sampleRateLabel}
+												<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+												<span>{sampleRateLabel}</span>
+											{/if}
+										</p>
 									{/if}
-								</p>
+								</div>
 							</div>
-						</div>
+						{/if}
 
 						<div class="flex flex-nowrap items-center justify-between gap-2 sm:gap-4">
 							<!-- Controls -->

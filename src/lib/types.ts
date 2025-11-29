@@ -154,3 +154,60 @@ export interface TrackLookup {
 	info: TrackInfo;
 	originalTrackUrl?: string;
 }
+
+/**
+ * Songlink API response types (copied to avoid circular dependency)
+ */
+export interface SonglinkEntity {
+	id: string;
+	type: 'song' | 'album';
+	title?: string;
+	artistName?: string;
+	thumbnailUrl?: string;
+	thumbnailWidth?: number;
+	thumbnailHeight?: number;
+	apiProvider: string;
+	platforms: string[];
+}
+
+export interface SonglinkResponse {
+	entityUniqueId: string;
+	userCountry: string;
+	pageUrl: string;
+	entitiesByUniqueId: Record<string, SonglinkEntity>;
+	linksByPlatform: Record<string, unknown>;
+}
+
+/**
+ * Represents a track from Songlink API that hasn't been converted to a full TIDAL track yet
+ * Used to defer expensive TIDAL API calls until the track is actually played
+ */
+export interface SonglinkTrack {
+	// Unique identifier (e.g., "spotify:track:3RiPr603aXAoi4GHyXx0uy")
+	id: string;
+	title: string;
+	artistName: string;
+	// Duration is unknown from Songlink, use placeholder
+	duration: number;
+	thumbnailUrl: string;
+	// Store the original URL for later conversion
+	sourceUrl: string;
+	// Store Songlink response data
+	songlinkData: SonglinkResponse;
+	// Flag to identify this as a Songlink track
+	isSonglinkTrack: true;
+	// Assume CD quality for display purposes
+	audioQuality: 'LOSSLESS';
+}
+
+/**
+ * Union type for tracks that can be played
+ */
+export type PlayableTrack = Track | SonglinkTrack;
+
+/**
+ * Type guard to check if a track is a SonglinkTrack
+ */
+export function isSonglinkTrack(track: PlayableTrack): track is SonglinkTrack {
+	return 'isSonglinkTrack' in track && track.isSonglinkTrack === true;
+}

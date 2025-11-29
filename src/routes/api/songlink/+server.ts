@@ -1,12 +1,11 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { createHash } from 'node:crypto';
-import { getRedisClient } from '$lib/server/redis';
-import type Redis from 'ioredis';
 
-const CACHE_NAMESPACE = 'songlink:v1:';
-const CACHE_TTL_SECONDS = 2_592_000; // 30 days
 const SONGLINK_API_BASE = 'https://api.song.link/v1-alpha.1/links';
 const SONGLINK_BACKUP_API_BASE = 'https://tracks.monochrome.tf/api/links';
+
+// We keep the browser cache high (30 days) to reduce load on your server
+// since we no longer have a server-side Redis cache.
+const BROWSER_CACHE_TTL = 2_592_000;
 
 interface SonglinkQuery {
 	url: string;
@@ -16,17 +15,7 @@ interface SonglinkQuery {
 	type?: string;
 	id?: string;
 	key?: string;
-}
-
-interface CachedEntry {
-	data: unknown;
-	timestamp: number;
-}
-
-function createCacheKey(params: SonglinkQuery): string {
-	const keyMaterial = JSON.stringify(params);
-	const hash = createHash('sha256').update(keyMaterial).digest('hex');
-	return `${CACHE_NAMESPACE}${hash}`;
+	preferBackup?: boolean;
 }
 
 function buildSonglinkUrl(params: SonglinkQuery, useBackup: boolean = false): string {
@@ -55,39 +44,6 @@ function buildSonglinkUrl(params: SonglinkQuery, useBackup: boolean = false): st
 	return url.toString();
 }
 
-async function readCachedEntry(redis: Redis, key: string): Promise<unknown | null> {
-	try {
-		const raw = await redis.get(key);
-		if (!raw) return null;
-
-		const parsed = JSON.parse(raw) as CachedEntry;
-		const age = Date.now() - parsed.timestamp;
-
-		// Check if cache entry is still valid (within TTL)
-		if (age > CACHE_TTL_SECONDS * 1000) {
-			await redis.del(key); // Clean up expired entry
-			return null;
-		}
-
-		return parsed.data;
-	} catch (error) {
-		console.error('Failed to read Songlink cache entry:', error);
-		return null;
-	}
-}
-
-async function writeCachedEntry(redis: Redis, key: string, data: unknown): Promise<void> {
-	try {
-		const entry: CachedEntry = {
-			data,
-			timestamp: Date.now()
-		};
-		await redis.set(key, JSON.stringify(entry), 'EX', CACHE_TTL_SECONDS);
-	} catch (error) {
-		console.error('Failed to store Songlink cache entry:', error);
-	}
-}
-
 export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	const origin = request.headers.get('origin');
 
@@ -99,7 +55,8 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		platform: url.searchParams.get('platform') || undefined,
 		type: url.searchParams.get('type') || undefined,
 		id: url.searchParams.get('id') || undefined,
-		key: url.searchParams.get('key') || undefined
+		key: url.searchParams.get('key') || undefined,
+		preferBackup: url.searchParams.get('preferBackup') === 'true' ? true : undefined
 	};
 
 	// Validate required parameter
@@ -116,28 +73,22 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		);
 	}
 
-	// Check cache first
-	const redis = getRedisClient();
-	const cacheKey = createCacheKey(params);
-
-	if (redis) {
-		const cached = await readCachedEntry(redis, cacheKey);
-		if (cached) {
-			return json(cached, {
-				headers: {
-					'Access-Control-Allow-Origin': origin || '*',
-					'Cache-Control': 'public, max-age=2592000',
-					'X-Cache': 'HIT'
-				}
-			});
-		}
-	}
-
 	// Fetch from Songlink API
-	const songlinkUrl = buildSonglinkUrl(params);
+	// Default to 50/50 split for load balancing if no preference is specified
+	const useRandomBackup = Math.random() < 0.5;
+
+	// If preferBackup is explicitly true, try backup first.
+	// Otherwise, rely on the 50/50 random split.
+	const shouldTryBackupFirst = params.preferBackup === true ? true : useRandomBackup;
+
+	const primaryUrl = buildSonglinkUrl(params, false);
+	const backupUrl = buildSonglinkUrl(params, true);
 
 	try {
-		const response = await fetch(songlinkUrl, {
+		const firstUrl = shouldTryBackupFirst ? backupUrl : primaryUrl;
+		const firstSource = shouldTryBackupFirst ? 'backup' : 'primary';
+
+		const response = await fetch(firstUrl, {
 			headers: {
 				'User-Agent': 'BiniTidal/1.0',
 				Accept: 'application/json'
@@ -146,28 +97,33 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 		if (!response.ok) {
 			const errorText = await response.text();
-			console.warn('Primary Songlink API failed:', response.status, errorText);
-			
-			// Try backup API
-			console.log('Attempting backup Songlink API...');
-			const backupUrl = buildSonglinkUrl(params, true);
-			
-			const backupResponse = await fetch(backupUrl, {
+			console.warn(`${firstSource} Songlink API failed:`, response.status, errorText);
+
+			// Try the other API
+			const secondUrl = shouldTryBackupFirst ? primaryUrl : backupUrl;
+			const secondSource = shouldTryBackupFirst ? 'primary' : 'backup';
+			console.log(`Attempting ${secondSource} Songlink API...`);
+
+			const backupResponse = await fetch(secondUrl, {
 				headers: {
 					'User-Agent': 'BiniTidal/1.0',
 					Accept: 'application/json'
 				}
 			});
-			
+
 			if (!backupResponse.ok) {
 				const backupErrorText = await backupResponse.text();
-				console.error('Backup Songlink API also failed:', backupResponse.status, backupErrorText);
-				
+				console.error(
+					`${secondSource} Songlink API also failed:`,
+					backupResponse.status,
+					backupErrorText
+				);
+
 				return json(
 					{
 						error: 'Both Songlink APIs failed',
-						primaryStatus: response.status,
-						backupStatus: backupResponse.status,
+						primaryStatus: shouldTryBackupFirst ? backupResponse.status : response.status,
+						backupStatus: shouldTryBackupFirst ? response.status : backupResponse.status,
 						message: backupErrorText
 					},
 					{
@@ -179,76 +135,58 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 					}
 				);
 			}
-			
+
 			const backupData = await backupResponse.json();
-			
-			// Cache the successful backup response
-			if (redis) {
-				await writeCachedEntry(redis, cacheKey, backupData);
-			}
-			
+
 			return json(backupData, {
 				headers: {
 					'Access-Control-Allow-Origin': origin || '*',
-					'Cache-Control': 'public, max-age=2592000',
-					'X-Cache': 'MISS',
-					'X-Songlink-Source': 'backup'
+					'Cache-Control': `public, max-age=${BROWSER_CACHE_TTL}`,
+					'X-Songlink-Source': secondSource
 				}
 			});
 		}
 
 		const data = await response.json();
 
-		// Cache the successful response
-		if (redis) {
-			await writeCachedEntry(redis, cacheKey, data);
-		}
-
 		return json(data, {
 			headers: {
 				'Access-Control-Allow-Origin': origin || '*',
-				'Cache-Control': 'public, max-age=2592000',
-				'X-Cache': 'MISS',
-				'X-Songlink-Source': 'primary'
+				'Cache-Control': `public, max-age=${BROWSER_CACHE_TTL}`,
+				'X-Songlink-Source': firstSource
 			}
 		});
 	} catch (error) {
 		console.error('Songlink API fetch error:', error);
-		
+
 		// Try backup API as last resort
 		try {
 			console.log('Primary API threw exception, trying backup...');
 			const backupUrl = buildSonglinkUrl(params, true);
-			
+
 			const backupResponse = await fetch(backupUrl, {
 				headers: {
 					'User-Agent': 'BiniTidal/1.0',
 					Accept: 'application/json'
 				}
 			});
-			
+
 			if (!backupResponse.ok) {
 				throw new Error(`Backup API returned ${backupResponse.status}`);
 			}
-			
+
 			const backupData = await backupResponse.json();
-			
-			// Cache the successful backup response
-			if (redis) {
-				await writeCachedEntry(redis, cacheKey, backupData);
-			}
-			
+
 			return json(backupData, {
 				headers: {
 					'Access-Control-Allow-Origin': origin || '*',
-					'Cache-Control': 'public, max-age=2592000',
-					'X-Cache': 'MISS',
+					'Cache-Control': `public, max-age=${BROWSER_CACHE_TTL}`,
 					'X-Songlink-Source': 'backup-fallback'
 				}
 			});
 		} catch (backupError) {
 			console.error('Backup Songlink API also failed:', backupError);
-			
+
 			return json(
 				{
 					error: 'Failed to fetch from both Songlink APIs',

@@ -78,9 +78,8 @@ export function isSpotifyPlaylistUrl(url: string): boolean {
  * Extract TIDAL information from Songlink response
  */
 export function extractTidalInfo(response: SonglinkResponse): TidalInfo | null {
-	// Try to get TIDAL link from linksByPlatform
-	const tidalLink = response.linksByPlatform?.tidal;
-
+	// Find TIDAL link in linksByPlatform
+	const tidalLink = response.linksByPlatform.tidal;
 	if (!tidalLink?.url) {
 		return null;
 	}
@@ -104,6 +103,13 @@ export function extractTidalInfo(response: SonglinkResponse): TidalInfo | null {
 	} else if (type === 'playlist') {
 		tidalType = 'playlist';
 	} else {
+		return null;
+	}
+
+	// Validate that the ID is numeric
+	const numericId = Number(id);
+	if (!Number.isFinite(numericId) || numericId <= 0) {
+		console.warn('TIDAL ID is not a valid number:', id);
 		return null;
 	}
 
@@ -133,6 +139,12 @@ export async function fetchSonglinkData(
 
 	if (options?.songIfSingle !== undefined) {
 		params.set('songIfSingle', options.songIfSingle.toString());
+	}
+
+	// Randomly prefer backup API 50% of the time for load balancing
+	const preferBackup = Math.random() < 0.5;
+	if (preferBackup) {
+		params.set('preferBackup', 'true');
 	}
 
 	const apiUrl = `/api/songlink?${params.toString()}`;
@@ -208,4 +220,23 @@ export async function convertSpotifyPlaylist(playlistUrl: string): Promise<strin
 
 	const data = await response.json();
 	return data.songLinks;
+}
+
+/**
+ * Extract TIDAL song entity from Songlink response for display
+ * Prioritizes the entityUniqueId, then falls back to any TIDAL_SONG entity
+ */
+export function extractTidalSongEntity(response: SonglinkResponse): SonglinkEntity | null {
+	// First try the primary entity if it's a TIDAL song
+	const primaryEntity = response.entitiesByUniqueId[response.entityUniqueId];
+	if (primaryEntity?.apiProvider === 'tidal') {
+		return primaryEntity;
+	}
+
+	// Fallback: find any TIDAL_SONG entity
+	const tidalKey = Object.keys(response.entitiesByUniqueId).find((key) =>
+		key.startsWith('TIDAL_SONG::')
+	);
+
+	return tidalKey ? response.entitiesByUniqueId[tidalKey] || null : null;
 }
