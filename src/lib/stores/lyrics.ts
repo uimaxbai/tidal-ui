@@ -1,12 +1,12 @@
 import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
-import type { Track } from '$lib/types';
+import type { Track, PlayableTrack } from '$lib/types';
 import { currentTrack as currentTrackStore } from '$lib/stores/player';
 
 export interface LyricsState {
 	open: boolean;
 	maximized: boolean;
-	track: Track | null;
+	track: PlayableTrack | null;
 	refreshToken: number;
 }
 
@@ -20,7 +20,7 @@ const initialState: LyricsState = {
 function createLyricsStore() {
 	const store = writable<LyricsState>({ ...initialState });
 
-	let currentTrack: Track | null = null;
+	let currentTrack: PlayableTrack | null = null;
 
 	currentTrackStore.subscribe((track) => {
 		currentTrack = track ?? null;
@@ -34,7 +34,7 @@ function createLyricsStore() {
 		});
 	});
 
-	function open(targetTrack?: Track | null) {
+	function open(targetTrack?: PlayableTrack | null) {
 		const nextTrack = targetTrack ?? currentTrack;
 		store.update((state) => ({
 			...state,

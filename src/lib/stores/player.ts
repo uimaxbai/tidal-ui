@@ -1,11 +1,11 @@
 // Audio player store for managing playback state
 import { writable, derived, get } from 'svelte/store';
-import type { Track, AudioQuality } from '$lib/types';
+import type { Track, AudioQuality, PlayableTrack } from '$lib/types';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
 
 interface PlayerState {
-	currentTrack: Track | null;
+	currentTrack: PlayableTrack | null;
 	isPlaying: boolean;
 	currentTime: number;
 	duration: number;
@@ -13,7 +13,7 @@ interface PlayerState {
 	quality: AudioQuality;
 	qualitySource: 'auto' | 'manual';
 	isLoading: boolean;
-	queue: Track[];
+	queue: PlayableTrack[];
 	queueIndex: number;
 	sampleRate: number | null;
 	replayGain: number | null;
@@ -37,13 +37,21 @@ const initialState: PlayerState = {
 };
 
 function createPlayerStore() {
-	const { subscribe, set, update } = writable<PlayerState>(initialState);
+	const { subscribe, set, update} = writable<PlayerState>(initialState);
 
-	const applyAutoQuality = (state: PlayerState, track: Track | null): PlayerState => {
+	const applyAutoQuality = (state: PlayerState, track: PlayableTrack | null): PlayerState => {
 		if (state.qualitySource === 'manual') {
 			return state;
 		}
-		const derived = deriveTrackQuality(track);
+		// SonglinkTrack will be converted to Track before playing, so use LOSSLESS for now
+		if (track && 'isSonglinkTrack' in track && track.isSonglinkTrack) {
+			const nextQuality: AudioQuality = 'LOSSLESS';
+			if (state.quality === nextQuality) {
+				return state;
+			}
+			return { ...state, quality: nextQuality };
+		}
+		const derived = deriveTrackQuality(track as Track | null);
 		const nextQuality: AudioQuality = derived ?? 'LOSSLESS';
 		if (state.quality === nextQuality) {
 			return state;
@@ -51,8 +59,12 @@ function createPlayerStore() {
 		return { ...state, quality: nextQuality };
 	};
 
-	const resolveSampleRate = (state: PlayerState, track: Track | null): number | null => {
-		if (state.currentTrack && track && state.currentTrack.id === track.id) {
+	const resolveSampleRate = (state: PlayerState, track: PlayableTrack | null): number | null => {
+		// SonglinkTrack doesn't have sampleRate, return null
+		if (track && 'isSonglinkTrack' in track && track.isSonglinkTrack) {
+			return null;
+		}
+		if (state.currentTrack && track && 'id' in state.currentTrack && 'id' in track && state.currentTrack.id === track.id) {
 			return state.sampleRate;
 		}
 		return null;
@@ -60,7 +72,7 @@ function createPlayerStore() {
 
 	return {
 		subscribe,
-		setTrack: (track: Track) =>
+		setTrack: (track: PlayableTrack) =>
 			update((state) => {
 				const next: PlayerState = {
 					...state,
@@ -86,7 +98,7 @@ function createPlayerStore() {
 				return { ...state, quality, qualitySource: 'manual' };
 			}),
 		setLoading: (isLoading: boolean) => update((state) => ({ ...state, isLoading })),
-		setQueue: (queue: Track[], startIndex: number = 0) =>
+		setQueue: (queue: PlayableTrack[], startIndex: number = 0) =>
 			update((state) => {
 				const hasTracks = queue.length > 0;
 				const clampedIndex = hasTracks
@@ -122,7 +134,7 @@ function createPlayerStore() {
 
 				return applyAutoQuality(next, next.currentTrack);
 			}),
-		enqueue: (track: Track) =>
+		enqueue: (track: PlayableTrack) =>
 			update((state) => {
 				const queue = state.queue.slice();
 				if (queue.length === 0) {
@@ -147,7 +159,7 @@ function createPlayerStore() {
 					queue
 				};
 			}),
-		enqueueNext: (track: Track) =>
+		enqueueNext: (track: PlayableTrack) =>
 			update((state) => {
 				const queue = state.queue.slice();
 				let queueIndex = state.queueIndex;
@@ -227,7 +239,7 @@ function createPlayerStore() {
 				}
 
 				const queue = originalQueue.slice();
-				let pinnedTrack: Track | null = null;
+				let pinnedTrack: PlayableTrack | null = null;
 
 				if (originalCurrent) {
 					const locatedIndex = queue.findIndex((track) => track.id === originalCurrent.id);

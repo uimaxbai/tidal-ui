@@ -62,13 +62,6 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'vercel-fastapi',
-		baseUrl: 'https://tidal-api-2.binimum.org',
-		weight: 1,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
 		name: 'monochrome-jakarta',
 		baseUrl: 'https://jakarta.monochrome.tf',
 		weight: 15,

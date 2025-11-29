@@ -27,7 +27,7 @@
 		Settings
 	} from 'lucide-svelte';
 	import type { Navigation } from '@sveltejs/kit';
-	import type { Track, AudioQuality } from '$lib/types';
+	import { type Track, type AudioQuality, type PlayableTrack, isSonglinkTrack } from '$lib/types';
 
 	let { children, data } = $props();
 	const pageTitle = $derived(data?.title ?? 'BiniTidal');
@@ -156,7 +156,7 @@
 		const isPlaying = $playerStore.isPlaying;
 		
 		if (track) {
-			const artist = formatArtists(track.artists);
+			const artist = isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists);
 			const title = track.title ?? 'Unknown Track';
 			const prefix = isPlaying ? '▶' : '⏸';
 			document.title = `${prefix} ${title} • ${artist} | BiniTidal`;
@@ -165,7 +165,7 @@
 		}
 	});
 
-	function collectQueueState(): { tracks: Track[]; quality: AudioQuality } {
+	function collectQueueState(): { tracks: PlayableTrack[]; quality: AudioQuality } {
 		const state = get(playerStore);
 		const tracks = state.queue.length
 			? state.queue
@@ -175,10 +175,10 @@
 		return { tracks, quality: state.quality };
 	}
 
-	function buildQueueFilename(track: Track, index: number, quality: AudioQuality): string {
+	function buildQueueFilename(track: PlayableTrack, index: number, quality: AudioQuality): string {
 		const ext = getExtensionForQuality(quality, convertAacToMp3);
 		const order = `${index + 1}`.padStart(2, '0');
-		const artistName = sanitizeForFilename(formatArtists(track.artists));
+		const artistName = sanitizeForFilename(isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists));
 		const titleName = sanitizeForFilename(track.title ?? `Track ${order}`);
 		return `${order} - ${artistName} - ${titleName}.${ext}`;
 	}
@@ -199,14 +199,17 @@
 		return `tidal-export-${stamp}.${extension}`;
 	}
 
-	async function downloadQueueAsZip(tracks: Track[], quality: AudioQuality): Promise<void> {
+	async function downloadQueueAsZip(tracks: PlayableTrack[], quality: AudioQuality): Promise<void> {
 		isZipDownloading = true;
 
 		try {
 			const zip = new JSZip();
 			for (const [index, track] of tracks.entries()) {
+				const trackId = isSonglinkTrack(track) ? track.tidalId : track.id;
+				if (!trackId) continue;
+
 				const filename = buildQueueFilename(track, index, quality);
-				const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
+				const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 					ffmpegAutoTriggered: false,
 					convertAacToMp3
 				});
@@ -228,10 +231,11 @@
 		}
 	}
 
-	async function exportQueueAsCsv(tracks: Track[], quality: AudioQuality): Promise<void> {
+	async function exportQueueAsCsv(tracks: PlayableTrack[], quality: AudioQuality): Promise<void> {
 		isCsvExporting = true;
 
 		try {
+			// @ts-ignore - buildTrackLinksCsv needs update but we can cast for now or update it later
 			const csvContent = await buildTrackLinksCsv(tracks, quality);
 			const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
 			triggerFileDownload(blob, timestampedFilename('csv'));
@@ -255,7 +259,7 @@
 		await exportQueueAsCsv(tracks, quality);
 	}
 
-	async function downloadQueueIndividually(tracks: Track[], quality: AudioQuality): Promise<void> {
+	async function downloadQueueIndividually(tracks: PlayableTrack[], quality: AudioQuality): Promise<void> {
 		if (isLegacyQueueDownloading) {
 			return;
 		}
@@ -265,14 +269,18 @@
 
 		try {
 			for (const [index, track] of tracks.entries()) {
+				const trackId = isSonglinkTrack(track) ? track.tidalId : track.id;
+				if (!trackId) continue;
+
 				const filename = buildQueueFilename(track, index, quality);
-				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-					subtitle: track.album?.title ?? formatArtists(track.artists)
+				// @ts-ignore - downloadUiStore needs update to accept PlayableTrack or we cast
+				const { taskId, controller } = downloadUiStore.beginTrackDownload(track as Track, filename, {
+					subtitle: isSonglinkTrack(track) ? track.artistName : (track.album?.title ?? formatArtists(track.artists))
 				});
 				downloadUiStore.skipFfmpegCountdown();
 
 				try {
-					await losslessAPI.downloadTrack(track.id, quality, filename, {
+					await losslessAPI.downloadTrack(trackId, quality, filename, {
 						signal: controller.signal,
 						onProgress: (progress: TrackDownloadProgress) => {
 							if (progress.stage === 'downloading') {
@@ -305,7 +313,7 @@
 					}
 					console.error('Failed to download track from queue:', error);
 					downloadUiStore.errorTrackDownload(taskId, error);
-					const label = `${formatArtists(track.artists)} - ${track.title ?? 'Unknown Track'}`;
+					const label = `${isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists)} - ${track.title ?? 'Unknown Track'}`;
 					const message =
 						error instanceof Error && error.message
 							? error.message

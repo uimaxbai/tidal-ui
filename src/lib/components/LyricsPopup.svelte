@@ -4,6 +4,7 @@
 	import { currentTime, playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { formatArtists } from '$lib/utils';
+	import { isSonglinkTrack } from '$lib/types';
 	import { Maximize2, Minimize2, RefreshCw, X } from 'lucide-svelte';
 
 	const COMPONENT_MODULE_URL =
@@ -41,7 +42,7 @@
 	let animationFrameId: number | null = null;
 	let lastBaseTimestamp = 0;
 	let scrollPatchFrame: number | null = null;
-	let lastRefreshedTrackId = $state<number | null>(null);
+	let lastRefreshedTrackId = $state<number | string | null>(null);
 
 	$effect(() => {
 		const seconds = $currentTime ?? 0;
@@ -430,9 +431,23 @@
 			return;
 		}
 
-		const title = track.title;
-		const artist = formatArtists(track.artists);
-		const album = track.album?.title;
+		let title: string;
+		let artist: string;
+		let album: string | undefined;
+		let isrc: string | undefined;
+
+		if (isSonglinkTrack(track)) {
+			title = track.title;
+			artist = track.artistName;
+			album = undefined;
+			isrc = undefined;
+		} else {
+			title = track.title;
+			artist = formatArtists(track.artists);
+			album = track.album?.title;
+			isrc = track.isrc;
+		}
+
 		const durationMs =
 			typeof track.duration === 'number'
 				? Math.max(0, Math.round(track.duration * 1000))
@@ -444,7 +459,7 @@
 			album,
 			query: `${title} ${artist}`.trim(),
 			durationMs,
-			isrc: track.isrc ?? ''
+			isrc: isrc ?? ''
 		};
 	});
 </script>

@@ -1,5 +1,6 @@
 import { derived, get, writable } from 'svelte/store';
-import type { Track } from '$lib/types';
+import type { Track, PlayableTrack } from '$lib/types';
+import { isSonglinkTrack } from '$lib/types';
 import { formatArtists } from '$lib/utils';
 
 export type FfmpegPhase = 'idle' | 'countdown' | 'loading' | 'ready' | 'error';
@@ -20,7 +21,7 @@ export type TrackDownloadStatus = 'pending' | 'running' | 'completed' | 'error' 
 
 export interface TrackDownloadTask {
 	id: string;
-	trackId: number;
+	trackId: number | string;
 	title: string;
 	subtitle?: string;
 	filename: string;
@@ -151,7 +152,7 @@ export const downloadUiStore = {
 		taskControllers.clear();
 	},
 	beginTrackDownload(
-		track: Track,
+		track: PlayableTrack,
 		filename: string,
 		options?: { subtitle?: string }
 	): {
@@ -161,11 +162,21 @@ export const downloadUiStore = {
 		const id = nextTaskId('track');
 		const controller = new AbortController();
 		taskControllers.set(id, controller);
+		
+		let subtitle = options?.subtitle;
+		if (!subtitle) {
+			if (isSonglinkTrack(track)) {
+				subtitle = track.artistName;
+			} else {
+				subtitle = formatArtists(track.artists);
+			}
+		}
+
 		upsertTask({
 			id,
 			trackId: track.id,
 			title: track.title,
-			subtitle: options?.subtitle ?? formatArtists(track.artists),
+			subtitle,
 			filename,
 			status: 'running',
 			receivedBytes: 0,

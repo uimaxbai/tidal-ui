@@ -68,7 +68,7 @@
 	let isVisible = true;
 
 	// Track current song
-	let currentTrackId: number | null = null;
+	let currentTrackId: number | string | null = null;
 
 	onMount(() => {
 		initializeWebGL();
@@ -83,7 +83,16 @@
 		const unsubscribePlayer = playerStore.subscribe(async (state) => {
 			if (state.currentTrack && state.currentTrack.id !== currentTrackId) {
 				currentTrackId = state.currentTrack.id;
-				await updateFromTrack(state.currentTrack.album.cover);
+				let coverUrl = '';
+				if ('thumbnailUrl' in state.currentTrack && state.currentTrack.thumbnailUrl) {
+					coverUrl = state.currentTrack.thumbnailUrl;
+				} else if ('album' in state.currentTrack && state.currentTrack.album?.cover) {
+					coverUrl = state.currentTrack.album.cover;
+				}
+
+				if (coverUrl) {
+					await updateFromTrack(coverUrl);
+				}
 			}
 		});
 
@@ -226,7 +235,7 @@
 
 	async function updateFromTrack(coverUrl: string) {
 		try {
-			const fullCoverUrl = losslessAPI.getCoverUrl(coverUrl, '640');
+			const fullCoverUrl = coverUrl.startsWith('http') ? coverUrl : losslessAPI.getCoverUrl(coverUrl, '640');
 			const palette = await extractPaletteFromImage(
 				fullCoverUrl,
 				DISPLAY_GRID_WIDTH,

@@ -10,8 +10,17 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
 	import { isTidalUrl } from '$lib/utils/urlParser';
-	import { isSupportedStreamingUrl, convertToTidal, getPlatformName, isSpotifyPlaylistUrl, convertSpotifyPlaylist } from '$lib/utils/songlink';
-	import type { Track, Album, Artist, Playlist, AudioQuality } from '$lib/types';
+	import {
+		isSupportedStreamingUrl,
+		convertToTidal,
+		getPlatformName,
+		isSpotifyPlaylistUrl,
+		convertSpotifyPlaylist,
+		fetchSonglinkData,
+		extractTidalSongEntity
+	} from '$lib/utils/songlink';
+	import type { Track, Album, Artist, Playlist, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
+	import { isSonglinkTrack } from '$lib/types';
 	import {
 		Search,
 		ChevronDown,
@@ -38,18 +47,20 @@
 	let query = $state('');
 	let activeTab = $state<SearchTab>('tracks');
 	let isLoading = $state(false);
-	let tracks = $state<Track[]>([]);
+	let tracks = $state<(Track | SonglinkTrack)[]>([]);
 	let albums = $state<Album[]>([]);
 	let artists = $state<Artist[]>([]);
 	let playlists = $state<Playlist[]>([]);
-	let downloadingIds = $state(new Set<number>());
-	let downloadTaskIds = $state(new Map<number, string>());
-	let cancelledIds = $state(new Set<number>());
+	let downloadingIds = $state(new Set<number | string>());
+	let downloadTaskIds = $state(new Map<number | string, string>());
+	let cancelledIds = $state(new Set<number | string>());
 	let error = $state<string | null>(null);
 	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
-	const downloadCoverSeperatelyPreference = $derived($userPreferencesStore.downloadCoversSeperately);
+	const downloadCoverSeperatelyPreference = $derived(
+		$userPreferencesStore.downloadCoversSeperately
+	);
 	let selectedRegion = $state<RegionOption>('auto');
 	let isRegionSelectorOpen = $state(false);
 	let playlistLoadingMessage = $state<string | null>(null);
@@ -107,15 +118,18 @@
 	const newsItems = [
 		{
 			title: 'Links support + QOLs!',
-			description: 'You can now paste links from supported streaming platforms (Spotify, YouTube, Apple Music, etc.) and the app will try to convert them to TIDAL equivalents for you to play or download. Only Spotify playlists work right now, but I\'m working on fixing it.'
-		},	
+			description:
+				"You can now paste links from supported streaming platforms (Spotify, YouTube, Apple Music, etc.) and the app will try to convert them to TIDAL equivalents for you to play or download. Only Spotify playlists work right now, but I'm working on fixing it."
+		},
 		{
 			title: 'Redesign + QQDL',
-			description: 'Hi-Res downloading still a WIP but a cool redesign that I inspired off a very cool library called Color Thief is here - and the site is also now up at QQDL!'
-		},	
+			description:
+				'Hi-Res downloading still a WIP but a cool redesign that I inspired off a very cool library called Color Thief is here - and the site is also now up at QQDL!'
+		},
 		{
 			title: 'Hi-Res Audio',
-			description: 'Streaming for Hi-Res is now here. Stay tuned for Hi-Res downloading - I haven\'t gotten that one figured out yet. And video covers/lower quality streaming. Pretty cool.'
+			description:
+				"Streaming for Hi-Res is now here. Stay tuned for Hi-Res downloading - I haven't gotten that one figured out yet. And video covers/lower quality streaming. Pretty cool."
 		},
 		{
 			title: 'Even more changes!',
@@ -138,7 +152,7 @@
 	const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
 
 	interface Props {
-		onTrackSelect?: (track: Track) => void;
+		onTrackSelect?: (track: PlayableTrack) => void;
 	}
 
 	let { onTrackSelect }: Props = $props();
@@ -148,15 +162,18 @@
 		const handleClickOutside = (event: MouseEvent) => {
 			const target = event.target as HTMLElement;
 			// Check if click is outside any menu
-			if (!target.closest('[id^="track-menu-"]') && !target.closest('button[title="Queue actions"]')) {
-				document.querySelectorAll('[id^="track-menu-"]').forEach(el => {
+			if (
+				!target.closest('[id^="track-menu-"]') &&
+				!target.closest('button[title="Queue actions"]')
+			) {
+				document.querySelectorAll('[id^="track-menu-"]').forEach((el) => {
 					(el as HTMLElement).style.display = 'none';
 				});
 			}
 		};
-		
+
 		document.addEventListener('click', handleClickOutside);
-		
+
 		return () => {
 			document.removeEventListener('click', handleClickOutside);
 		};
@@ -181,7 +198,7 @@
 		throw lastError instanceof Error ? lastError : new Error('Request failed');
 	}
 
-	function markCancelled(trackId: number) {
+	function markCancelled(trackId: number | string) {
 		const next = new Set(cancelledIds);
 		next.add(trackId);
 		cancelledIds = next;
@@ -192,7 +209,7 @@
 		}, 1500);
 	}
 
-	function handleCancelDownload(trackId: number, event: MouseEvent) {
+	function handleCancelDownload(trackId: number | string, event: MouseEvent) {
 		event.stopPropagation();
 		const taskId = downloadTaskIds.get(trackId);
 		if (taskId) {
@@ -207,25 +224,63 @@
 		markCancelled(trackId);
 	}
 
-	async function handleDownload(track: Track, event: MouseEvent) {
-		event.stopPropagation();
+	async function handleDownload(track: PlayableTrack, event?: MouseEvent) {
+		if (event) {
+			event.stopPropagation();
+		}
+
+		let trackId: number;
+		let artistName: string;
+		let albumTitle: string | undefined;
+
+		// Handle SonglinkTracks
+		if (isSonglinkTrack(track)) {
+			if (track.tidalId) {
+				trackId = track.tidalId;
+				artistName = track.artistName;
+				albumTitle = undefined;
+			} else {
+				console.warn('Cannot download SonglinkTrack directly - play it first to convert to TIDAL');
+				alert('This track needs to be played first before it can be downloaded. Click to play it, then download.');
+				return;
+			}
+		} else {
+			trackId = track.id;
+			artistName = formatArtists(track.artists);
+			albumTitle = track.album?.title;
+		}
+
+		// Guard against non-numeric IDs
+		if (!Number.isFinite(trackId) || trackId <= 0) {
+			console.error('Cannot download track with invalid ID:', track.id);
+			alert('Cannot download this track - invalid track ID');
+			return;
+		}
+
+		// Use the original ID for tracking active downloads in the UI to avoid confusion
+		// (since the UI list might still be using the string ID)
+		const uiTrackId = track.id;
+
+		if (downloadingIds.has(uiTrackId)) {
+			return;
+		}
 		const next = new Set(downloadingIds);
-		next.add(track.id);
+		next.add(uiTrackId);
 		downloadingIds = next;
 
 		const quality = $playerStore.quality;
 		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-		const filename = `${formatArtists(track.artists)} - ${track.title}.${extension}`;
+		const filename = `${artistName} - ${track.title}.${extension}`;
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: track.album?.title ?? formatArtists(track.artists)
+			subtitle: albumTitle ?? artistName
 		});
 		const taskMap = new Map(downloadTaskIds);
-		taskMap.set(track.id, taskId);
+		taskMap.set(uiTrackId, taskId);
 		downloadTaskIds = taskMap;
 		downloadUiStore.skipFfmpegCountdown();
 
 		try {
-			await losslessAPI.downloadTrack(track.id, quality, filename, {
+			await losslessAPI.downloadTrack(trackId, quality, filename, {
 				signal: controller.signal,
 				onProgress: (progress: TrackDownloadProgress) => {
 					if (progress.stage === 'downloading') {
@@ -253,25 +308,25 @@
 				convertAacToMp3: convertAacToMp3Preference,
 				downloadCoverSeperately: downloadCoverSeperatelyPreference
 			});
+
 			downloadUiStore.completeTrackDownload(taskId);
-		} catch (err) {
-			if (err instanceof DOMException && err.name === 'AbortError') {
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
 				downloadUiStore.completeTrackDownload(taskId);
-				markCancelled(track.id);
 			} else {
-				console.error('Failed to download track:', err);
+				console.error('Failed to download track:', error);
 				const fallbackMessage = 'Failed to download track. Please try again.';
-				const message = err instanceof Error && err.message ? err.message : fallbackMessage;
+				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
 				downloadUiStore.errorTrackDownload(taskId, message);
 				alert(message);
 			}
 		} finally {
-			const updated = new Set(downloadingIds);
-			updated.delete(track.id);
-			downloadingIds = updated;
-			const ids = new Map(downloadTaskIds);
-			ids.delete(track.id);
-			downloadTaskIds = ids;
+			const next = new Set(downloadingIds);
+			next.delete(uiTrackId);
+			downloadingIds = next;
+			const taskMap = new Map(downloadTaskIds);
+			taskMap.delete(uiTrackId);
+			downloadTaskIds = taskMap;
 		}
 	}
 
@@ -318,7 +373,11 @@
 					}
 				},
 				album.artist?.name,
-				{ mode: albumDownloadMode, convertAacToMp3: convertAacToMp3Preference, downloadCoverSeperately: downloadCoverSeperatelyPreference }
+				{
+					mode: albumDownloadMode,
+					convertAacToMp3: convertAacToMp3Preference,
+					downloadCoverSeperately: downloadCoverSeperatelyPreference
+				}
 			);
 			const finalState = albumDownloadStates[album.id];
 			patchAlbumDownloadState(album.id, {
@@ -336,21 +395,21 @@
 		}
 	}
 
-	function handleTrackActivation(track: Track) {
+	function handleTrackActivation(track: PlayableTrack) {
 		onTrackSelect?.(track);
 	}
 
-	function handleAddToQueue(track: Track, event: MouseEvent) {
+	function handleAddToQueue(track: PlayableTrack, event: MouseEvent) {
 		event.stopPropagation();
 		playerStore.enqueue(track);
 	}
 
-	function handlePlayNext(track: Track, event: MouseEvent) {
+	function handlePlayNext(track: PlayableTrack, event: MouseEvent) {
 		event.stopPropagation();
 		playerStore.enqueueNext(track);
 	}
 
-	function handleTrackKeydown(event: KeyboardEvent, track: Track) {
+	function handleTrackKeydown(event: KeyboardEvent, track: PlayableTrack) {
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
 			handleTrackActivation(track);
@@ -514,7 +573,7 @@
 						} catch (cacheErr) {
 							console.warn(`Failed to cache stream for track ${trackLookup.track.id}:`, cacheErr);
 						}
-						
+
 						playerStore.setTrack(trackLookup.track);
 						playerStore.play();
 						query = '';
@@ -559,13 +618,14 @@
 		isLoading = true;
 
 		try {
-			console.log('Converting Spotify playlist to TIDAL tracks...');
+			console.log('Fetching Spotify playlist tracks...');
 
 			// Step 1: Get all Spotify track URLs from the playlist
 			const spotifyTrackUrls = await convertSpotifyPlaylist(query.trim());
 
 			if (!spotifyTrackUrls || spotifyTrackUrls.length === 0) {
-				error = 'Could not fetch tracks from Spotify playlist. The playlist might be empty or private.';
+				error =
+					'Could not fetch tracks from Spotify playlist. The playlist might be empty or private.';
 				playlistLoadingMessage = null;
 				isLoading = false;
 				isPlaylistConversionMode = false;
@@ -574,56 +634,73 @@
 
 			console.log(`Found ${spotifyTrackUrls.length} tracks in playlist`);
 			playlistConversionTotal = spotifyTrackUrls.length;
-			playlistLoadingMessage = `Converting ${spotifyTrackUrls.length} tracks...`;
+			playlistLoadingMessage = `Loading ${spotifyTrackUrls.length} tracks...`;
 
 			// Clear previous results and switch to tracks tab
 			activeTab = 'tracks';
 			tracks = [];
-			const failedTracks: string[] = [];
 
 			// Set loading to false so tracks can be displayed as they're added
 			isLoading = false;
 
-			// Step 2: Convert each Spotify track URL to TIDAL and add to list as we go
-			for (let i = 0; i < spotifyTrackUrls.length; i++) {
-				const trackUrl = spotifyTrackUrls[i];
-				
-				// Update progress message
-				playlistLoadingMessage = `Converting track ${i + 1}/${spotifyTrackUrls.length}...`;
-				
+			// Step 2: Fetch Songlink data for all tracks (no TIDAL conversion yet!)
+			const conversionPromises = spotifyTrackUrls.map(async (trackUrl, index) => {
 				try {
-					const tidalInfo = await convertToTidal(trackUrl, {
+					const songlinkData = await fetchSonglinkData(trackUrl, {
 						userCountry: 'US',
 						songIfSingle: true
 					});
 
-					if (tidalInfo && tidalInfo.type === 'track') {
-						const trackLookup = await losslessAPI.getTrack(Number(tidalInfo.id));
-						if (trackLookup?.track) {
-							// Pre-cache the stream URL for this track
-							try {
-								const quality = $playerStore.quality;
-								await losslessAPI.getStreamUrl(trackLookup.track.id, quality);
-								console.log(`Cached stream for track ${trackLookup.track.id}`);
-							} catch (cacheErr) {
-								console.warn(`Failed to cache stream for track ${trackLookup.track.id}:`, cacheErr);
-							}
-							
-							// Add track to the list
-							tracks = [...tracks, trackLookup.track];
-						} else {
-							failedTracks.push(trackUrl);
-						}
-					} else {
-						failedTracks.push(trackUrl);
-					}
-				} catch (err) {
-					console.warn(`Failed to convert track ${i + 1}:`, err);
-					failedTracks.push(trackUrl);
-				}
-			}
+					// Extract TIDAL entity for display
+					const tidalEntity = extractTidalSongEntity(songlinkData);
 
-			console.log(`Successfully converted ${tracks.length}/${spotifyTrackUrls.length} tracks`);
+					if (tidalEntity) {
+						// Create a SonglinkTrack object (no TIDAL API call!)
+						const songlinkTrack: SonglinkTrack = {
+							id: songlinkData.entityUniqueId,
+							title: tidalEntity.title || 'Unknown Track',
+							artistName: tidalEntity.artistName || 'Unknown Artist',
+							duration: 180, // Placeholder duration (3 minutes)
+							thumbnailUrl: tidalEntity.thumbnailUrl || '',
+							sourceUrl: trackUrl,
+							songlinkData,
+							isSonglinkTrack: true,
+							tidalId: tidalEntity.id ? Number(tidalEntity.id) : undefined,
+							audioQuality: 'LOSSLESS'
+						};
+
+						return { success: true, track: songlinkTrack, url: trackUrl };
+					}
+
+					return { success: false, url: trackUrl };
+				} catch (err) {
+					console.warn(`Failed to fetch Songlink data for track ${index + 1}:`, err);
+					return { success: false, url: trackUrl };
+				}
+			});
+
+			// Wait for all Songlink fetches to complete
+			const results = await Promise.allSettled(conversionPromises);
+
+			// Process results and update UI
+			const successfulTracks: SonglinkTrack[] = [];
+			const failedTracks: string[] = [];
+
+			results.forEach((result, index) => {
+				if (result.status === 'fulfilled' && result.value.success && result.value.track) {
+					successfulTracks.push(result.value.track);
+				} else {
+					failedTracks.push(spotifyTrackUrls[index]);
+				}
+
+				// Update progress message
+				playlistLoadingMessage = `Loaded ${index + 1}/${spotifyTrackUrls.length} tracks...`;
+			});
+
+			// Update tracks all at once for better performance
+			tracks = successfulTracks;
+
+			console.log(`Successfully loaded ${tracks.length}/${spotifyTrackUrls.length} tracks`);
 
 			if (tracks.length === 0) {
 				error = 'Could not find TIDAL equivalents for any tracks in this playlist.';
@@ -634,10 +711,10 @@
 
 			// Show a message if some tracks failed
 			if (failedTracks.length > 0) {
-				console.warn(`${failedTracks.length} tracks could not be converted`);
-				playlistLoadingMessage = `Converted ${tracks.length} tracks (${failedTracks.length} failed)`;
+				console.warn(`${failedTracks.length} tracks could not be loaded`);
+				playlistLoadingMessage = `Loaded ${tracks.length} tracks (${failedTracks.length} failed)`;
 			} else {
-				playlistLoadingMessage = `Successfully converted ${tracks.length} tracks!`;
+				playlistLoadingMessage = `Successfully loaded ${tracks.length} tracks!`;
 			}
 
 			// Clear the query and hide loading message after a brief delay
@@ -646,8 +723,8 @@
 				playlistLoadingMessage = null;
 			}, 3000);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to convert Spotify playlist';
-			console.error('Spotify playlist conversion error:', err);
+			error = err instanceof Error ? err.message : 'Failed to load Spotify playlist';
+			console.error('Spotify playlist loading error:', err);
 			playlistLoadingMessage = null;
 			isPlaylistConversionMode = false;
 		}
@@ -671,18 +748,32 @@
 
 	async function handleDownloadAll() {
 		if (tracks.length === 0) return;
-		
-		// Download each track sequentially
+
+		const quality = $playerStore.quality;
+		const convertAacToMp3Preference = $userPreferencesStore.convertAacToMp3;
+		const downloadCoverSeperatelyPreference = $userPreferencesStore.downloadCoversSeperately;
+
 		for (const track of tracks) {
 			try {
-				const quality = $playerStore.quality;
-				const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-				const filename = `${formatArtists(track.artists)} - ${track.title}.${extension}`;
-				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-					subtitle: track.album?.title ?? formatArtists(track.artists)
-				});
+				// Use tidalId if available (for Songlink tracks), otherwise use id
+				const trackId = 'tidalId' in track && track.tidalId ? track.tidalId : track.id;
 				
-				await losslessAPI.downloadTrack(track.id, quality, filename, {
+				// Skip if we don't have a valid numeric ID (e.g. unconverted Songlink track)
+				if (typeof trackId !== 'number') {
+					console.warn(`Skipping download for track ${track.title}: No valid TIDAL ID`);
+					continue;
+				}
+
+				const artistName = 'artistName' in track ? track.artistName : formatArtists(track.artists);
+				const albumTitle = 'album' in track ? track.album?.title : undefined;
+				
+				const filename = `${artistName} - ${track.title}.${getExtensionForQuality(quality)}`;
+				
+				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+					subtitle: albumTitle ?? artistName
+				});
+
+				await losslessAPI.downloadTrack(trackId, quality, filename, {
 					signal: controller.signal,
 					onProgress: (progress: TrackDownloadProgress) => {
 						if (progress.stage === 'downloading') {
@@ -710,7 +801,7 @@
 					convertAacToMp3: convertAacToMp3Preference,
 					downloadCoverSeperately: downloadCoverSeperatelyPreference
 				});
-				
+
 				downloadUiStore.completeTrackDownload(taskId);
 			} catch (error) {
 				console.error(`Failed to download track ${track.title}:`, error);
@@ -770,60 +861,80 @@
 		}
 		return quality;
 	}
+
+	function asTrack(track: PlayableTrack): Track {
+		return track as Track;
+	}
 </script>
 
 <div class="w-full">
 	<!-- Search Input -->
 	<div class="mb-6">
 		<div
-			class="search-glass rounded-lg border shadow-sm transition-colors focus-within:border-blue-500 py-2 px-3 pr-2"
+			class="search-glass rounded-lg border px-3 py-2 pr-2 shadow-sm transition-colors focus-within:border-blue-500"
 		>
-			<div class="flex gap-2 flex-row sm:items-center sm:justify-between">
+			<div class="flex flex-row gap-2 sm:items-center sm:justify-between">
 				<div class="flex min-w-0 flex-1 items-center gap-2">
 					<input
 						type="text"
 						bind:value={query}
 						onkeypress={handleKeyPress}
-						placeholder={isQueryATidalUrl ? "Tidal URL detected - press Enter to import" : isQueryASpotifyPlaylist ? "Spotify playlist detected - press Enter to convert" : isQueryAStreamingUrl ? `${getPlatformName(query)} URL detected - press Enter to convert` : "Search for tracks, albums, artists... or paste a URL"}
-						class="w-full min-w-0 flex-1 border-none p-0 pl-1 bg-transparent text-white placeholder:text-gray-400 focus:outline-none ring-0"
+						placeholder={isQueryATidalUrl
+							? 'Tidal URL detected - press Enter to import'
+							: isQueryASpotifyPlaylist
+								? 'Spotify playlist detected - press Enter to convert'
+								: isQueryAStreamingUrl
+									? `${getPlatformName(query)} URL detected - press Enter to convert`
+									: 'Search for tracks, albums, artists... or paste a URL'}
+						class="w-full min-w-0 flex-1 border-none bg-transparent p-0 pl-1 text-white ring-0 placeholder:text-gray-400 focus:outline-none"
 					/>
 				</div>
-				<div class="flex gap-2 w-auto flex-row items-center">
+				<div class="flex w-auto flex-row items-center gap-2">
 					{#if !isQueryATidalUrl && !isQueryAStreamingUrl && !isQueryASpotifyPlaylist}
-					<div class="relative w-auto">
-						<label class="sr-only" for="region-select">Region</label>
-						<Earth
-							size={18}
-							color="#ffffff"
-							class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text0white"
-							style="color: #ffffff; z-index: 99;"
-						/>
-						<select
-							id="region-select"
-							class="region-selector cursor-pointer appearance-none rounded-md border pl-9 pr-9 py-2 text-sm font-medium text-white transition-colors focus:outline-none ring-0 w-[52px] sm:w-auto"
-							value={selectedRegion}
-							onchange={handleRegionChange}
-							onmousedown={handleRegionClick}
-							onblur={() => isRegionSelectorOpen = false}
-							title="Change search region"
-						>
-							<option value="auto">Auto</option>
-							<option value="us" disabled={!regionAvailability.us} class:opacity-50={!regionAvailability.us}>
-								US
-							</option>
-							<option value="eu" disabled={!regionAvailability.eu} class:opacity-50={!regionAvailability.eu}>
-								EU
-							</option>
-						</select>
-						<span class={`region-chevron pointer-events-none absolute right-3 top-1/2 text-gray-400 ${isRegionSelectorOpen ? 'rotate-180' : ''}`}>
-							<ChevronDown size={16} />
-						</span>
-					</div>
+						<div class="relative w-auto">
+							<label class="sr-only" for="region-select">Region</label>
+							<Earth
+								size={18}
+								color="#ffffff"
+								class="text0white pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
+								style="color: #ffffff; z-index: 99;"
+							/>
+							<select
+								id="region-select"
+								class="region-selector w-[52px] cursor-pointer appearance-none rounded-md border py-2 pr-9 pl-9 text-sm font-medium text-white ring-0 transition-colors focus:outline-none sm:w-auto"
+								value={selectedRegion}
+								onchange={handleRegionChange}
+								onmousedown={handleRegionClick}
+								onblur={() => (isRegionSelectorOpen = false)}
+								title="Change search region"
+							>
+								<option value="auto">Auto</option>
+								<option
+									value="us"
+									disabled={!regionAvailability.us}
+									class:opacity-50={!regionAvailability.us}
+								>
+									US
+								</option>
+								<option
+									value="eu"
+									disabled={!regionAvailability.eu}
+									class:opacity-50={!regionAvailability.eu}
+								>
+									EU
+								</option>
+							</select>
+							<span
+								class={`region-chevron pointer-events-none absolute top-1/2 right-3 text-gray-400 ${isRegionSelectorOpen ? 'rotate-180' : ''}`}
+							>
+								<ChevronDown size={16} />
+							</span>
+						</div>
 					{/if}
 					<button
 						onclick={handleSearch}
 						disabled={isLoading || !query.trim()}
-						class="search-button h-full flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+						class="search-button flex h-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
 					>
 						{#if isQueryASpotifyPlaylist}
 							<Link2 size={16} class="text-white" />
@@ -846,48 +957,48 @@
 
 	<!-- Tabs (hidden when URL is detected) -->
 	{#if !isQueryAUrl}
-	<div class="mb-6 flex gap-2 overflow-x-auto scrollbar-hide border-b border-gray-700">
-		<button
-			onclick={() => handleTabChange('tracks')}
-			class="flex cursor-pointer items-center gap-2 border-b-2 px-3 sm:px-4 py-2 transition-colors whitespace-nowrap {activeTab ===
-			'tracks'
-				? 'border-blue-500 text-blue-500'
-				: 'border-transparent text-gray-300 hover:text-white'}"
-		>
-			<Music size={18} />
-			<span class="text-sm sm:text-base">Tracks</span>
-		</button>
-		<button
-			onclick={() => handleTabChange('albums')}
-			class="flex cursor-pointer items-center gap-2 border-b-2 px-3 sm:px-4 py-2 transition-colors whitespace-nowrap {activeTab ===
-			'albums'
-				? 'border-blue-500 text-blue-500'
-				: 'border-transparent text-gray-300 hover:text-white'}"
-		>
-			<Disc size={18} />
-			<span class="text-sm sm:text-base">Albums</span>
-		</button>
-		<button
-			onclick={() => handleTabChange('artists')}
-			class="flex cursor-pointer items-center gap-2 border-b-2 px-3 sm:px-4 py-2 transition-colors whitespace-nowrap {activeTab ===
-			'artists'
-				? 'border-blue-500 text-blue-500'
-				: 'border-transparent text-gray-300 hover:text-white'}"
-		>
-			<User size={18} />
-			<span class="text-sm sm:text-base">Artists</span>
-		</button>
-		<button
-			onclick={() => handleTabChange('playlists')}
-			class="flex cursor-pointer items-center gap-2 border-b-2 px-3 sm:px-4 py-2 transition-colors whitespace-nowrap {activeTab ===
-			'playlists'
-				? 'border-blue-500 text-blue-500'
-				: 'border-transparent text-gray-300 hover:text-white'}"
-		>
-			<List size={18} />
-			<span class="text-sm sm:text-base">Playlists</span>
-		</button>
-	</div>
+		<div class="scrollbar-hide mb-6 flex gap-2 overflow-x-auto border-b border-gray-700">
+			<button
+				onclick={() => handleTabChange('tracks')}
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {activeTab ===
+				'tracks'
+					? 'border-blue-500 text-blue-500'
+					: 'border-transparent text-gray-300 hover:text-white'}"
+			>
+				<Music size={18} />
+				<span class="text-sm sm:text-base">Tracks</span>
+			</button>
+			<button
+				onclick={() => handleTabChange('albums')}
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {activeTab ===
+				'albums'
+					? 'border-blue-500 text-blue-500'
+					: 'border-transparent text-gray-300 hover:text-white'}"
+			>
+				<Disc size={18} />
+				<span class="text-sm sm:text-base">Albums</span>
+			</button>
+			<button
+				onclick={() => handleTabChange('artists')}
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {activeTab ===
+				'artists'
+					? 'border-blue-500 text-blue-500'
+					: 'border-transparent text-gray-300 hover:text-white'}"
+			>
+				<User size={18} />
+				<span class="text-sm sm:text-base">Artists</span>
+			</button>
+			<button
+				onclick={() => handleTabChange('playlists')}
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {activeTab ===
+				'playlists'
+					? 'border-blue-500 text-blue-500'
+					: 'border-transparent text-gray-300 hover:text-white'}"
+			>
+				<List size={18} />
+				<span class="text-sm sm:text-base">Playlists</span>
+			</button>
+		</div>
 	{/if}
 
 	<!-- Loading State -->
@@ -942,7 +1053,9 @@
 
 	<!-- Playlist Loading Progress -->
 	{#if playlistLoadingMessage}
-		<div class="rounded-lg border border-blue-900 bg-blue-900/20 p-4 text-blue-400 flex items-center gap-3 mb-4">
+		<div
+			class="mb-4 flex items-center gap-3 rounded-lg border border-blue-900 bg-blue-900/20 p-4 text-blue-400"
+		>
 			<LoaderCircle class="animate-spin" size={20} />
 			<span>{playlistLoadingMessage}</span>
 		</div>
@@ -988,135 +1101,197 @@
 						tabindex="0"
 						onclick={() => handleTrackActivation(track)}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors focus:ring-2 focus:ring-blue-500 focus:outline-none hover:brightness-110"
+						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 					>
-						{#if track.album.cover}
+						{#if isSonglinkTrack(track)}
+							<!-- Display for SonglinkTrack -->
 							<img
-								src={losslessAPI.getCoverUrl(track.album.cover, '160')}
-								alt={track.title}
-								class="h-12 w-12 rounded object-cover"
+								src={track.thumbnailUrl || '/placeholder-album.jpg'}
+								alt={`${track.title} by ${track.artistName}`}
+								class="h-12 w-12 flex-shrink-0 rounded object-cover"
 							/>
-						{/if}
-						<div class="min-w-0 flex-1">
-							<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
-								{track.title}
-								{#if track.explicit}
-									<svg
-										class="inline h-4 w-4 flex-shrink-0 align-middle"
-										xmlns="http://www.w3.org/2000/svg"
-										fill="currentColor"
-										height="24"
-										viewBox="0 0 24 24"
-										width="24"
-										focusable="false"
-										aria-hidden="true"
-										><path
-											d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
-										></path></svg
-									>
-								{/if}
-							</h3>
-							<a
-								href={`/artist/${track.artist.id}`}
-								onclick={(e) => e.stopPropagation()}
-								class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
-								data-sveltekit-preload-data
-							>
-								{formatArtists(track.artists)}
-							</a>
-							<p class="text-xs text-gray-500">
-								<a 
-									href={`/album/${track.album.id}`}
-									onclick={(e) => e.stopPropagation()}
-									class="hover:text-blue-400 hover:underline"
-									data-sveltekit-preload-data
-								>
-									{track.album.title}
-								</a>
-								 • {formatQualityLabel(track.audioQuality)}
-							</p>
-						</div>
-						<div class="flex items-center gap-2 text-sm text-gray-400">
-							<button
-								onclick={(event) =>
-									downloadingIds.has(track.id)
-										? handleCancelDownload(track.id, event)
-										: handleDownload(track, event)}
-								class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
-								title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-								aria-label={downloadingIds.has(track.id)
-									? `Cancel download for ${track.title}`
-									: `Download ${track.title}`}
-								aria-busy={downloadingIds.has(track.id)}
-								aria-pressed={downloadingIds.has(track.id)}
-							>
-								{#if downloadingIds.has(track.id)}
-									<span class="flex h-4 w-4 items-center justify-center">
-										{#if cancelledIds.has(track.id)}
-											<X size={14} />
-										{:else}
-											<span
-												class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-											></span>
-										{/if}
-									</span>
-								{:else if cancelledIds.has(track.id)}
-									<X size={18} />
-								{:else}
-									<Download size={18} />
-								{/if}
-							</button>
-							<div class="relative">
-								<button
-									onclick={(event) => {
-										event.stopPropagation();
-										const trackMenuId = `track-menu-${track.id}`;
-										const currentMenu = document.getElementById(trackMenuId);
-										if (currentMenu?.style.display === 'block') {
-											currentMenu.style.display = 'none';
-										} else {
-											// Close all other menus
-											document.querySelectorAll('[id^="track-menu-"]').forEach(el => {
-												(el as HTMLElement).style.display = 'none';
-											});
-											if (currentMenu) currentMenu.style.display = 'block';
-										}
-									}}
-									class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
-									title="Queue actions"
-									aria-label={`Queue actions for ${track.title}`}
-								>
-									<MoreVertical size={18} />
-								</button>
-								<div
-									id="track-menu-{track.id}"
-									class="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-700 bg-gray-800/95 backdrop-blur-md shadow-xl"
-									style="display: none; z-index: 100;"
-								>
+							<div class="min-w-0 flex-1">
+								<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+									{track.title}
+								</h3>
+								<p class="truncate text-sm text-gray-400">
+									{track.artistName}
+								</p>
+								<p class="text-xs text-gray-500">
+									{formatQualityLabel(track.audioQuality)}
+								</p>
+							</div>
+							<!-- Queue actions for Songlink tracks -->
+							<div class="flex items-center gap-2 text-sm text-gray-400">
+								<div class="relative">
 									<button
 										onclick={(event) => {
-											handlePlayNext(track, event);
-											document.getElementById(`track-menu-${track.id}`)!.style.display = 'none';
+											event.stopPropagation();
+											const trackMenuId = `track-menu-${track.id}`;
+											const currentMenu = document.getElementById(trackMenuId);
+											if (currentMenu?.style.display === 'block') {
+												currentMenu.style.display = 'none';
+											} else {
+												// Close all other menus
+												document.querySelectorAll('[id^="track-menu-"]').forEach((el) => {
+													(el as HTMLElement).style.display = 'none';
+												});
+												if (currentMenu) currentMenu.style.display = 'block';
+											}
 										}}
-										class="w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-white hover:bg-gray-700/50 transition-colors rounded-t-lg"
+										class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+										title="Queue actions"
+										aria-label="Queue actions for {track.title}"
 									>
-										<ListVideo size={16} />
-										Play Next
+										<MoreVertical size={18} />
 									</button>
-									<button
-										onclick={(event) => {
-											handleAddToQueue(track, event);
-											document.getElementById(`track-menu-${track.id}`)!.style.display = 'none';
-										}}
-										class="w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-white hover:bg-gray-700/50 transition-colors rounded-b-lg"
+									<!-- Dropdown menu for queue actions -->
+									<div
+										id="track-menu-{track.id}"
+										class="absolute right-0 top-full z-10 mt-1 hidden w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
 									>
-										<ListPlus size={16} />
-										Add to Queue
-									</button>
+										<button
+											onclick={(event) => handlePlayNext(track, event)}
+											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+										>
+											<ListVideo size={16} />
+											Play Next
+										</button>
+										<button
+											onclick={(event) => handleAddToQueue(track, event)}
+											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+										>
+											<ListPlus size={16} />
+											Add to Queue
+										</button>
+									</div>
 								</div>
 							</div>
+						{:else}
+							<!-- Display for regular Track -->
+							{#if asTrack(track).album.cover}
+								<img
+									src={losslessAPI.getCoverUrl(asTrack(track).album.cover, '160')}
+									alt={track.title}
+									class="h-12 w-12 rounded object-cover"
+								/>
+							{/if}
+							<div class="min-w-0 flex-1">
+								<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+									{track.title}
+									{#if asTrack(track).explicit}
+										<svg
+											class="inline h-4 w-4 flex-shrink-0 align-middle"
+											xmlns="http://www.w3.org/2000/svg"
+											fill="currentColor"
+											height="24"
+											viewBox="0 0 24 24"
+											width="24"
+											focusable="false"
+											aria-hidden="true"
+											><path
+												d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
+											></path></svg
+										>
+									{/if}
+								</h3>
+								<a
+									href={`/artist/${asTrack(track).artist.id}`}
+									onclick={(e) => e.stopPropagation()}
+									class="inline-block truncate text-sm text-gray-400 hover:text-blue-400 hover:underline"
+									data-sveltekit-preload-data
+								>
+									{formatArtists(asTrack(track).artists)}
+								</a>
+								<p class="text-xs text-gray-500">
+									<a
+										href={`/album/${asTrack(track).album.id}`}
+										onclick={(e) => e.stopPropagation()}
+										class="hover:text-blue-400 hover:underline"
+										data-sveltekit-preload-data
+									>
+										{asTrack(track).album.title}
+									</a>
+									• {formatQualityLabel(track.audioQuality)}
+								</p>
+							</div>
+							<div class="flex items-center gap-2 text-sm text-gray-400">
+								<button
+									onclick={(event) =>
+										downloadingIds.has(track.id)
+											? handleCancelDownload(track.id, event)
+											: handleDownload(track, event)}
+									class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+									title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+									aria-label={downloadingIds.has(track.id)
+										? `Cancel download for ${track.title}`
+										: `Download ${track.title}`}
+									aria-busy={downloadingIds.has(track.id)}
+									aria-pressed={downloadingIds.has(track.id)}
+								>
+									{#if downloadingIds.has(track.id)}
+										<span class="flex h-4 w-4 items-center justify-center">
+											{#if cancelledIds.has(track.id)}
+												<X size={14} />
+											{:else}
+												<span
+													class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+												></span>
+											{/if}
+										</span>
+									{:else if cancelledIds.has(track.id)}
+										<X size={18} />
+									{:else}
+										<Download size={18} />
+									{/if}
+								</button>
+								<div class="relative">
+									<button
+										onclick={(event) => {
+											event.stopPropagation();
+											const trackMenuId = `track-menu-${track.id}`;
+											const currentMenu = document.getElementById(trackMenuId);
+											if (currentMenu?.style.display === 'block') {
+												currentMenu.style.display = 'none';
+											} else {
+												// Close all other menus
+												document.querySelectorAll('[id^="track-menu-"]').forEach((el) => {
+													(el as HTMLElement).style.display = 'none';
+												});
+												if (currentMenu) currentMenu.style.display = 'block';
+											}
+										}}
+										class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+										title="Queue actions"
+										aria-label="Queue actions for {track.title}"
+									>
+										<MoreVertical size={18} />
+									</button>
+									<div
+										id="track-menu-{track.id}"
+										class="absolute right-0 top-full z-10 mt-1 hidden w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+									>
+										<button
+											onclick={(event) => handlePlayNext(track, event)}
+											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+										>
+											<ListVideo size={16} />
+											Play Next
+										</button>
+										<button
+											onclick={(event) => handleAddToQueue(track, event)}
+											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+										>
+											<ListPlus size={16} />
+											Add to Queue
+										</button>
+									</div>
+								</div>
+							</div>
+						{/if}
+						{#if !('isSonglinkTrack' in track && track.isSonglinkTrack)}
 							<span>{losslessAPI.formatDuration(track.duration)}</span>
-						</div>
+						{/if}
 					</div>
 				{/each}
 			</div>
@@ -1217,11 +1392,7 @@
 		{:else if activeTab === 'artists' && artists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
 				{#each artists as artist}
-					<a
-						href={`/artist/${artist.id}`}
-						class="group text-center"
-						data-sveltekit-preload-data
-					>
+					<a href={`/artist/${artist.id}`} class="group text-center" data-sveltekit-preload-data>
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-full">
 							{#if artist.picture}
 								<img
@@ -1265,7 +1436,7 @@
 						<p class="truncate text-sm text-gray-400">{playlist.creator.name}</p>
 						<p class="text-xs text-gray-500">{playlist.numberOfTracks} tracks</p>
 					</a>
-				{/each}
+			{/each}
 			</div>
 			<!-- News Section -->
 		{:else if !query.trim()}
@@ -1311,11 +1482,11 @@
 		border-color: rgba(148, 163, 184, 0.2);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
+		box-shadow:
 			0 10px 30px rgba(2, 6, 23, 0.4),
 			0 2px 8px rgba(15, 23, 42, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -1324,11 +1495,12 @@
 		background: transparent;
 		border: 1px solid rgba(148, 163, 184, 0.15);
 		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
+			saturate(var(--perf-saturate, 160%));
+		box-shadow:
 			0 4px 12px rgba(2, 6, 23, 0.3),
 			inset 0 1px 0 rgba(255, 255, 255, 0.04);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease,
 			filter 0.2s ease;
@@ -1339,14 +1511,14 @@
 		border-color: rgba(148, 163, 184, 0.2);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
 
 	.region-selector:hover {
 		border-color: var(--bloom-accent, rgba(148, 163, 184, 0.3));
-		box-shadow: 
+		box-shadow:
 			0 6px 20px rgba(2, 6, 23, 0.4),
 			0 2px 8px rgba(15, 23, 42, 0.3),
 			inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -1354,7 +1526,7 @@
 
 	.region-selector:focus {
 		border-color: var(--bloom-accent, #3b82f6);
-		box-shadow: 
+		box-shadow:
 			0 6px 20px rgba(2, 6, 23, 0.4),
 			0 2px 8px rgba(15, 23, 42, 0.3),
 			0 0 0 3px color-mix(in srgb, var(--bloom-accent, #3b82f6) 15%, transparent),
@@ -1377,7 +1549,7 @@
 	button.border-blue-500 {
 		border-color: rgb(96, 165, 250) !important;
 		color: rgb(96, 165, 250);
-		transition: 
+		transition:
 			border-color 0.2s ease,
 			color 0.2s ease;
 	}
@@ -1388,10 +1560,10 @@
 		border: 1px solid rgba(59, 130, 246, 0.4);
 		backdrop-filter: blur(16px) saturate(140%);
 		-webkit-backdrop-filter: blur(16px) saturate(140%);
-		box-shadow: 
+		box-shadow:
 			0 4px 12px rgba(59, 130, 246, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.1);
-		transition: 
+		transition:
 			background 0.3s ease,
 			border-color 0.3s ease,
 			box-shadow 0.3s ease,
@@ -1400,7 +1572,7 @@
 
 	.search-button:hover:not(:disabled) {
 		background: rgba(59, 130, 246, 0.95);
-		box-shadow: 
+		box-shadow:
 			0 6px 18px rgba(59, 130, 246, 0.45),
 			inset 0 1px 0 rgba(255, 255, 255, 0.15);
 	}
@@ -1410,11 +1582,12 @@
 		background: transparent;
 		border-color: rgba(148, 163, 184, 0.2);
 		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
+			saturate(var(--perf-saturate, 160%));
+		box-shadow:
 			0 8px 24px rgba(2, 6, 23, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.05);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -1425,10 +1598,10 @@
 		border-color: rgba(148, 163, 184, 0.18);
 		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
+		box-shadow:
 			0 4px 12px rgba(2, 6, 23, 0.3),
 			inset 0 1px 0 rgba(255, 255, 255, 0.04);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease,
 			transform 0.2s ease;
@@ -1436,7 +1609,7 @@
 
 	.news-card:hover {
 		border-color: rgba(148, 163, 184, 0.3);
-		box-shadow: 
+		box-shadow:
 			0 6px 18px rgba(2, 6, 23, 0.4),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 	}
