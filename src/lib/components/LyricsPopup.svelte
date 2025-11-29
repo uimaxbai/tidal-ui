@@ -8,7 +8,7 @@
 	import { Maximize2, Minimize2, RefreshCw, X } from 'lucide-svelte';
 
 	const COMPONENT_MODULE_URL =
-		'https://cdn.jsdelivr.net/npm/@uimaxbai/am-lyrics@0.5.3/dist/src/am-lyrics.min.js';
+		'https://cdn.jsdelivr.net/npm/@uimaxbai/am-lyrics@0.5.4/dist/src/am-lyrics.min.js';
 	const SEEK_FORCE_THRESHOLD_MS = 220;
 
 	type LyricsMetadata = {
