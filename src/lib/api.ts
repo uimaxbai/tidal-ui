@@ -1200,6 +1200,29 @@ class LosslessAPI {
 			entries.push(['copyright', album.copyright]);
 		}
 
+		// ReplayGain
+		if (lookup.info) {
+			const { trackReplayGain, trackPeakAmplitude, albumReplayGain, albumPeakAmplitude } = lookup.info;
+			
+			if (trackReplayGain !== undefined && trackReplayGain !== null) {
+				entries.push(['REPLAYGAIN_TRACK_GAIN', `${trackReplayGain} dB`]);
+			}
+			if (trackPeakAmplitude !== undefined && trackPeakAmplitude !== null) {
+				entries.push(['REPLAYGAIN_TRACK_PEAK', `${trackPeakAmplitude}`]);
+			}
+			if (albumReplayGain !== undefined && albumReplayGain !== null) {
+				entries.push(['REPLAYGAIN_ALBUM_GAIN', `${albumReplayGain} dB`]);
+			}
+			if (albumPeakAmplitude !== undefined && albumPeakAmplitude !== null) {
+				entries.push(['REPLAYGAIN_ALBUM_PEAK', `${albumPeakAmplitude}`]);
+			}
+		} else if (track.replayGain) {
+			entries.push(['REPLAYGAIN_TRACK_GAIN', `${track.replayGain} dB`]);
+			if (track.peak) {
+				entries.push(['REPLAYGAIN_TRACK_PEAK', `${track.peak}`]);
+			}
+		}
+
 		entries.push(['comment', 'Downloaded from music.binimum.org/tidal.squid.wtf']);
 
 		return entries;

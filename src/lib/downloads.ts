@@ -74,10 +74,15 @@ export function buildTrackFilename(
 		trackPart = trackPadded;
 	}
 
+	let title = track.title;
+	if (track.version) {
+		title = `${title} (${track.version})`;
+	}
+
 	const parts = [
 		sanitizeForFilename(artistName ?? formatArtists(track.artists)),
 		sanitizeForFilename(album.title ?? 'Unknown Album'),
-		`${trackPart} ${sanitizeForFilename(track.title)}`
+		`${trackPart} ${sanitizeForFilename(title)}`
 	];
 	return `${parts.join(' - ')}.${extension}`;
 }

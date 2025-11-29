@@ -270,7 +270,14 @@
 
 		const quality = $playerStore.quality;
 		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-		const filename = `${artistName} - ${track.title}.${extension}`;
+		
+		// Format title with version if present
+		let title = track.title;
+		if ('version' in track && track.version) {
+			title = `${title} (${track.version})`;
+		}
+		
+		const filename = `${artistName} - ${title}.${extension}`;
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 			subtitle: albumTitle ?? artistName
 		});
@@ -767,7 +774,12 @@
 				const artistName = 'artistName' in track ? track.artistName : formatArtists(track.artists);
 				const albumTitle = 'album' in track ? track.album?.title : undefined;
 				
-				const filename = `${artistName} - ${track.title}.${getExtensionForQuality(quality)}`;
+				let title = track.title;
+				if ('version' in track && track.version) {
+					title = `${title} (${track.version})`;
+				}
+				
+				const filename = `${artistName} - ${title}.${getExtensionForQuality(quality)}`;
 				
 				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 					subtitle: albumTitle ?? artistName
@@ -1178,7 +1190,7 @@
 							{/if}
 							<div class="min-w-0 flex-1">
 								<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
-									{track.title}
+									{track.title}{asTrack(track).version ? ` (${asTrack(track).version})` : ''}
 									{#if asTrack(track).explicit}
 										<svg
 											class="inline h-4 w-4 flex-shrink-0 align-middle"
