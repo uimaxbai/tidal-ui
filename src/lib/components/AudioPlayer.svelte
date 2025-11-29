@@ -1480,7 +1480,7 @@
 								{/if}
 								<div class="min-w-0 flex-1">
 									<h3 class="truncate font-semibold text-white">
-										{$playerStore.currentTrack.title}
+										{$playerStore.currentTrack.title}{!isSonglinkTrack($playerStore.currentTrack) && asTrack($playerStore.currentTrack).version ? ` (${asTrack($playerStore.currentTrack).version})` : ''}
 									</h3>
 									{#if isSonglinkTrack($playerStore.currentTrack)}
 										<!-- Display for SonglinkTrack -->
@@ -1695,7 +1695,7 @@
 												</span>
 												<div class="min-w-0 flex-1">
 													<p class="truncate text-sm font-medium">
-														{queuedTrack.title}
+														{queuedTrack.title}{!isSonglinkTrack(queuedTrack) && asTrack(queuedTrack).version ? ` (${asTrack(queuedTrack).version})` : ''}
 													</p>
 													{#if isSonglinkTrack(queuedTrack)}
 														<p class="truncate text-xs text-gray-400">
