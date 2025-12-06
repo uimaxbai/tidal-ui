@@ -213,8 +213,9 @@
 
 					<!-- Track Info -->
 					<div class="min-w-0 flex-1">
-						<h3
-							class="truncate font-medium {isCurrentTrack(track)
+						<button
+							onclick={() => handlePlayTrack(track, index)}
+							class="truncate font-medium text-left w-full {isCurrentTrack(track)
 								? 'text-blue-500'
 								: 'text-white group-hover:text-blue-400'}"
 						>
@@ -234,7 +235,7 @@
 									></path></svg
 								>
 							{/if}
-						</h3>
+						</button>
 						<div class="flex items-center gap-2 text-sm text-gray-400">
 							{#if showArtist}
 								<span class="truncate">{formatArtists(track.artists)}</span>

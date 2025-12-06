@@ -48,7 +48,7 @@ const ALL_API_TARGETS = [
 	{
 		name: 'monochrome-california',
 		baseUrl: 'https://california.monochrome.tf',
-		weight: 40,
+		weight: 25,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
@@ -62,7 +62,7 @@ const ALL_API_TARGETS = [
 	{
 		name: 'hund',
 		baseUrl: 'https://hund.qqdl.site',
-		weight: 15,
+		weight: 30,
 		requiresProxy: false,
 		category: 'auto-only'
 	},

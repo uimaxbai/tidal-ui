@@ -1135,6 +1135,15 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get playlist');
 		const data = await response.json();
+
+		// Handle v2 structure (object with playlist and items keys)
+		if (data && typeof data === 'object' && 'playlist' in data && 'items' in data) {
+			return {
+				playlist: data.playlist,
+				items: data.items
+			};
+		}
+
 		return {
 			playlist: Array.isArray(data) ? data[0] : data,
 			items: Array.isArray(data) && data[1] ? data[1].items : []
@@ -1421,8 +1430,10 @@ class LosslessAPI {
 	async getStreamData(
 		trackId: number,
 		quality: AudioQuality = 'LOSSLESS'
-	): Promise<{ url: string; replayGain: number | null }> {
+	): Promise<{ url: string; replayGain: number | null; sampleRate: number | null; bitDepth: number | null }> {
 		let replayGain: number | null = null;
+		let sampleRate: number | null = null;
+		let bitDepth: number | null = null;
 
 		if (this.isHiResQuality(quality)) {
 			try {
@@ -1430,12 +1441,14 @@ class LosslessAPI {
 				try {
 					const lookup = await this.getTrack(trackId, quality);
 					replayGain = lookup.info.trackReplayGain ?? null;
+					sampleRate = lookup.info.sampleRate ?? null;
+					bitDepth = lookup.info.bitDepth ?? null;
 				} catch {
 					// Ignore metadata fetch failure for HiRes
 				}
 
 				const url = await this.resolveHiResStreamFromDash(trackId);
-				return { url, replayGain };
+				return { url, replayGain, sampleRate, bitDepth };
 			} catch (error) {
 				console.warn('Failed to resolve hi-res stream via DASH manifest', error);
 				quality = 'LOSSLESS';
@@ -1448,14 +1461,16 @@ class LosslessAPI {
 			try {
 				const lookup = await this.getTrack(trackId, quality);
 				replayGain = lookup.info.trackReplayGain ?? null;
+				sampleRate = lookup.info.sampleRate ?? null;
+				bitDepth = lookup.info.bitDepth ?? null;
 
 				if (lookup.originalTrackUrl) {
-					return { url: lookup.originalTrackUrl, replayGain };
+					return { url: lookup.originalTrackUrl, replayGain, sampleRate, bitDepth };
 				}
 
 				const manifestUrl = this.extractStreamUrlFromManifest(lookup.info.manifest);
 				if (manifestUrl) {
-					return { url: manifestUrl, replayGain };
+					return { url: manifestUrl, replayGain, sampleRate, bitDepth };
 				}
 
 				lastError = new Error('Unable to resolve stream URL for track');

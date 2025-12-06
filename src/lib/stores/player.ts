@@ -1,5 +1,6 @@
 // Audio player store for managing playback state
 import { writable, derived, get } from 'svelte/store';
+import { browser } from '$app/environment';
 import type { Track, AudioQuality, PlayableTrack } from '$lib/types';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -39,7 +40,48 @@ const initialState: PlayerState = {
 };
 
 function createPlayerStore() {
-	const { subscribe, set, update} = writable<PlayerState>(initialState);
+	let startState = initialState;
+	if (browser) {
+		try {
+			const stored = sessionStorage.getItem('tidal-player-store');
+			if (stored) {
+				const parsed = JSON.parse(stored);
+				startState = {
+					...initialState,
+					...parsed,
+					isPlaying: false,
+					isLoading: false
+				};
+			}
+		} catch (e) {
+			console.warn('Failed to restore player state', e);
+		}
+	}
+
+	const { subscribe, set, update } = writable<PlayerState>(startState);
+
+	if (browser) {
+		subscribe((state) => {
+			try {
+				const toSave = {
+					currentTrack: state.currentTrack,
+					queue: state.queue,
+					queueIndex: state.queueIndex,
+					volume: state.volume,
+					quality: state.quality,
+					qualitySource: state.qualitySource,
+					currentTime: state.currentTime,
+					duration: state.duration,
+					sampleRate: state.sampleRate,
+					bitDepth: state.bitDepth,
+					replayGain: state.replayGain
+				};
+				sessionStorage.setItem('tidal-player-store', JSON.stringify(toSave));
+			} catch (e) {
+				console.warn('Failed to save player state', e);
+			}
+		});
+	}
 
 	const applyAutoQuality = (state: PlayerState, track: PlayableTrack | null): PlayerState => {
 		if (state.qualitySource === 'manual') {
@@ -80,6 +122,7 @@ function createPlayerStore() {
 					...state,
 					currentTrack: track,
 					duration: track.duration,
+					currentTime: 0,
 					isLoading: true,
 					sampleRate: resolveSampleRate(state, track),
 					bitDepth: null,

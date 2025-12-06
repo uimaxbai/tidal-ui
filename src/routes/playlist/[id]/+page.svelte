@@ -4,7 +4,7 @@
 	import TrackList from '$lib/components/TrackList.svelte';
 	import type { Playlist, Track } from '$lib/types';
 	import { onMount } from 'svelte';
-	import { ArrowLeft, Play, User, Clock } from 'lucide-svelte';
+	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
 	import { playerStore } from '$lib/stores/player';
 
 	let playlist = $state<Playlist | null>(null);
@@ -58,7 +58,7 @@
 
 {#if isLoading}
 	<div class="flex items-center justify-center py-24">
-		<div class="h-16 w-16 animate-spin rounded-full border-b-2 border-blue-500"></div>
+		<LoaderCircle class="h-16 w-16 animate-spin text-blue-500" />
 	</div>
 {:else if error}
 	<div class="mx-auto max-w-2xl py-12">

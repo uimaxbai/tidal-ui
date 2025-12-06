@@ -42,19 +42,12 @@
 		Shuffle
 	} from 'lucide-svelte';
 
-	type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
+	import { searchStore, type SearchTab } from '$lib/stores/searchStore.svelte';
 
-	let query = $state('');
-	let activeTab = $state<SearchTab>('tracks');
-	let isLoading = $state(false);
-	let tracks = $state<(Track | SonglinkTrack)[]>([]);
-	let albums = $state<Album[]>([]);
-	let artists = $state<Artist[]>([]);
-	let playlists = $state<Playlist[]>([]);
 	let downloadingIds = $state(new Set<number | string>());
 	let downloadTaskIds = $state(new Map<number | string, string>());
 	let cancelledIds = $state(new Set<number | string>());
-	let error = $state<string | null>(null);
+
 	const albumDownloadQuality = $derived($userPreferencesStore.playbackQuality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -63,9 +56,7 @@
 	);
 	let selectedRegion = $state<RegionOption>('auto');
 	let isRegionSelectorOpen = $state(false);
-	let playlistLoadingMessage = $state<string | null>(null);
-	let isPlaylistConversionMode = $state(false);
-	let playlistConversionTotal = $state(0);
+	// Playlist state moved to searchStore
 
 	const regionAvailability: Record<RegionOption, boolean> = {
 		auto: hasRegionTargets('auto'),
@@ -91,16 +82,16 @@
 	onDestroy(unsubscribeRegion);
 
 	// Computed property to check if current query is a Tidal URL
-	const isQueryATidalUrl = $derived(query.trim().length > 0 && isTidalUrl(query.trim()));
+	const isQueryATidalUrl = $derived(searchStore.query.trim().length > 0 && isTidalUrl(searchStore.query.trim()));
 
 	// Computed property to check if current query is a supported streaming platform URL
 	const isQueryAStreamingUrl = $derived(
-		query.trim().length > 0 && isSupportedStreamingUrl(query.trim())
+		searchStore.query.trim().length > 0 && isSupportedStreamingUrl(searchStore.query.trim())
 	);
 
 	// Computed property to check if current query is a Spotify playlist URL
 	const isQueryASpotifyPlaylist = $derived(
-		query.trim().length > 0 && isSpotifyPlaylistUrl(query.trim())
+		searchStore.query.trim().length > 0 && isSpotifyPlaylistUrl(searchStore.query.trim())
 	);
 
 	// Combined URL check
@@ -446,52 +437,52 @@
 	});
 
 	async function handleUrlImport() {
-		if (!query.trim()) return;
+		if (!searchStore.query.trim()) return;
 
-		isLoading = true;
-		error = null;
+		searchStore.isLoading = true;
+		searchStore.error = null;
 
 		try {
-			const result = await losslessAPI.importFromUrl(query);
+			const result = await losslessAPI.importFromUrl(searchStore.query);
 
 			// Clear previous results
-			tracks = [];
-			albums = [];
-			artists = [];
-			playlists = [];
+			searchStore.tracks = [];
+			searchStore.albums = [];
+			searchStore.artists = [];
+			searchStore.playlists = [];
 
 			// Set results based on type
 			switch (result.type) {
 				case 'track':
-					tracks = [result.data as Track];
-					activeTab = 'tracks';
+					searchStore.tracks = [result.data as Track];
+					searchStore.activeTab = 'tracks';
 					break;
 				case 'album':
-					albums = [result.data as Album];
-					activeTab = 'albums';
+					searchStore.albums = [result.data as Album];
+					searchStore.activeTab = 'albums';
 					break;
 				case 'artist':
-					artists = [result.data as Artist];
-					activeTab = 'artists';
+					searchStore.artists = [result.data as Artist];
+					searchStore.activeTab = 'artists';
 					break;
 				case 'playlist': {
 					const playlistData = result.data as { playlist: Playlist; tracks: Track[] };
-					playlists = [playlistData.playlist];
-					tracks = playlistData.tracks;
-					activeTab = 'playlists';
+					searchStore.playlists = [playlistData.playlist];
+					searchStore.tracks = playlistData.tracks;
+					searchStore.activeTab = 'playlists';
 					break;
 				}
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to import from URL';
+			searchStore.error = err instanceof Error ? err.message : 'Failed to import from URL';
 			console.error('URL import error:', err);
 		} finally {
-			isLoading = false;
+			searchStore.isLoading = false;
 		}
 	}
 
 	async function handleSearch() {
-		if (!query.trim()) return;
+		if (!searchStore.query.trim()) return;
 
 		// Auto-detect: if query is a Tidal URL, import it directly
 		if (isQueryATidalUrl) {
@@ -511,62 +502,62 @@
 			return;
 		}
 
-		isLoading = true;
-		error = null;
+		searchStore.isLoading = true;
+		searchStore.error = null;
 
 		try {
-			switch (activeTab) {
+			switch (searchStore.activeTab) {
 				case 'tracks': {
 					const response = await fetchWithRetry(() =>
-						losslessAPI.searchTracks(query, selectedRegion)
+						losslessAPI.searchTracks(searchStore.query, selectedRegion)
 					);
-					tracks = Array.isArray(response?.items) ? response.items : [];
+					searchStore.tracks = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'albums': {
-					const response = await losslessAPI.searchAlbums(query, selectedRegion);
-					albums = Array.isArray(response?.items) ? response.items : [];
+					const response = await losslessAPI.searchAlbums(searchStore.query, selectedRegion);
+					searchStore.albums = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'artists': {
-					const response = await losslessAPI.searchArtists(query, selectedRegion);
-					artists = Array.isArray(response?.items) ? response.items : [];
+					const response = await losslessAPI.searchArtists(searchStore.query, selectedRegion);
+					searchStore.artists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'playlists': {
-					const response = await losslessAPI.searchPlaylists(query, selectedRegion);
-					playlists = Array.isArray(response?.items) ? response.items : [];
+					const response = await losslessAPI.searchPlaylists(searchStore.query, selectedRegion);
+					searchStore.playlists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Search failed';
+			searchStore.error = err instanceof Error ? err.message : 'Search failed';
 			console.error('Search error:', err);
 		} finally {
-			isLoading = false;
+			searchStore.isLoading = false;
 		}
 	}
 
 	async function handleStreamingUrlConversion() {
-		if (!query.trim()) {
+		if (!searchStore.query.trim()) {
 			return;
 		}
 
-		isLoading = true;
-		error = null;
+		searchStore.isLoading = true;
+		searchStore.error = null;
 
 		try {
-			const platformName = getPlatformName(query.trim());
+			const platformName = getPlatformName(searchStore.query.trim());
 			console.log(`Converting ${platformName || 'streaming'} URL to TIDAL...`);
 
-			const tidalInfo = await convertToTidal(query.trim(), {
+			const tidalInfo = await convertToTidal(searchStore.query.trim(), {
 				userCountry: 'US',
 				songIfSingle: true
 			});
 
 			if (!tidalInfo) {
-				error = `Could not find TIDAL equivalent for this ${platformName || 'streaming platform'} link. The content might not be available on TIDAL.`;
-				isLoading = false;
+				searchStore.error = `Could not find TIDAL equivalent for this ${platformName || 'streaming platform'} link. The content might not be available on TIDAL.`;
+				searchStore.isLoading = false;
 				return;
 			}
 
@@ -588,72 +579,72 @@
 
 						playerStore.setTrack(trackLookup.track);
 						playerStore.play();
-						query = '';
+						searchStore.query = '';
 					}
 					break;
 				}
 				case 'album': {
 					const albumData = await losslessAPI.getAlbum(Number(tidalInfo.id));
 					if (albumData?.album) {
-						activeTab = 'albums';
-						albums = [albumData.album];
-						query = '';
+						searchStore.activeTab = 'albums';
+						searchStore.albums = [albumData.album];
+						searchStore.query = '';
 					}
 					break;
 				}
 				case 'playlist': {
 					const playlistData = await losslessAPI.getPlaylist(tidalInfo.id);
 					if (playlistData?.playlist) {
-						activeTab = 'playlists';
-						playlists = [playlistData.playlist];
-						query = '';
+						searchStore.activeTab = 'playlists';
+						searchStore.playlists = [playlistData.playlist];
+						searchStore.query = '';
 					}
 					break;
 				}
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to convert URL';
+			searchStore.error = err instanceof Error ? err.message : 'Failed to convert URL';
 			console.error('Streaming URL conversion error:', err);
 		} finally {
-			isLoading = false;
+			searchStore.isLoading = false;
 		}
 	}
 
 	async function handleSpotifyPlaylistConversion() {
-		if (!query.trim()) {
+		if (!searchStore.query.trim()) {
 			return;
 		}
 
-		error = null;
-		playlistLoadingMessage = 'Loading playlist...';
-		isPlaylistConversionMode = true;
-		isLoading = true;
+		searchStore.error = null;
+		searchStore.playlistLoadingMessage = 'Loading playlist...';
+		searchStore.isPlaylistConversionMode = true;
+		searchStore.isLoading = true;
 
 		try {
 			console.log('Fetching Spotify playlist tracks...');
 
 			// Step 1: Get all Spotify track URLs from the playlist
-			const spotifyTrackUrls = await convertSpotifyPlaylist(query.trim());
+			const spotifyTrackUrls = await convertSpotifyPlaylist(searchStore.query.trim());
 
 			if (!spotifyTrackUrls || spotifyTrackUrls.length === 0) {
-				error =
+				searchStore.error =
 					'Could not fetch tracks from Spotify playlist. The playlist might be empty or private.';
-				playlistLoadingMessage = null;
-				isLoading = false;
-				isPlaylistConversionMode = false;
+				searchStore.playlistLoadingMessage = null;
+				searchStore.isLoading = false;
+				searchStore.isPlaylistConversionMode = false;
 				return;
 			}
 
 			console.log(`Found ${spotifyTrackUrls.length} tracks in playlist`);
-			playlistConversionTotal = spotifyTrackUrls.length;
-			playlistLoadingMessage = `Loading ${spotifyTrackUrls.length} tracks...`;
+			searchStore.playlistConversionTotal = spotifyTrackUrls.length;
+			searchStore.playlistLoadingMessage = `Loading ${spotifyTrackUrls.length} tracks...`;
 
 			// Clear previous results and switch to tracks tab
-			activeTab = 'tracks';
-			tracks = [];
+			searchStore.activeTab = 'tracks';
+			searchStore.tracks = [];
 
 			// Set loading to false so tracks can be displayed as they're added
-			isLoading = false;
+			searchStore.isLoading = false;
 
 			// Step 2: Fetch Songlink data for all tracks (no TIDAL conversion yet!)
 			const conversionPromises = spotifyTrackUrls.map(async (trackUrl, index) => {
@@ -706,66 +697,66 @@
 				}
 
 				// Update progress message
-				playlistLoadingMessage = `Loaded ${index + 1}/${spotifyTrackUrls.length} tracks...`;
+				searchStore.playlistLoadingMessage = `Loaded ${index + 1}/${spotifyTrackUrls.length} tracks...`;
 			});
 
 			// Update tracks all at once for better performance
-			tracks = successfulTracks;
+			searchStore.tracks = successfulTracks;
 
-			console.log(`Successfully loaded ${tracks.length}/${spotifyTrackUrls.length} tracks`);
+			console.log(`Successfully loaded ${searchStore.tracks.length}/${spotifyTrackUrls.length} tracks`);
 
-			if (tracks.length === 0) {
-				error = 'Could not find TIDAL equivalents for any tracks in this playlist.';
-				playlistLoadingMessage = null;
-				isPlaylistConversionMode = false;
+			if (searchStore.tracks.length === 0) {
+				searchStore.error = 'Could not find TIDAL equivalents for any tracks in this playlist.';
+				searchStore.playlistLoadingMessage = null;
+				searchStore.isPlaylistConversionMode = false;
 				return;
 			}
 
 			// Show a message if some tracks failed
 			if (failedTracks.length > 0) {
 				console.warn(`${failedTracks.length} tracks could not be loaded`);
-				playlistLoadingMessage = `Loaded ${tracks.length} tracks (${failedTracks.length} failed)`;
+				searchStore.playlistLoadingMessage = `Loaded ${searchStore.tracks.length} tracks (${failedTracks.length} failed)`;
 			} else {
-				playlistLoadingMessage = `Successfully loaded ${tracks.length} tracks!`;
+				searchStore.playlistLoadingMessage = `Successfully loaded ${searchStore.tracks.length} tracks!`;
 			}
 
 			// Clear the query and hide loading message after a brief delay
-			query = '';
+			searchStore.query = '';
 			setTimeout(() => {
-				playlistLoadingMessage = null;
+				searchStore.playlistLoadingMessage = null;
 			}, 3000);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load Spotify playlist';
+			searchStore.error = err instanceof Error ? err.message : 'Failed to load Spotify playlist';
 			console.error('Spotify playlist loading error:', err);
-			playlistLoadingMessage = null;
-			isPlaylistConversionMode = false;
+			searchStore.playlistLoadingMessage = null;
+			searchStore.isPlaylistConversionMode = false;
 		}
 	}
 
 	function handlePlayAll() {
-		if (tracks.length > 0) {
-			playerStore.setQueue(tracks, 0);
+		if (searchStore.tracks.length > 0) {
+			playerStore.setQueue(searchStore.tracks, 0);
 			playerStore.play();
 		}
 	}
 
 	function handleShuffleAll() {
-		if (tracks.length > 0) {
+		if (searchStore.tracks.length > 0) {
 			// Shuffle the tracks
-			const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+			const shuffled = [...searchStore.tracks].sort(() => Math.random() - 0.5);
 			playerStore.setQueue(shuffled, 0);
 			playerStore.play();
 		}
 	}
 
 	async function handleDownloadAll() {
-		if (tracks.length === 0) return;
+		if (searchStore.tracks.length === 0) return;
 
 		const quality = $playerStore.quality;
 		const convertAacToMp3Preference = $userPreferencesStore.convertAacToMp3;
 		const downloadCoverSeperatelyPreference = $userPreferencesStore.downloadCoversSeperately;
 
-		for (const track of tracks) {
+		for (const track of searchStore.tracks) {
 			try {
 				// Use tidalId if available (for Songlink tracks), otherwise use id
 				const trackId = 'tidalId' in track && track.tidalId ? track.tidalId : track.id;
@@ -833,9 +824,9 @@
 	}
 
 	function handleTabChange(tab: SearchTab) {
-		activeTab = tab;
+		searchStore.activeTab = tab;
 		// Only trigger search if we have a query and it's not a URL
-		if (query.trim() && !isQueryAUrl) {
+		if (searchStore.query.trim() && !isQueryAUrl) {
 			handleSearch();
 		}
 	}
@@ -847,7 +838,7 @@
 		if (value !== selectedRegion) {
 			regionStore.setRegion(value);
 			// Only trigger search if we have a query and it's not a URL
-			if (query.trim() && !isQueryAUrl) {
+			if (searchStore.query.trim() && !isQueryAUrl) {
 				handleSearch();
 			}
 		}
@@ -894,14 +885,14 @@
 				<div class="flex min-w-0 flex-1 items-center gap-2">
 					<input
 						type="text"
-						bind:value={query}
+						bind:value={searchStore.query}
 						onkeypress={handleKeyPress}
 						placeholder={isQueryATidalUrl
 							? 'Tidal URL detected - press Enter to import'
 							: isQueryASpotifyPlaylist
 								? 'Spotify playlist detected - press Enter to convert'
 								: isQueryAStreamingUrl
-									? `${getPlatformName(query)} URL detected - press Enter to convert`
+									? `${getPlatformName(searchStore.query)} URL detected - press Enter to convert`
 									: 'Search for tracks, albums, artists... or paste a URL'}
 						class="w-full min-w-0 flex-1 border-none bg-transparent p-0 pl-1 text-white ring-0 placeholder:text-gray-400 focus:outline-none"
 					/>
@@ -950,21 +941,21 @@
 					{/if}
 					<button
 						onclick={handleSearch}
-						disabled={isLoading || !query.trim()}
+						disabled={searchStore.isLoading || !searchStore.query.trim()}
 						class="search-button flex h-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
 					>
 						{#if isQueryASpotifyPlaylist}
 							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline">{isLoading ? 'Converting…' : 'Convert Playlist'}</span>
+							<span class="hidden sm:inline">{searchStore.isLoading ? 'Converting…' : 'Convert Playlist'}</span>
 						{:else if isQueryAStreamingUrl}
 							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline">{isLoading ? 'Converting…' : 'Convert & Play'}</span>
+							<span class="hidden sm:inline">{searchStore.isLoading ? 'Converting…' : 'Convert & Play'}</span>
 						{:else if isQueryATidalUrl}
 							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline">{isLoading ? 'Importing…' : 'Import'}</span>
+							<span class="hidden sm:inline">{searchStore.isLoading ? 'Importing…' : 'Import'}</span>
 						{:else}
 							<Search size={16} class="text-white" />
-							<span class="hidden sm:inline">{isLoading ? 'Searching…' : 'Search'}</span>
+							<span class="hidden sm:inline">{searchStore.isLoading ? 'Searching…' : 'Search'}</span>
 						{/if}
 					</button>
 				</div>
@@ -977,7 +968,7 @@
 		<div class="scrollbar-hide mb-6 flex gap-2 overflow-x-auto border-b border-gray-700">
 			<button
 				onclick={() => handleTabChange('tracks')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {activeTab ===
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {searchStore.activeTab ===
 				'tracks'
 					? 'border-blue-500 text-blue-500'
 					: 'border-transparent text-gray-300 hover:text-white'}"
@@ -987,7 +978,7 @@
 			</button>
 			<button
 				onclick={() => handleTabChange('albums')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {activeTab ===
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {searchStore.activeTab ===
 				'albums'
 					? 'border-blue-500 text-blue-500'
 					: 'border-transparent text-gray-300 hover:text-white'}"
@@ -997,7 +988,7 @@
 			</button>
 			<button
 				onclick={() => handleTabChange('artists')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {activeTab ===
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {searchStore.activeTab ===
 				'artists'
 					? 'border-blue-500 text-blue-500'
 					: 'border-transparent text-gray-300 hover:text-white'}"
@@ -1007,7 +998,7 @@
 			</button>
 			<button
 				onclick={() => handleTabChange('playlists')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {activeTab ===
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {searchStore.activeTab ===
 				'playlists'
 					? 'border-blue-500 text-blue-500'
 					: 'border-transparent text-gray-300 hover:text-white'}"
@@ -1019,8 +1010,8 @@
 	{/if}
 
 	<!-- Loading State -->
-	{#if isLoading}
-		{#if activeTab === 'tracks'}
+	{#if searchStore.isLoading}
+		{#if searchStore.activeTab === 'tracks'}
 			<div class="space-y-2">
 				{#each trackSkeletons as _}
 					<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
@@ -1034,7 +1025,7 @@
 					</div>
 				{/each}
 			</div>
-		{:else if activeTab === 'albums' || activeTab === 'playlists'}
+		{:else if searchStore.activeTab === 'albums' || searchStore.activeTab === 'playlists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 				{#each gridSkeletons as _}
 					<div class="space-y-3">
@@ -1044,7 +1035,7 @@
 					</div>
 				{/each}
 			</div>
-		{:else if activeTab === 'artists'}
+		{:else if searchStore.activeTab === 'artists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
 				{#each gridSkeletons as _}
 					<div class="flex flex-col items-center gap-3">
@@ -1062,27 +1053,27 @@
 	{/if}
 
 	<!-- Error State -->
-	{#if error}
+	{#if searchStore.error}
 		<div class="rounded-lg border border-red-900 bg-red-900/20 p-4 text-red-400">
-			{error}
+			{searchStore.error}
 		</div>
 	{/if}
 
 	<!-- Playlist Loading Progress -->
-	{#if playlistLoadingMessage}
+	{#if searchStore.playlistLoadingMessage}
 		<div
 			class="mb-4 flex items-center gap-3 rounded-lg border border-blue-900 bg-blue-900/20 p-4 text-blue-400"
 		>
 			<LoaderCircle class="animate-spin" size={20} />
-			<span>{playlistLoadingMessage}</span>
+			<span>{searchStore.playlistLoadingMessage}</span>
 		</div>
 	{/if}
 
 	<!-- Results -->
-	{#if (!isLoading && !error) || (isPlaylistConversionMode && tracks.length > 0)}
-		{#if activeTab === 'tracks' && tracks.length > 0}
+	{#if (!searchStore.isLoading && !searchStore.error) || (searchStore.isPlaylistConversionMode && searchStore.tracks.length > 0)}
+		{#if searchStore.activeTab === 'tracks' && searchStore.tracks.length > 0}
 			<!-- Playlist Controls (shown when in playlist conversion mode) -->
-			{#if isPlaylistConversionMode}
+			{#if searchStore.isPlaylistConversionMode}
 				<div class="mb-6 flex flex-wrap items-center gap-3">
 					<button
 						onclick={handlePlayAll}
@@ -1106,17 +1097,20 @@
 						Download All
 					</button>
 					<div class="ml-auto text-sm text-gray-400">
-						{tracks.length} of {playlistConversionTotal} tracks
+						{searchStore.tracks.length} of {searchStore.playlistConversionTotal} tracks
 					</div>
 				</div>
 			{/if}
 
 			<div class="space-y-2">
-				{#each tracks as track}
+				{#each searchStore.tracks as track}
 					<div
 						role="button"
 						tabindex="0"
-						onclick={() => handleTrackActivation(track)}
+						onclick={(e) => {
+							if (e.target instanceof Element && (e.target.closest('a') || e.target.closest('button'))) return;
+							handleTrackActivation(track);
+						}}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
 						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 					>
@@ -1214,7 +1208,6 @@
 								</h3>
 								<a
 									href={`/artist/${asTrack(track).artist.id}`}
-									onclick={(e) => e.stopPropagation()}
 									class="inline-block truncate text-sm text-gray-400 hover:text-blue-400 hover:underline"
 									data-sveltekit-preload-data
 								>
@@ -1223,7 +1216,6 @@
 								<p class="text-xs text-gray-500">
 									<a
 										href={`/album/${asTrack(track).album.id}`}
-										onclick={(e) => e.stopPropagation()}
 										class="hover:text-blue-400 hover:underline"
 										data-sveltekit-preload-data
 									>
@@ -1312,9 +1304,9 @@
 					</div>
 				{/each}
 			</div>
-		{:else if activeTab === 'albums' && albums.length > 0}
+		{:else if searchStore.activeTab === 'albums' && searchStore.albums.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each albums as album}
+				{#each searchStore.albums as album}
 					<div class="group relative text-left">
 						<button
 							onclick={(event) => handleAlbumDownloadClick(album, event)}
@@ -1406,9 +1398,9 @@
 					</div>
 				{/each}
 			</div>
-		{:else if activeTab === 'artists' && artists.length > 0}
+		{:else if searchStore.activeTab === 'artists' && searchStore.artists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-				{#each artists as artist}
+				{#each searchStore.artists as artist}
 					<a href={`/artist/${artist.id}`} class="group text-center" data-sveltekit-preload-data>
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-full">
 							{#if artist.picture}
@@ -1430,9 +1422,9 @@
 					</a>
 				{/each}
 			</div>
-		{:else if activeTab === 'playlists' && playlists.length > 0}
+		{:else if searchStore.activeTab === 'playlists' && searchStore.playlists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each playlists as playlist}
+				{#each searchStore.playlists as playlist}
 					<a
 						href={`/playlist/${playlist.uuid}`}
 						class="group text-left"
@@ -1456,7 +1448,7 @@
 			{/each}
 			</div>
 			<!-- News Section -->
-		{:else if !query.trim()}
+		{:else if !searchStore.query.trim()}
 			<div class="news-container rounded-lg border p-4">
 				<h2 class="mb-4 text-3xl font-bold">News</h2>
 				<section class="grid gap-4 text-left shadow-lg sm:grid-cols-2">
@@ -1477,7 +1469,7 @@
 					{/each}
 				</section>
 			</div>
-		{:else if isQueryATidalUrl && !isLoading}
+		{:else if isQueryATidalUrl && !searchStore.isLoading}
 			<div class="py-12 text-center text-gray-400">
 				<div class="flex flex-col items-center gap-4">
 					<Link2 size={48} class="text-blue-400" />
@@ -1485,7 +1477,7 @@
 					<p class="text-sm">Press Enter or click Import to load this content</p>
 				</div>
 			</div>
-		{:else if query.trim() && !isLoading && !isQueryATidalUrl}
+		{:else if searchStore.query.trim() && !searchStore.isLoading && !isQueryATidalUrl}
 			<div class="py-12 text-center text-gray-400">
 				<p>No results found...</p>
 			</div>
