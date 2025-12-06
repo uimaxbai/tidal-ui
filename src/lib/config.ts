@@ -15,23 +15,37 @@ const V2_API_TARGETS = [
 	{
 		name: 'squid-api',
 		baseUrl: 'https://triton.squid.wtf',
-		weight: 100,
+		weight: 60,
 		requiresProxy: false,
 		category: 'auto-only'
-	}
+	},
+	{
+		name: 'kinoplus',
+		baseUrl: 'https://tidal.kinoplus.online',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'binimum',
+		baseUrl: 'https://tidal-api.binimum.org',
+		weight: 10,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'binimum-2',
+		baseUrl: 'https://tidal-api-2.binimum.org',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
 ] satisfies ApiClusterTarget[];
 
 const ALL_API_TARGETS = [
 	{
 		name: 'monochrome-california',
 		baseUrl: 'https://california.monochrome.tf',
-		weight: 40,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-london',
-		baseUrl: 'https://london.monochrome.tf',
 		weight: 40,
 		requiresProxy: false,
 		category: 'auto-only'
@@ -74,20 +88,6 @@ const ALL_API_TARGETS = [
 	{
 		name: 'monochrome-oregon',
 		baseUrl: 'https://oregon.monochrome.tf',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-virginia',
-		baseUrl: 'https://virginia.monochrome.tf',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-tokyo',
-		baseUrl: 'https://tokyo.monochrome.tf',
 		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
