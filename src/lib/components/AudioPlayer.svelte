@@ -4,7 +4,7 @@
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
-	import type { DashManifestResult } from '$lib/api';
+	import type { DashManifestResult, DashManifestWithMetadata } from '$lib/api';
 	import { getProxiedUrl } from '$lib/config';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -72,12 +72,13 @@
 	let preloadingCacheKey: string | null = null;
 	const PRELOAD_THRESHOLD_SECONDS = 12;
 	const hiResQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS']);
-	const dashManifestCache = new Map<string, DashManifestResult>();
+	const dashManifestCache = new Map<string, DashManifestWithMetadata>();
 	let shakaNamespace: ShakaNamespace | null = null;
 	let shakaPlayer: ShakaPlayerInstance | null = null;
 	let hiResObjectUrl: string | null = null;
 	let shakaNetworkingConfigured = false;
 	const sampleRateLabel = $derived(formatSampleRate($playerStore.sampleRate));
+	const bitDepthLabel = $derived(formatBitDepth($playerStore.bitDepth));
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let dashPlaybackActive = false;
 	let dashFallbackAttemptedTrackId: number | string | null = null;
@@ -179,11 +180,12 @@
 		}
 	}
 
-	function cacheFlacFallback(trackId: number, result: DashManifestResult) {
-		if (result.kind !== 'flac') {
+	function cacheFlacFallback(trackId: number, result: DashManifestResult | DashManifestWithMetadata) {
+		const manifestResult = 'result' in result ? result.result : result;
+		if (manifestResult.kind !== 'flac') {
 			return;
 		}
-		const fallbackUrl = result.urls.find(
+		const fallbackUrl = manifestResult.urls.find(
 			(candidate) => typeof candidate === 'string' && candidate.length > 0
 		);
 		if (!fallbackUrl) {
@@ -244,16 +246,16 @@
 		if (dashManifestCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
 			const cached = dashManifestCache.get(cacheKey);
 			if (cached) {
-				cacheFlacFallback(track.id, cached);
+				cacheFlacFallback(track.id, cached.result);
 			}
 			return;
 		}
 
 		preloadingCacheKey = cacheKey;
 		try {
-			const result = await losslessAPI.getDashManifest(track.id, 'HI_RES_LOSSLESS');
+			const result = await losslessAPI.getDashManifestWithMetadata(track.id, 'HI_RES_LOSSLESS');
 			dashManifestCache.set(cacheKey, result);
-			cacheFlacFallback(track.id, result);
+			cacheFlacFallback(track.id, result.result);
 			pruneDashManifestCache();
 		} catch (error) {
 			console.warn('Failed to preload dash manifest:', error);
@@ -557,17 +559,18 @@
 		track: Track,
 		quality: AudioQuality,
 		sequence: number
-	): Promise<DashManifestResult> {
+	): Promise<DashManifestWithMetadata> {
 		const cacheKey = getCacheKey(track.id, quality);
-		let manifestResult = dashManifestCache.get(cacheKey);
-		if (!manifestResult) {
-			manifestResult = await losslessAPI.getDashManifest(track.id, quality);
-			dashManifestCache.set(cacheKey, manifestResult);
+		let cached = dashManifestCache.get(cacheKey);
+		if (!cached) {
+			cached = await losslessAPI.getDashManifestWithMetadata(track.id, quality);
+			dashManifestCache.set(cacheKey, cached);
 		}
+		const { result: manifestResult, trackInfo } = cached;
 		cacheFlacFallback(track.id, manifestResult);
 		if (manifestResult.kind === 'flac') {
 			dashPlaybackActive = false;
-			return manifestResult;
+			return cached;
 		}
 		revokeHiResObjectUrl();
 		const blob = new Blob([manifestResult.manifest], {
@@ -576,7 +579,7 @@
 		hiResObjectUrl = URL.createObjectURL(blob);
 		const player = await ensureShakaPlayer();
 		if (sequence !== loadSequence) {
-			return manifestResult;
+			return cached;
 		}
 		if (audioElement) {
 			audioElement.pause();
@@ -588,8 +591,18 @@
 		dashPlaybackActive = true;
 		streamUrl = '';
 		currentPlaybackQuality = 'HI_RES_LOSSLESS';
+		
+		// Apply metadata directly from the API response - no second API call needed
+		if (sequence === loadSequence && currentTrackId === track.id) {
+			playerStore.setSampleRate(trackInfo.sampleRate);
+			playerStore.setBitDepth(trackInfo.bitDepth);
+			if (trackInfo.replayGain !== null) {
+				playerStore.setReplayGain(trackInfo.replayGain);
+			}
+		}
+		
 		pruneDashManifestCache();
-		return manifestResult;
+		return cached;
 	}
 
 	async function updateTrackMetadata(
@@ -610,6 +623,11 @@
 				typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? Math.round(rate) : null;
 			playerStore.setSampleRate(normalized ?? null);
 
+			const depth = metadata.info?.bitDepth;
+			const normalizedDepth =
+				typeof depth === 'number' && Number.isFinite(depth) && depth > 0 ? depth : null;
+			playerStore.setBitDepth(normalizedDepth);
+
 			const gain = metadata.info?.trackReplayGain;
 			if (typeof gain === 'number') {
 				playerStore.setReplayGain(gain);
@@ -618,6 +636,7 @@
 			console.debug('Failed to update track metadata', error);
 			if (sequence === loadSequence && currentTrackId === track.id) {
 				playerStore.setSampleRate(null);
+				playerStore.setBitDepth(null);
 				// Don't reset replayGain here as it might have been set by loadStandardTrack
 			}
 		}
@@ -654,9 +673,9 @@
 			if (isHiResQuality(requestedQuality)) {
 				try {
 					const hiResQuality: AudioQuality = 'HI_RES_LOSSLESS';
-					const result = await loadDashTrack(tidalTrack, hiResQuality, sequence);
-					if (result.kind === 'dash') {
-						scheduleMetadataUpdate(hiResQuality);
+					const dashResult = await loadDashTrack(tidalTrack, hiResQuality, sequence);
+					if (dashResult.result.kind === 'dash') {
+						// Metadata already applied in loadDashTrack - no second API call needed
 						return;
 					}
 					console.info('Dash endpoint returned FLAC fallback. Using lossless stream.');
@@ -987,6 +1006,13 @@
 			kilohertz >= 100 || Math.abs(kilohertz - Math.round(kilohertz)) < 0.05 ? 0 : 1;
 		const formatted = kilohertz.toFixed(precision).replace(/\.0$/, '');
 		return `${formatted} kHz`;
+	}
+
+	function formatBitDepth(value?: number | null): string | null {
+		if (!Number.isFinite(value ?? NaN) || !value || value <= 0) {
+			return null;
+		}
+		return `${value}-bit`;
 	}
 
 	function formatMegabytes(bytes?: number | null): string | null {
@@ -1513,6 +1539,10 @@
 												<span class="text-gray-500">
 													({formatQualityLabel(asTrack($playerStore.currentTrack).audioQuality)} available)
 												</span>
+											{/if}
+											{#if bitDepthLabel}
+												<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
+												<span>{bitDepthLabel}</span>
 											{/if}
 											{#if sampleRateLabel}
 												<span class="mx-1 text-gray-600" aria-hidden="true">•</span>

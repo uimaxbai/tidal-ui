@@ -42,6 +42,15 @@ export type DashManifestResult =
 			contentType: string | null;
 		};
 
+export interface DashManifestWithMetadata {
+	result: DashManifestResult;
+	trackInfo: {
+		sampleRate: number | null;
+		bitDepth: number | null;
+		replayGain: number | null;
+	};
+}
+
 export interface DownloadTrackOptions {
 	signal?: AbortSignal;
 	onProgress?: (progress: TrackDownloadProgress) => void;
@@ -930,6 +939,14 @@ class LosslessAPI {
 		trackId: number,
 		quality: AudioQuality = 'HI_RES_LOSSLESS'
 	): Promise<DashManifestResult> {
+		const { result } = await this.getDashManifestWithMetadata(trackId, quality);
+		return result;
+	}
+
+	async getDashManifestWithMetadata(
+		trackId: number,
+		quality: AudioQuality = 'HI_RES_LOSSLESS'
+	): Promise<DashManifestWithMetadata> {
 		let lastError: Error | null = null;
 
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -937,7 +954,13 @@ class LosslessAPI {
 				const lookup = await this.getTrack(trackId, quality);
 				const manifestPayload = lookup.info?.manifest ?? '';
 				const contentType = lookup.info?.manifestMimeType ?? null;
-				return this.buildDashManifestResult(manifestPayload, contentType);
+				const result = this.buildDashManifestResult(manifestPayload, contentType);
+				const trackInfo = {
+					sampleRate: lookup.info?.sampleRate ?? null,
+					bitDepth: lookup.info?.bitDepth ?? null,
+					replayGain: lookup.info?.trackReplayGain ?? null
+				};
+				return { result, trackInfo };
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
 			}
@@ -1951,11 +1974,9 @@ class LosslessAPI {
 		metadataLookup: TrackLookup;
 		manifestQuality: AudioQuality;
 	}> {
-		const wantsHiRes = this.isHiResQuality(quality);
-		const manifestQuality: AudioQuality = wantsHiRes ? 'LOSSLESS' : quality;
-		const manifestLookup = await this.getTrack(trackId, manifestQuality);
+		const manifestLookup = await this.getTrack(trackId, quality);
 		const metadataLookup = manifestLookup;
-		return { manifestLookup, metadataLookup, manifestQuality };
+		return { manifestLookup, metadataLookup, manifestQuality: quality };
 	}
 
 	async getPreferredTrackMetadata(
