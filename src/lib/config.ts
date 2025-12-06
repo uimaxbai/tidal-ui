@@ -11,21 +11,6 @@ export interface ApiClusterTarget {
 	category: 'auto-only';
 }
 
-const CLIENT_IDS = [
-	{
-		"client_id": "W2ZWkBxvGXZqSpF0",
-		"client_secret": "ckWwlPOsZ3AVcA5pwfi6iuipwJCvhNpIJYgqEzP4oIw=",
-	},
-	{
-		"client_id": "Y7RsND3WbaVItTMw",
-		"client_secret": "3I4wBpkvIunENMdL0fsz8SuehUPQj0e3WQC05vv1RC4=",
-	},
-	{
-		"client_id": "RYRZw5o6I8GAbeS5",
-		"client_secret": "RfH43axQiTse9lRWWhSngSHOYfffRi7uOvAvipHD2nU=",
-	},
-]
-
 const V2_API_TARGETS = [
 	{
 		name: 'squid-api',
