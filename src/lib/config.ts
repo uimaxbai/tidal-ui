@@ -1,3 +1,5 @@
+import { APP_VERSION } from '$lib/version';
+
 // CORS Proxy Configuration
 // If you're experiencing CORS issues with the HIFI API, you can set up a proxy
 
@@ -509,9 +511,20 @@ export async function fetchWithCORS(
 
 		const finalUrl = getProxiedUrl(rewrittenUrl.toString());
 
+		const headers = new Headers(options?.headers);
+		const isCustom =
+			[...V2_API_TARGETS, ...ALL_API_TARGETS].some((t) => t.name === target.name) &&
+			!target.baseUrl.includes('tidal.com') &&
+			!target.baseUrl.includes('api.tidal.com');
+
+		if (isCustom) {
+			headers.set('X-Client', `BiniLossless/${APP_VERSION}`);
+		}
+
 		try {
 			const response = await fetch(finalUrl, {
-				...options
+				...options,
+				headers
 			});
 			if (response.ok) {
 				const unexpected = await isUnexpectedProxyResponse(response);

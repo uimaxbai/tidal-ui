@@ -2,8 +2,16 @@
 	import SearchInterface from '$lib/components/SearchInterface.svelte';
 	import type { Track, PlayableTrack } from '$lib/types';
 	import { playerStore } from '$lib/stores/player';
+	import { onMount } from 'svelte';
+	import { APP_VERSION } from '$lib/version';
 
 	let { data } = $props();
+
+	onMount(() => {
+		if (APP_VERSION) {
+			umami.track('app_loaded', { version: APP_VERSION });
+		}
+	});
 
 	function handleTrackSelect(track: PlayableTrack) {
 		playerStore.setQueue([track], 0);
@@ -26,7 +34,7 @@
 			>
 				{data.title}
 			</h2>
-			<span class="text-sm text-gray-400">v3.0</span>
+			<span class="text-sm text-gray-400">{APP_VERSION}</span>
 		</div>
 		<p class="mx-auto max-w-2xl text-xl text-gray-400">{data.slogan}</p>
 	</div>
