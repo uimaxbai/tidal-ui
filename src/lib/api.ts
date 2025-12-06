@@ -1044,6 +1044,39 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get album');
 		const data = await response.json();
+
+		// Handle v2/new API structure where response is { version, data: { items: [...] } }
+		if (data && typeof data === 'object' && 'data' in data && 'items' in data.data) {
+			const items = data.data.items;
+			if (Array.isArray(items) && items.length > 0) {
+				const firstItem = items[0];
+				const firstTrack = firstItem.item || firstItem;
+
+				if (firstTrack && firstTrack.album) {
+					let albumEntry = this.prepareAlbum(firstTrack.album);
+
+					// If album doesn't have artist info, try to get it from the track
+					if (!albumEntry.artist && firstTrack.artist) {
+						albumEntry = { ...albumEntry, artist: firstTrack.artist };
+					}
+
+					const tracks = items
+						.map((i: unknown) => {
+							if (!i || typeof i !== 'object') return null;
+							const itemObj = i as { item?: unknown };
+							const t = (itemObj.item || itemObj) as Track;
+							
+							if (!t) return null;
+							// Ensure track has album reference
+							return this.prepareTrack({ ...t, album: albumEntry });
+						})
+						.filter((t): t is Track => t !== null);
+
+					return { album: albumEntry, tracks };
+				}
+			}
+		}
+
 		const entries = Array.isArray(data) ? data : [data];
 
 		let albumEntry: Album | undefined;
