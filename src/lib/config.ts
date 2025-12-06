@@ -513,7 +513,7 @@ export async function fetchWithCORS(
 
 		const headers = new Headers(options?.headers);
 		const isCustom =
-			[...V2_API_TARGETS, ...ALL_API_TARGETS].some((t) => t.name === target.name) &&
+			[...V2_API_TARGETS].some((t) => t.name === target.name) &&
 			!target.baseUrl.includes('tidal.com') &&
 			!target.baseUrl.includes('api.tidal.com');
 
