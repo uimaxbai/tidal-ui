@@ -51,6 +51,13 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
+		name: 'monochrome-london',
+		baseUrl: 'https://london.monochrome.tf',
+		weight: 40,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
 		name: 'hund',
 		baseUrl: 'https://hund.qqdl.site',
 		weight: 15,
