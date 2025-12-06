@@ -11,74 +11,43 @@ export interface ApiClusterTarget {
 	category: 'auto-only';
 }
 
-const ALL_API_TARGETS = [
+const CLIENT_IDS = [
 	{
-		name: 'new-squid',
-		baseUrl: 'https://kraken.squid.wtf',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
+		"client_id": "W2ZWkBxvGXZqSpF0",
+		"client_secret": "ckWwlPOsZ3AVcA5pwfi6iuipwJCvhNpIJYgqEzP4oIw=",
 	},
+	{
+		"client_id": "Y7RsND3WbaVItTMw",
+		"client_secret": "3I4wBpkvIunENMdL0fsz8SuehUPQj0e3WQC05vv1RC4=",
+	},
+	{
+		"client_id": "RYRZw5o6I8GAbeS5",
+		"client_secret": "RfH43axQiTse9lRWWhSngSHOYfffRi7uOvAvipHD2nU=",
+	},
+]
+
+const V2_API_TARGETS = [
 	{
 		name: 'squid-api',
 		baseUrl: 'https://triton.squid.wtf',
-		weight: 20,
+		weight: 100,
 		requiresProxy: false,
 		category: 'auto-only'
-	},
-	{
-		name: 'squid-api-2',
-		baseUrl: 'https://zeus.squid.wtf',
-		weight: 19,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'squid-api-3',
-		baseUrl: 'https://aether.squid.wtf',
-		weight: 19,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'phoenix',
-		baseUrl: 'https://phoenix.squid.wtf',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'shiva',
-		baseUrl: 'https://shiva.squid.wtf',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'chaos',
-		baseUrl: 'https://chaos.squid.wtf',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-jakarta',
-		baseUrl: 'https://jakarta.monochrome.tf',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
+	}
+] satisfies ApiClusterTarget[];
+
+const ALL_API_TARGETS = [
 	{
 		name: 'monochrome-california',
 		baseUrl: 'https://california.monochrome.tf',
-		weight: 15,
+		weight: 40,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'monochrome-london',
 		baseUrl: 'https://london.monochrome.tf',
-		weight: 15,
+		weight: 40,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
@@ -104,13 +73,6 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'vogel',
-		baseUrl: 'https://vogel.qqdl.site',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
 		name: 'wolf',
 		baseUrl: 'https://wolf.qqdl.site',
 		weight: 15,
@@ -118,22 +80,8 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'monochrome',
-		baseUrl: 'https://hifi.prigoana.com',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
 		name: 'monochrome-singapore',
 		baseUrl: 'https://singapore.monochrome.tf',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-ohio',
-		baseUrl: 'https://ohio.monochrome.tf',
 		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
@@ -153,13 +101,6 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'monochrome-frankfurt',
-		baseUrl: 'https://frankfurt.monochrome.tf',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
 		name: 'monochrome-tokyo',
 		baseUrl: 'https://tokyo.monochrome.tf',
 		weight: 15,
@@ -167,45 +108,7 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 ] satisfies ApiClusterTarget[];
-
-const US_API_TARGETS = [
-	{
-		name: 'hund',
-		baseUrl: 'https://hund.qqdl.site',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'katze',
-		baseUrl: 'https://katze.qqdl.site',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'maus',
-		baseUrl: 'https://maus.qqdl.site',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'vogel',
-		baseUrl: 'https://vogel.qqdl.site',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'wolf',
-		baseUrl: 'https://wolf.qqdl.site',
-		weight: 20,
-		requiresProxy: false,
-		category: 'auto-only'
-	}
-] satisfies ApiClusterTarget[];
-
+const US_API_TARGETS = [] satisfies ApiClusterTarget[];
 const TARGET_COLLECTIONS: Record<RegionPreference, ApiClusterTarget[]> = {
 	auto: [...ALL_API_TARGETS],
 	eu: [],
@@ -225,7 +128,8 @@ export const API_CONFIG = {
 
 type WeightedTarget = ApiClusterTarget & { cumulativeWeight: number };
 
-let weightedTargets: WeightedTarget[] | null = null;
+let v1WeightedTargets: WeightedTarget[] | null = null;
+let v2WeightedTargets: WeightedTarget[] | null = null;
 
 function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
 	const validTargets = targets.filter((target) => {
@@ -257,20 +161,29 @@ function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
 	return collected;
 }
 
-function ensureWeightedTargets(): WeightedTarget[] {
-	if (!weightedTargets) {
-		weightedTargets = buildWeightedTargets(API_CONFIG.targets);
+function ensureWeightedTargets(apiVersion: 'v1' | 'v2' = 'v1'): WeightedTarget[] {
+	if (apiVersion === 'v2') {
+		if (!v2WeightedTargets) {
+			v2WeightedTargets = buildWeightedTargets(V2_API_TARGETS);
+		}
+		return v2WeightedTargets;
+	} else {
+		if (!v1WeightedTargets) {
+			// v1 includes ALL_API_TARGETS (v1) + V2_API_TARGETS (fallback with low weight)
+			const v2Fallback = V2_API_TARGETS.map((t) => ({ ...t, weight: 1 }));
+			v1WeightedTargets = buildWeightedTargets([...ALL_API_TARGETS, ...v2Fallback]);
+		}
+		return v1WeightedTargets;
 	}
-	return weightedTargets;
 }
 
-export function selectApiTarget(): ApiClusterTarget {
-	const targets = ensureWeightedTargets();
+export function selectApiTarget(apiVersion: 'v1' | 'v2' = 'v1'): ApiClusterTarget {
+	const targets = ensureWeightedTargets(apiVersion);
 	return selectFromWeightedTargets(targets);
 }
 
-export function getPrimaryTarget(): ApiClusterTarget {
-	return ensureWeightedTargets()[0];
+export function getPrimaryTarget(apiVersion: 'v1' | 'v2' = 'v1'): ApiClusterTarget {
+	return ensureWeightedTargets(apiVersion)[0];
 }
 
 function selectFromWeightedTargets(weighted: WeightedTarget[]): ApiClusterTarget {
@@ -516,10 +429,17 @@ async function isUnexpectedProxyResponse(response: Response): Promise<boolean> {
 	}
 }
 
+function isV2Target(target: ApiClusterTarget): boolean {
+	return V2_API_TARGETS.some((t) => t.name === target.name);
+}
+
 /**
  * Fetch with CORS handling
  */
-export async function fetchWithCORS(url: string, options?: RequestInit): Promise<Response> {
+export async function fetchWithCORS(
+	url: string,
+	options?: RequestInit & { apiVersion?: 'v1' | 'v2'; preferredQuality?: string }
+): Promise<Response> {
 	const resolvedUrl = resolveUrl(url);
 	if (!resolvedUrl) {
 		throw new Error(`Unable to resolve URL: ${url}`);
@@ -532,16 +452,17 @@ export async function fetchWithCORS(url: string, options?: RequestInit): Promise
 		});
 	}
 
-	const weightedTargets = ensureWeightedTargets();
+	const apiVersion = options?.apiVersion ?? 'v1';
+	const weightedTargets = ensureWeightedTargets(apiVersion);
 	const attemptOrder: ApiClusterTarget[] = [];
 	if (shouldPreferPrimaryTarget(resolvedUrl)) {
-		const primary = getPrimaryTarget();
+		const primary = getPrimaryTarget(apiVersion);
 		if (!attemptOrder.some((candidate) => candidate.name === primary.name)) {
 			attemptOrder.push(primary);
 		}
 	}
 
-	const selected = selectApiTarget();
+	const selected = selectApiTarget(apiVersion);
 	if (!attemptOrder.some((candidate) => candidate.name === selected.name)) {
 		attemptOrder.push(selected);
 	}
@@ -557,7 +478,7 @@ export async function fetchWithCORS(url: string, options?: RequestInit): Promise
 	);
 
 	if (uniqueTargets.length === 0) {
-		uniqueTargets = [getPrimaryTarget()];
+		uniqueTargets = [getPrimaryTarget(apiVersion)];
 	}
 
 	const originBase = parseTargetBase(originTarget);
@@ -583,6 +504,17 @@ export async function fetchWithCORS(url: string, options?: RequestInit): Promise
 			rewrittenPath + resolvedUrl.search + resolvedUrl.hash,
 			targetBase.origin
 		);
+
+		// If we are falling back to a v2 target and have a preferred quality (e.g. HI_RES_LOSSLESS),
+		// upgrade the quality parameter in the URL.
+		if (
+			isV2Target(target) &&
+			options?.preferredQuality &&
+			rewrittenUrl.searchParams.has('quality')
+		) {
+			rewrittenUrl.searchParams.set('quality', options.preferredQuality);
+		}
+
 		const finalUrl = getProxiedUrl(rewrittenUrl.toString());
 
 		try {

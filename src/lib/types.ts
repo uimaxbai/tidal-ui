@@ -107,6 +107,7 @@ export interface TrackInfo {
 	audioMode: string;
 	manifest: string;
 	manifestMimeType: string;
+	manifestHash?: string;
 	assetPresentation: string;
 	albumReplayGain?: number;
 	albumPeakAmplitude?: number;

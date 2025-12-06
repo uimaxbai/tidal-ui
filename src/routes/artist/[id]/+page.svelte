@@ -18,7 +18,7 @@
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
 	const discography = $derived(artist?.albums ?? []);
-	const downloadQuality = $derived($playerStore.quality as AudioQuality);
+	const downloadQuality = $derived($userPreferencesStore.playbackQuality as AudioQuality);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 

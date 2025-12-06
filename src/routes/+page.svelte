@@ -26,7 +26,7 @@
 			>
 				{data.title}
 			</h2>
-			<span class="text-sm text-gray-400">v2.5</span>
+			<span class="text-sm text-gray-400">v3.0</span>
 		</div>
 		<p class="mx-auto max-w-2xl text-xl text-gray-400">{data.slogan}</p>
 	</div>

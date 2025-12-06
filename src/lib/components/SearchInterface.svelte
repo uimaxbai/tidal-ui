@@ -55,7 +55,7 @@
 	let downloadTaskIds = $state(new Map<number | string, string>());
 	let cancelledIds = $state(new Set<number | string>());
 	let error = $state<string | null>(null);
-	const albumDownloadQuality = $derived($playerStore.quality as AudioQuality);
+	const albumDownloadQuality = $derived($userPreferencesStore.playbackQuality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadCoverSeperatelyPreference = $derived(
@@ -268,7 +268,7 @@
 		next.add(uiTrackId);
 		downloadingIds = next;
 
-		const quality = $playerStore.quality;
+		const quality = $userPreferencesStore.playbackQuality;
 		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
 		
 		// Format title with version if present
@@ -902,7 +902,7 @@
 					/>
 				</div>
 				<div class="flex w-auto flex-row items-center gap-2">
-					{#if !isQueryATidalUrl && !isQueryAStreamingUrl && !isQueryASpotifyPlaylist}
+					{#if false} <!-- hide the region selector that doesn't even work lol -->
 						<div class="relative w-auto">
 							<label class="sr-only" for="region-select">Region</label>
 							<Earth

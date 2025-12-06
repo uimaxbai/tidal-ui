@@ -64,7 +64,7 @@
 			value: 'HI_RES_LOSSLESS',
 			label: 'Hi-Res',
 			description: '24-bit FLAC (DASH) up to 192 kHz',
-			disabled: true
+			disabled: false
 		},
 		{
 			value: 'LOSSLESS',

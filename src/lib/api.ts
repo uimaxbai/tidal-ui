@@ -229,15 +229,20 @@ class LosslessAPI {
 
 	private extractStreamUrlFromManifest(manifest: string): string | null {
 		try {
-			const decoded = atob(manifest);
+			const decoded = this.decodeBase64Manifest(manifest);
 			try {
 				const parsed = JSON.parse(decoded) as { urls?: string[] };
 				if (parsed && Array.isArray(parsed.urls) && parsed.urls.length > 0) {
 					return parsed.urls[0] ?? null;
 				}
 			} catch (jsonError) {
-				// Ignore JSON parse failure and fall back to regex search
+				// Ignore JSON parse failure and fall back to regex/XML search
 				console.debug('Manifest JSON parse failed, falling back to pattern match', jsonError);
+			}
+
+			const mpdUrl = this.parseFlacUrlFromMpd(decoded);
+			if (mpdUrl) {
+				return mpdUrl;
 			}
 
 			const match = decoded.match(/https?:\/\/[\w\-.~:?#[\]@!$&'()*+,;=%/]+/);
@@ -303,6 +308,409 @@ class LosslessAPI {
 		return String(quality).toUpperCase() === 'HI_RES_LOSSLESS';
 	}
 
+	private isV2ApiContainer(payload: unknown): payload is { version?: unknown; data?: unknown } {
+		return Boolean(
+			payload &&
+			typeof payload === 'object' &&
+			'version' in (payload as Record<string, unknown>) &&
+			(payload as { version?: unknown }).version === '2.0'
+		);
+	}
+
+	private decodeBase64Manifest(manifest: string): string {
+		if (typeof manifest !== 'string') return '';
+		const trimmed = manifest.trim();
+		if (!trimmed) return '';
+		try {
+			// Support URL-safe base64 and missing padding
+			const normalized = (() => {
+				let value = trimmed.replace(/-/g, '+').replace(/_/g, '/');
+				const pad = value.length % 4;
+				if (pad === 2) value += '==';
+				if (pad === 3) value += '=';
+				return value;
+			})();
+			const decoded = atob(normalized);
+			return decoded || trimmed;
+		} catch {
+			return trimmed;
+		}
+	}
+
+	private extractTrackFromPayload(payload: unknown): Track | undefined {
+		const candidates: unknown[] = [];
+		if (!payload) return undefined;
+		if (Array.isArray(payload)) {
+			candidates.push(...payload);
+		} else if (typeof payload === 'object') {
+			candidates.push(payload);
+			for (const value of Object.values(payload as Record<string, unknown>)) {
+				if (value && (typeof value === 'object' || Array.isArray(value))) {
+					candidates.push(value);
+				}
+			}
+		}
+
+		const isTrackLike = (entry: unknown): entry is Track => {
+			if (!entry || typeof entry !== 'object') return false;
+			const record = entry as Record<string, unknown>;
+			return (
+				typeof record.id === 'number' &&
+				typeof record.title === 'string' &&
+				typeof record.duration === 'number'
+			);
+		};
+
+		for (const candidate of candidates) {
+			if (isTrackLike(candidate)) {
+				return candidate as Track;
+			}
+		}
+		return undefined;
+	}
+
+	private async fetchTrackMetadata(trackId: number): Promise<Track> {
+		const response = await this.fetch(`${this.baseUrl}/info/?id=${trackId}`);
+		this.ensureNotRateLimited(response);
+		if (!response.ok) {
+			throw new Error('Failed to fetch track metadata');
+		}
+		const payload = await response.json();
+		const data = this.isV2ApiContainer(payload) ? payload.data : payload;
+		const track = this.extractTrackFromPayload(data);
+		if (!track) {
+			throw new Error('Track metadata not found');
+		}
+		return this.prepareTrack(track);
+	}
+
+	private buildTrackInfoFromV2(data: Record<string, unknown>, fallbackTrackId: number): TrackInfo {
+		const manifestMimeType =
+			typeof data.manifestMimeType === 'string' && data.manifestMimeType.trim().length > 0
+				? data.manifestMimeType
+				: 'application/dash+xml';
+
+		return {
+			trackId: typeof data.trackId === 'number' ? data.trackId : fallbackTrackId,
+			audioMode: typeof data.audioMode === 'string' ? data.audioMode : 'STEREO',
+			audioQuality: typeof data.audioQuality === 'string' ? data.audioQuality : 'LOSSLESS',
+			manifest: typeof data.manifest === 'string' ? data.manifest : '',
+			manifestMimeType,
+			manifestHash: typeof data.manifestHash === 'string' ? data.manifestHash : undefined,
+			assetPresentation:
+				typeof data.assetPresentation === 'string' ? data.assetPresentation : 'FULL',
+			albumReplayGain:
+				typeof data.albumReplayGain === 'number' ? data.albumReplayGain : undefined,
+			albumPeakAmplitude:
+				typeof data.albumPeakAmplitude === 'number' ? data.albumPeakAmplitude : undefined,
+			trackReplayGain:
+				typeof data.trackReplayGain === 'number' ? data.trackReplayGain : undefined,
+			trackPeakAmplitude:
+				typeof data.trackPeakAmplitude === 'number' ? data.trackPeakAmplitude : undefined,
+			bitDepth: typeof data.bitDepth === 'number' ? data.bitDepth : undefined,
+			sampleRate: typeof data.sampleRate === 'number' ? data.sampleRate : undefined
+		};
+	}
+
+	private extractOriginalTrackUrl(payload: Record<string, unknown>): string | undefined {
+		const originalUrl =
+			typeof payload.OriginalTrackUrl === 'string'
+				? payload.OriginalTrackUrl
+				: typeof payload.originalTrackUrl === 'string'
+					? payload.originalTrackUrl
+					: undefined;
+		return originalUrl;
+	}
+
+	private async parseTrackLookupV2(trackId: number, payload: { data?: unknown }): Promise<TrackLookup> {
+		const container = (payload?.data ?? payload) as Record<string, unknown>;
+		const trackInfo = this.buildTrackInfoFromV2(container, trackId);
+		let track = this.extractTrackFromPayload(container) ?? null;
+		if (!track) {
+			track = await this.fetchTrackMetadata(trackId);
+		}
+
+		return {
+			track: this.prepareTrack(track),
+			info: trackInfo,
+			originalTrackUrl: this.extractOriginalTrackUrl(container)
+		};
+	}
+
+	private buildDashManifestResult(payload: string, contentType: string | null): DashManifestResult {
+		const manifestText = this.decodeBase64Manifest(payload);
+
+		if (this.isXmlContentType(contentType) || this.isDashManifestPayload(manifestText, contentType)) {
+			return { kind: 'dash', manifest: manifestText, contentType };
+		}
+
+		const trimmed = manifestText.trim();
+		if (this.isJsonContentType(contentType) || trimmed.startsWith('{') || trimmed.startsWith('[')) {
+			const parsed = this.parseJsonSafely<{ detail?: unknown; urls?: unknown }>(manifestText);
+			if (
+				parsed &&
+				typeof parsed === 'object' &&
+				parsed.detail &&
+				typeof parsed.detail === 'string' &&
+				parsed.detail.toLowerCase() === 'not found'
+			) {
+				throw this.createDashUnavailableError('Dash manifest not found for track');
+			}
+			const urls = this.extractUrlsFromDashJsonPayload(parsed);
+			if (urls.length > 0) {
+				return { kind: 'flac', manifestText, urls, contentType };
+			}
+		}
+
+		if (this.isDashManifestPayload(manifestText, contentType)) {
+			return { kind: 'dash', manifest: manifestText, contentType };
+		}
+
+		const parsed = this.parseJsonSafely(manifestText);
+		const urls = this.extractUrlsFromDashJsonPayload(parsed);
+		if (urls.length > 0) {
+			return { kind: 'flac', manifestText, urls, contentType };
+		}
+
+		throw this.createDashUnavailableError('Received unexpected payload from dash endpoint.');
+	}
+
+	private parseFlacUrlFromMpd(manifestText: string): string | null {
+		const trimmed = manifestText.trim();
+		if (!trimmed) return null;
+
+		const scoreUrl = (url: string | undefined | null): number => {
+			if (!url) return -1;
+			const normalized = url.toLowerCase();
+			let score = 0;
+			if (normalized.includes('flac')) score += 3;
+			if (normalized.includes('hires')) score += 1;
+			if (normalized.endsWith('.flac')) score += 4;
+			if (normalized.includes('token=')) score += 1;
+			return score;
+		};
+
+		const pickBest = (urls: Array<string | undefined | null>): string | null => {
+			const candidates = urls
+				.map((u) => (typeof u === 'string' ? u.trim() : ''))
+				.filter((u) => u.length > 0);
+			if (candidates.length === 0) return null;
+			return candidates.sort((a, b) => scoreUrl(b) - scoreUrl(a))[0] ?? null;
+		};
+
+		// Prefer DOMParser when available (browser side)
+		if (typeof DOMParser !== 'undefined') {
+			try {
+				const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
+				const baseUrls = Array.from(doc.getElementsByTagName('BaseURL')).map((n) => n.textContent?.trim() ?? '');
+				if (baseUrls.length > 0) {
+					const best = pickBest(baseUrls);
+					if (best) return best;
+				}
+
+				const reps = Array.from(doc.getElementsByTagName('Representation'));
+				for (const rep of reps) {
+					const codecs = rep.getAttribute('codecs')?.toLowerCase() ?? '';
+					const base = Array.from(rep.getElementsByTagName('BaseURL')).map((n) => n.textContent?.trim() ?? '');
+					if (base.length > 0 && codecs.includes('flac')) {
+						const best = pickBest(base);
+						if (best) return best;
+					}
+				}
+			} catch (error) {
+				console.debug('Failed to parse MPD manifest via DOMParser', error);
+			}
+		}
+
+		// Regex fallback for SSR / non-browser
+		const baseUrlMatch = trimmed.match(/<BaseURL[^>]*>([^<]+)<\/BaseURL>/i);
+		if (baseUrlMatch?.[1]) {
+			return baseUrlMatch[1].trim();
+		}
+
+		return null;
+	}
+
+	private parseMpdSegmentTemplate(
+		manifestText: string
+	):
+		| {
+				initializationUrl: string;
+				mediaUrlTemplate: string;
+				startNumber: number;
+				segmentTimeline: Array<{ duration: number; repeat: number }>;
+				baseUrl?: string;
+				codec?: string;
+			}
+		| null {
+		const trimmed = manifestText.trim();
+		if (!trimmed) return null;
+
+		const parseWithDom = () => {
+			if (typeof DOMParser === 'undefined') return null;
+			try {
+				const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
+				const baseUrl = doc.getElementsByTagName('BaseURL')[0]?.textContent?.trim();
+
+				let template: Element | null = null;
+				let codec: string | undefined;
+
+				const representations = Array.from(doc.getElementsByTagName('Representation'));
+				for (const rep of representations) {
+					const candidateTemplate = rep.getElementsByTagName('SegmentTemplate')[0];
+					if (!candidateTemplate) continue;
+					const codecsAttr = rep.getAttribute('codecs')?.toLowerCase() ?? '';
+					if (!template || codecsAttr.includes('flac')) {
+						template = candidateTemplate;
+						codec = codecsAttr || undefined;
+						if (codecsAttr.includes('flac')) break;
+					}
+				}
+
+				if (!template) {
+					template = doc.getElementsByTagName('SegmentTemplate')[0] ?? null;
+				}
+
+				if (!template) return null;
+
+				const initializationUrl = template.getAttribute('initialization')?.trim();
+				const mediaUrlTemplate = template.getAttribute('media')?.trim();
+				if (!initializationUrl || !mediaUrlTemplate) return null;
+
+				const startNumber = Number.parseInt(template.getAttribute('startNumber') ?? '1', 10);
+				const timelineParent = template.getElementsByTagName('SegmentTimeline')[0];
+				const segmentTimeline: Array<{ duration: number; repeat: number }> = [];
+				if (timelineParent) {
+					const segments = timelineParent.getElementsByTagName('S');
+					for (const seg of Array.from(segments)) {
+						const duration = Number.parseInt(seg.getAttribute('d') ?? '0', 10);
+						if (!Number.isFinite(duration) || duration <= 0) continue;
+						const repeat = Number.parseInt(seg.getAttribute('r') ?? '0', 10);
+						segmentTimeline.push({ duration, repeat: Number.isFinite(repeat) ? repeat : 0 });
+					}
+				}
+
+				return {
+					initializationUrl,
+					mediaUrlTemplate,
+					startNumber: Number.isFinite(startNumber) && startNumber > 0 ? startNumber : 1,
+					segmentTimeline,
+					baseUrl,
+					codec
+				};
+			} catch (error) {
+				console.debug('Failed to parse MPD manifest with DOMParser', error);
+				return null;
+			}
+		};
+
+		const parseWithRegex = () => {
+			const initializationUrl = /initialization="([^"]+)"/i.exec(trimmed)?.[1]?.trim();
+			const mediaUrlTemplate = /media="([^"]+)"/i.exec(trimmed)?.[1]?.trim();
+			if (!initializationUrl || !mediaUrlTemplate) return null;
+			const startNumberMatch = /startNumber="(\d+)"/i.exec(trimmed);
+			const startNumber = startNumberMatch ? Number.parseInt(startNumberMatch[1]!, 10) : 1;
+			const segmentTimeline: Array<{ duration: number; repeat: number }> = [];
+			const timelineRegex = /<S[^>]*d="(\d+)"[^>]*r="?(-?\d+)"?[^>]*>/gi;
+			let match: RegExpExecArray | null;
+			while ((match = timelineRegex.exec(trimmed)) !== null) {
+				const duration = Number.parseInt(match[1]!, 10);
+				const repeat = Number.parseInt(match[2]!, 10);
+				if (Number.isFinite(duration) && duration > 0) {
+					segmentTimeline.push({ duration, repeat: Number.isFinite(repeat) ? repeat : 0 });
+				}
+			}
+
+			return {
+				initializationUrl,
+				mediaUrlTemplate,
+				startNumber: Number.isFinite(startNumber) && startNumber > 0 ? startNumber : 1,
+				segmentTimeline
+			};
+		};
+
+		return parseWithDom() ?? parseWithRegex();
+	}
+
+	private buildMpdSegmentUrls(
+		template:
+			| {
+					initializationUrl: string;
+					mediaUrlTemplate: string;
+					startNumber: number;
+					segmentTimeline: Array<{ duration: number; repeat: number }>;
+					baseUrl?: string;
+					codec?: string;
+				}
+			| null
+	): { initializationUrl: string; segmentUrls: string[] } | null {
+		if (!template) return null;
+
+		const resolveUrl = (url: string): string => {
+			if (/^https?:\/\//i.test(url)) return url;
+			if (template.baseUrl) {
+				try {
+					return new URL(url, template.baseUrl).toString();
+				} catch {
+					return `${template.baseUrl.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
+				}
+			}
+			return url;
+		};
+
+		const initializationUrl = resolveUrl(template.initializationUrl);
+		const segmentUrls: string[] = [];
+		let segmentNumber = template.startNumber;
+		const timeline = template.segmentTimeline.length > 0 ? template.segmentTimeline : [{ duration: 0, repeat: 0 }];
+
+		for (const entry of timeline) {
+			const repeat = Number.isFinite(entry.repeat) ? entry.repeat : 0;
+			const count = Math.max(1, repeat + 1);
+			for (let i = 0; i < count; i += 1) {
+				const url = template.mediaUrlTemplate.replace('$Number$', `${segmentNumber}`);
+				segmentUrls.push(resolveUrl(url));
+				segmentNumber += 1;
+			}
+		}
+
+		return { initializationUrl, segmentUrls };
+	}
+
+	private async downloadFlacFromMpd(
+		manifestText: string,
+		options?: DownloadTrackOptions
+	): Promise<{ blob: Blob; mimeType: string } | null> {
+		const template = this.parseMpdSegmentTemplate(manifestText);
+		const segments = this.buildMpdSegmentUrls(template);
+		if (!segments) return null;
+
+		const urls = [segments.initializationUrl, ...segments.segmentUrls];
+		const chunks: Uint8Array[] = [];
+		let receivedBytes = 0;
+
+		for (const url of urls) {
+			const response = await this.fetch(url, { signal: options?.signal });
+			if (!response.ok) {
+				throw new Error(`Failed to fetch DASH segment (status ${response.status})`);
+			}
+			const buffer = await response.arrayBuffer();
+			const chunk = new Uint8Array(buffer);
+			receivedBytes += chunk.byteLength;
+			chunks.push(chunk);
+			options?.onProgress?.({ stage: 'downloading', receivedBytes, totalBytes: undefined });
+		}
+
+		const totalBytes = chunks.reduce((total, current) => total + current.byteLength, 0);
+		const merged = new Uint8Array(totalBytes);
+		let offset = 0;
+		for (const chunk of chunks) {
+			merged.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+
+		return { blob: new Blob([merged], { type: 'audio/flac' }), mimeType: 'audio/flac' };
+	}
+
 	private async resolveHiResStreamFromDash(trackId: number): Promise<string> {
 		const manifest = await this.getDashManifest(trackId, 'HI_RES_LOSSLESS');
 		if (manifest.kind === 'flac') {
@@ -311,6 +719,10 @@ class LosslessAPI {
 				return url;
 			}
 			throw new Error('DASH manifest did not include any FLAC URLs.');
+		}
+		const directUrl = this.parseFlacUrlFromMpd(manifest.manifest);
+		if (directUrl) {
+			return directUrl;
 		}
 		throw new Error('Hi-res DASH manifest does not expose a direct FLAC URL.');
 	}
@@ -463,6 +875,9 @@ class LosslessAPI {
 			this.ensureNotRateLimited(response);
 			if (response.ok) {
 				const data = await response.json();
+				if (this.isV2ApiContainer(data)) {
+					return await this.parseTrackLookupV2(id, data);
+				}
 				return this.parseTrackLookup(data);
 			}
 
@@ -511,65 +926,16 @@ class LosslessAPI {
 		trackId: number,
 		quality: AudioQuality = 'HI_RES_LOSSLESS'
 	): Promise<DashManifestResult> {
-		const url = `${this.baseUrl}/dash/?id=${trackId}&quality=${quality}`;
 		let lastError: Error | null = null;
 
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			const response = await this.fetch(url);
-			this.ensureNotRateLimited(response);
-			const contentType = response.headers.get('content-type');
-
-			if (response.ok) {
-				const payload = await response.text();
-
-				if (this.isXmlContentType(contentType) || this.isDashManifestPayload(payload, contentType)) {
-					return { kind: 'dash', manifest: payload, contentType };
-				}
-
-				if (this.isJsonContentType(contentType) || payload.trim().startsWith('{')) {
-					const parsed = this.parseJsonSafely<{ detail?: unknown; urls?: unknown }>(payload);
-					if (
-						parsed &&
-						typeof parsed === 'object' &&
-						parsed.detail &&
-						typeof parsed.detail === 'string' &&
-						parsed.detail.toLowerCase() === 'not found'
-					) {
-						lastError = this.createDashUnavailableError('Dash manifest not found for track');
-					} else {
-						const urls = this.extractUrlsFromDashJsonPayload(parsed);
-						return { kind: 'flac', manifestText: payload, urls, contentType };
-					}
-				} else {
-					if (this.isDashManifestPayload(payload, contentType)) {
-						return { kind: 'dash', manifest: payload, contentType };
-					}
-					const parsed = this.parseJsonSafely(payload);
-					const urls = this.extractUrlsFromDashJsonPayload(parsed);
-					if (urls.length > 0) {
-						return { kind: 'flac', manifestText: payload, urls, contentType };
-					}
-					lastError = this.createDashUnavailableError('Received unexpected payload from dash endpoint.');
-				}
-			} else {
-				if (response.status === 404) {
-					let detail: string | undefined;
-					try {
-						const errorPayload = await response.clone().json();
-						if (errorPayload && typeof errorPayload.detail === 'string') {
-							detail = errorPayload.detail;
-						}
-					} catch {
-						// ignore json parse errors
-					}
-					if (detail && detail.toLowerCase() === 'not found') {
-						lastError = this.createDashUnavailableError('Dash manifest not found for track');
-					} else {
-						lastError = new Error(`Failed to load dash manifest (status ${response.status})`);
-					}
-				} else {
-					lastError = new Error(`Failed to load dash manifest (status ${response.status})`);
-				}
+			try {
+				const lookup = await this.getTrack(trackId, quality);
+				const manifestPayload = lookup.info?.manifest ?? '';
+				const contentType = lookup.info?.manifestMimeType ?? null;
+				return this.buildDashManifestResult(manifestPayload, contentType);
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
 			}
 
 			if (attempt < 3) {
@@ -1611,6 +1977,10 @@ class LosslessAPI {
 			let metadataLookup = initialMetadataLookup;
 			let response: Response | null = null;
 			let streamUrl: string | null = null;
+			let downloadBlob: Blob | null = null;
+			let contentType: string | null = null;
+			let receivedBytes = 0;
+			let totalBytes: number | undefined;
 
 			streamUrl = manifestLookup.originalTrackUrl || null;
 			if (streamUrl) {
@@ -1641,65 +2011,88 @@ class LosslessAPI {
 						console.warn('Failed to fetch lossless manifest for download fallback', manifestError);
 					}
 				}
-				if (!fallbackUrl) {
-					throw new Error('Could not extract stream URL from manifest');
-				}
 
-				streamUrl = fallbackUrl;
-				response = await fetch(fallbackUrl, { signal: options?.signal });
-				if (response.status === 429) {
-					throw new Error(RATE_LIMIT_ERROR_MESSAGE);
+				if (fallbackUrl) {
+					streamUrl = fallbackUrl;
+					response = await fetch(fallbackUrl, { signal: options?.signal });
+					if (response.status === 429) {
+						throw new Error(RATE_LIMIT_ERROR_MESSAGE);
+					}
+					if (!response.ok) {
+						throw new Error('Failed to fetch audio stream');
+					}
+					metadataLookup = manifestSource;
+				} else {
+					const decodedManifest = this.decodeBase64Manifest(manifestSource.info.manifest);
+					try {
+						const mpdResult = await this.downloadFlacFromMpd(decodedManifest, options);
+						if (mpdResult) {
+							downloadBlob = mpdResult.blob;
+							contentType = mpdResult.mimeType;
+							receivedBytes = downloadBlob.size;
+							totalBytes = downloadBlob.size;
+							metadataLookup = manifestSource;
+						}
+					} catch (mpdError) {
+						console.warn('Failed to download FLAC from MPD manifest', mpdError);
+					}
+
+					if (!downloadBlob) {
+						throw new Error('Could not extract stream URL from manifest');
+					}
 				}
-				if (!response.ok) {
-					throw new Error('Failed to fetch audio stream');
-				}
-				metadataLookup = manifestSource;
 			}
 
-			const totalHeader = Number(response.headers.get('Content-Length') ?? '0');
-			const totalBytes = Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : undefined;
-			let downloadBlob: Blob;
-			let receivedBytes = 0;
+			if (response) {
+				const totalHeader = Number(response.headers.get('Content-Length') ?? '0');
+				totalBytes = Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : undefined;
 
-			if (!response.body) {
-				downloadBlob = await response.blob();
-				receivedBytes = downloadBlob.size;
-				if (!totalBytes && receivedBytes > 0) {
-					options?.onProgress?.({
-						stage: 'downloading',
-						receivedBytes,
-						totalBytes: receivedBytes
-					});
-				}
-			} else {
-				const reader = response.body.getReader();
-				const chunks: Uint8Array[] = [];
-				while (true) {
-					const { done, value } = await reader.read();
-					if (done) break;
-					if (value) {
-						receivedBytes += value.byteLength;
-						chunks.push(value);
+				if (!response.body) {
+					downloadBlob = await response.blob();
+					receivedBytes = downloadBlob.size;
+					if (!totalBytes && receivedBytes > 0) {
 						options?.onProgress?.({
 							stage: 'downloading',
 							receivedBytes,
-							totalBytes
+							totalBytes: receivedBytes
 						});
 					}
+				} else {
+					const reader = response.body.getReader();
+					const chunks: Uint8Array[] = [];
+					while (true) {
+						const { done, value } = await reader.read();
+						if (done) break;
+						if (value) {
+							receivedBytes += value.byteLength;
+							chunks.push(value);
+							options?.onProgress?.({
+								stage: 'downloading',
+								receivedBytes,
+								totalBytes
+							});
+						}
+					}
+					downloadBlob = new Blob(chunks as BlobPart[], {
+						type: response.headers.get('Content-Type') ?? 'application/octet-stream'
+					});
+					if (receivedBytes === 0) {
+						receivedBytes = downloadBlob.size;
+					}
 				}
-				downloadBlob = new Blob(chunks as BlobPart[], {
-					type: response.headers.get('Content-Type') ?? 'application/octet-stream'
-				});
-				if (receivedBytes === 0) {
-					receivedBytes = downloadBlob.size;
-				}
+
+				contentType = response.headers.get('Content-Type');
 			}
 
 			options?.onProgress?.({
 				stage: 'downloading',
 				receivedBytes,
-				totalBytes: totalBytes ?? downloadBlob.size
+				totalBytes: totalBytes ?? downloadBlob?.size
 			});
+
+			if (!downloadBlob) {
+				throw new Error('Download failed to produce audio payload');
+			}
 
 			const shouldConvertToMp3 =
 				options?.convertAacToMp3 === true && (quality === 'HIGH' || quality === 'LOW');
@@ -1707,13 +2100,13 @@ class LosslessAPI {
 				downloadBlob,
 				metadataLookup,
 				filename,
-				response.headers.get('Content-Type'),
+				contentType,
 				options,
 				quality,
 				shouldConvertToMp3
 			);
 			const finalBlob = processedBlob ?? downloadBlob;
-			return { blob: finalBlob, mimeType: response.headers.get('Content-Type') ?? undefined };
+			return { blob: finalBlob, mimeType: contentType ?? undefined };
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') {
 				throw error;
