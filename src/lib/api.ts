@@ -249,17 +249,38 @@ class LosslessAPI {
 				console.debug('Manifest JSON parse failed, falling back to pattern match', jsonError);
 			}
 
+			// If this is a segmented DASH manifest, don't extract a URL - let it fall through to segment download
+			if (this.isSegmentedDashManifest(decoded)) {
+				return null;
+			}
+
 			const mpdUrl = this.parseFlacUrlFromMpd(decoded);
 			if (mpdUrl) {
 				return mpdUrl;
 			}
 
-			const match = decoded.match(/https?:\/\/[\w\-.~:?#[\]@!$&'()*+,;=%/]+/);
-			return match ? match[0] : null;
+			// Match all URLs and filter out schema/namespace URLs and segment URLs
+			const urlRegex = /https?:\/\/[\w\-.~:?#[\]@!$&'()*+,;=%/]+/g;
+			let match: RegExpExecArray | null;
+			while ((match = urlRegex.exec(decoded)) !== null) {
+				const url = match[0];
+				// Skip segment template URLs and initialization segments
+				if (url.includes('$Number$')) continue;
+				if (/\/\d+\.mp4/.test(url)) continue; // Skip segment files like /0.mp4, /1.mp4, etc.
+				if (this.isValidMediaUrl(url)) {
+					return url;
+				}
+			}
+			return null;
 		} catch (error) {
 			console.error('Failed to decode manifest:', error);
 			return null;
 		}
+	}
+
+	private isSegmentedDashManifest(decoded: string): boolean {
+		// Check if manifest contains SegmentTemplate which indicates segmented content
+		return /<SegmentTemplate/i.test(decoded);
 	}
 
 	private isDashManifestPayload(payload: string, contentType: string | null): boolean {
@@ -488,9 +509,33 @@ class LosslessAPI {
 		throw this.createDashUnavailableError('Received unexpected payload from dash endpoint.');
 	}
 
+	private isValidMediaUrl(url: string): boolean {
+		if (!url) return false;
+		const normalized = url.toLowerCase();
+		// Filter out XML schema/namespace URLs
+		if (normalized.includes('w3.org')) return false;
+		if (normalized.includes('xmlschema')) return false;
+		if (normalized.includes('xmlns')) return false;
+		// Must look like a media URL (has extension or query params suggesting media)
+		if (normalized.includes('.flac') || normalized.includes('.mp4') || 
+		    normalized.includes('.m4a') || normalized.includes('.aac') ||
+		    normalized.includes('token=') || normalized.includes('/audio/')) {
+			return true;
+		}
+		// If it has a file-like path segment, it's likely valid
+		if (/\/[^/]+\.[a-z0-9]{2,5}(\?|$)/i.test(url)) return true;
+		// If it's a relative path starting with a segment name, likely valid
+		if (/^[a-z0-9_-]+\//i.test(url)) return true;
+		// If it ends with a path segment that could be a file
+		if (/\/[a-z0-9_-]+$/i.test(url)) return true;
+		return false;
+	}
+
 	private parseFlacUrlFromMpd(manifestText: string): string | null {
 		const trimmed = manifestText.trim();
 		if (!trimmed) return null;
+
+		const isValidMediaUrl = this.isValidMediaUrl.bind(this);
 
 		const scoreUrl = (url: string | undefined | null): number => {
 			if (!url) return -1;
@@ -506,7 +551,7 @@ class LosslessAPI {
 		const pickBest = (urls: Array<string | undefined | null>): string | null => {
 			const candidates = urls
 				.map((u) => (typeof u === 'string' ? u.trim() : ''))
-				.filter((u) => u.length > 0);
+				.filter((u) => u.length > 0 && isValidMediaUrl(u));
 			if (candidates.length === 0) return null;
 			return candidates.sort((a, b) => scoreUrl(b) - scoreUrl(a))[0] ?? null;
 		};
@@ -538,7 +583,10 @@ class LosslessAPI {
 		// Regex fallback for SSR / non-browser
 		const baseUrlMatch = trimmed.match(/<BaseURL[^>]*>([^<]+)<\/BaseURL>/i);
 		if (baseUrlMatch?.[1]) {
-			return baseUrlMatch[1].trim();
+			const candidate = baseUrlMatch[1].trim();
+			if (isValidMediaUrl(candidate)) {
+				return candidate;
+			}
 		}
 
 		return null;
@@ -563,7 +611,9 @@ class LosslessAPI {
 			if (typeof DOMParser === 'undefined') return null;
 			try {
 				const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
-				const baseUrl = doc.getElementsByTagName('BaseURL')[0]?.textContent?.trim();
+				const rawBaseUrl = doc.getElementsByTagName('BaseURL')[0]?.textContent?.trim();
+				// Filter out schema/namespace URLs
+				const baseUrl = rawBaseUrl && this.isValidMediaUrl(rawBaseUrl) ? rawBaseUrl : undefined;
 
 				let template: Element | null = null;
 				let codec: string | undefined;
@@ -624,11 +674,12 @@ class LosslessAPI {
 			const startNumberMatch = /startNumber="(\d+)"/i.exec(trimmed);
 			const startNumber = startNumberMatch ? Number.parseInt(startNumberMatch[1]!, 10) : 1;
 			const segmentTimeline: Array<{ duration: number; repeat: number }> = [];
-			const timelineRegex = /<S[^>]*d="(\d+)"[^>]*r="?(-?\d+)"?[^>]*>/gi;
+			// Match <S> elements with d attribute, r attribute is optional
+			const timelineRegex = /<S[^>]*\sd="(\d+)"(?:[^>]*\sr="(-?\d+)")?[^>]*\/?>/gi;
 			let match: RegExpExecArray | null;
 			while ((match = timelineRegex.exec(trimmed)) !== null) {
 				const duration = Number.parseInt(match[1]!, 10);
-				const repeat = Number.parseInt(match[2]!, 10);
+				const repeat = match[2] ? Number.parseInt(match[2], 10) : 0;
 				if (Number.isFinite(duration) && duration > 0) {
 					segmentTimeline.push({ duration, repeat: Number.isFinite(repeat) ? repeat : 0 });
 				}
@@ -2023,32 +2074,10 @@ class LosslessAPI {
 
 			if (!response) {
 				let manifestSource = manifestLookup;
-				let fallbackUrl = this.extractStreamUrlFromManifest(manifestSource.info.manifest);
-				if (!fallbackUrl && manifestQuality !== 'LOSSLESS') {
-					try {
-						const losslessLookup = await this.getTrack(trackId, 'LOSSLESS');
-						const candidateUrl = this.extractStreamUrlFromManifest(losslessLookup.info.manifest);
-						if (candidateUrl) {
-							fallbackUrl = candidateUrl;
-							manifestSource = losslessLookup;
-						}
-					} catch (manifestError) {
-						console.warn('Failed to fetch lossless manifest for download fallback', manifestError);
-					}
-				}
-
-				if (fallbackUrl) {
-					streamUrl = fallbackUrl;
-					response = await fetch(fallbackUrl, { signal: options?.signal });
-					if (response.status === 429) {
-						throw new Error(RATE_LIMIT_ERROR_MESSAGE);
-					}
-					if (!response.ok) {
-						throw new Error('Failed to fetch audio stream');
-					}
-					metadataLookup = manifestSource;
-				} else {
-					const decodedManifest = this.decodeBase64Manifest(manifestSource.info.manifest);
+				const decodedManifest = this.decodeBase64Manifest(manifestSource.info.manifest);
+				
+				// For segmented DASH manifests, go directly to segment download
+				if (this.isSegmentedDashManifest(decodedManifest)) {
 					try {
 						const mpdResult = await this.downloadFlacFromMpd(decodedManifest, options);
 						if (mpdResult) {
@@ -2063,6 +2092,35 @@ class LosslessAPI {
 					}
 
 					if (!downloadBlob) {
+						throw new Error('Could not download segmented DASH content');
+					}
+				} else {
+					// Try to extract a direct stream URL
+					let fallbackUrl = this.extractStreamUrlFromManifest(manifestSource.info.manifest);
+					if (!fallbackUrl && manifestQuality !== 'LOSSLESS') {
+						try {
+							const losslessLookup = await this.getTrack(trackId, 'LOSSLESS');
+							const candidateUrl = this.extractStreamUrlFromManifest(losslessLookup.info.manifest);
+							if (candidateUrl) {
+								fallbackUrl = candidateUrl;
+								manifestSource = losslessLookup;
+							}
+						} catch (manifestError) {
+							console.warn('Failed to fetch lossless manifest for download fallback', manifestError);
+						}
+					}
+
+					if (fallbackUrl) {
+						streamUrl = fallbackUrl;
+						response = await fetch(fallbackUrl, { signal: options?.signal });
+						if (response.status === 429) {
+							throw new Error(RATE_LIMIT_ERROR_MESSAGE);
+						}
+						if (!response.ok) {
+							throw new Error('Failed to fetch audio stream');
+						}
+						metadataLookup = manifestSource;
+					} else {
 						throw new Error('Could not extract stream URL from manifest');
 					}
 				}

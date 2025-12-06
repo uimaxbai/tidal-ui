@@ -117,6 +117,11 @@
 
 	const newsItems = [
 		{
+			title: 'Hi-Res downloading!!!',
+			description:
+				"You can finally download and stream in Hi-Res again because of a much better API. It should also be much faster - try it out for yourself!"
+		},
+		{
 			title: 'Links support + QOLs!',
 			description:
 				"You can now paste links from supported streaming platforms (Spotify, YouTube, Apple Music, etc.) and the app will try to convert them to TIDAL equivalents for you to play or download. Only Spotify playlists work right now, but I'm working on fixing it."
