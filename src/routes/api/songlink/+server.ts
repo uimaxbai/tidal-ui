@@ -90,7 +90,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 		const response = await fetch(firstUrl, {
 			headers: {
-				'User-Agent': 'BiniTidal/1.0',
+				'User-Agent': 'BiniLossless/3.0',
 				Accept: 'application/json'
 			}
 		});
@@ -106,7 +106,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 			const backupResponse = await fetch(secondUrl, {
 				headers: {
-					'User-Agent': 'BiniTidal/1.0',
+					'User-Agent': 'BiniLossless/3.0',
 					Accept: 'application/json'
 				}
 			});
@@ -166,7 +166,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 			const backupResponse = await fetch(backupUrl, {
 				headers: {
-					'User-Agent': 'BiniTidal/1.0',
+					'User-Agent': 'BiniLossless/3.0',
 					Accept: 'application/json'
 				}
 			});

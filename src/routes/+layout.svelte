@@ -30,7 +30,7 @@
 	import { type Track, type AudioQuality, type PlayableTrack, isSonglinkTrack } from '$lib/types';
 
 	let { children, data } = $props();
-	const pageTitle = $derived(data?.title ?? 'BiniTidal');
+	const pageTitle = $derived(data?.title ?? 'BiniLossless');
 	let headerHeight = $state(0);
 	let playerHeight = $state(0);
 	let viewportHeight = $state(0);
@@ -159,7 +159,7 @@
 			const artist = isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists);
 			const title = track.title ?? 'Unknown Track';
 			const prefix = isPlaying ? '▶' : '⏸';
-			document.title = `${prefix} ${title} • ${artist} | BiniTidal`;
+			document.title = `${prefix} ${title} • ${artist} | BiniLossless`;
 		} else {
 			document.title = pageTitle;
 		}
