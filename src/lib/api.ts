@@ -369,8 +369,8 @@ class LosslessAPI {
 		return undefined;
 	}
 
-	private async fetchTrackMetadata(trackId: number): Promise<Track> {
-		const response = await this.fetch(`${this.baseUrl}/info/?id=${trackId}`);
+	private async fetchTrackMetadata(trackId: number, apiVersion: 'v1' | 'v2' = 'v1'): Promise<Track> {
+		const response = await this.fetch(`${this.baseUrl}/info/?id=${trackId}`, { apiVersion });
 		this.ensureNotRateLimited(response);
 		if (!response.ok) {
 			throw new Error('Failed to fetch track metadata');
@@ -422,12 +422,16 @@ class LosslessAPI {
 		return originalUrl;
 	}
 
-	private async parseTrackLookupV2(trackId: number, payload: { data?: unknown }): Promise<TrackLookup> {
+	private async parseTrackLookupV2(
+		trackId: number,
+		payload: { data?: unknown },
+		apiVersion: 'v1' | 'v2' = 'v1'
+	): Promise<TrackLookup> {
 		const container = (payload?.data ?? payload) as Record<string, unknown>;
 		const trackInfo = this.buildTrackInfoFromV2(container, trackId);
 		let track = this.extractTrackFromPayload(container) ?? null;
 		if (!track) {
-			track = await this.fetchTrackMetadata(trackId);
+			track = await this.fetchTrackMetadata(trackId, apiVersion);
 		}
 
 		return {
@@ -871,12 +875,12 @@ class LosslessAPI {
 		let lastError: Error | null = null;
 
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			const response = await this.fetch(url);
+			const response = await this.fetch(url, { apiVersion: 'v2' });
 			this.ensureNotRateLimited(response);
 			if (response.ok) {
 				const data = await response.json();
 				if (this.isV2ApiContainer(data)) {
-					return await this.parseTrackLookupV2(id, data);
+					return await this.parseTrackLookupV2(id, data, 'v2');
 				}
 				return this.parseTrackLookup(data);
 			}
