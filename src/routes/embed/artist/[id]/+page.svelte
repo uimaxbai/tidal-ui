@@ -98,7 +98,7 @@
         <div class="header">
             <div class="cover-art">
                 {#if artist.picture}
-                    <img src={losslessAPI.getArtistPictureUrl(artist.picture, '320')} alt={artist.name} />
+                    <img src={losslessAPI.getArtistPictureUrl(artist.picture, '750')} alt={artist.name} />
                 {:else}
                     <div class="placeholder-art"></div>
                 {/if}
@@ -134,7 +134,7 @@
         
         <!-- Background blur -->
         {#if artist.picture}
-            <div class="background" style="background-image: url({losslessAPI.getArtistPictureUrl(artist.picture, '320')})"></div>
+            <div class="background" style="background-image: url({losslessAPI.getArtistPictureUrl(artist.picture, '750')})"></div>
         {:else}
             <div class="background" style="background-color: #1e293b"></div>
         {/if}
