@@ -467,7 +467,7 @@
 	}
 
 	$effect(() => {
-		const activeIds = new Set(albums.map((album) => album.id));
+		const activeIds = new Set(searchStore.albums.map((album) => album.id));
 		let mutated = false;
 		const nextState: Record<number, AlbumDownloadState> = {};
 		for (const [albumId, state] of Object.entries(albumDownloadStates)) {
