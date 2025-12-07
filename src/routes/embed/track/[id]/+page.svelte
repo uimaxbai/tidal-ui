@@ -42,7 +42,7 @@
 		}
 	}
 
-    function formatQuality(info: TrackInfo | null): string | null {
+    function formatQuality(info: Track | null): string | null {
         if (!info) return null;
         if (info.bitDepth && info.sampleRate) {
             return `${info.bitDepth}-bit / ${info.sampleRate / 1000} kHz FLAC`;
@@ -93,8 +93,8 @@
                 <h1 class="title" title={track.title}>{track.title}</h1>
                 <p class="artist" title={formatArtists(track.artists)}>{formatArtists(track.artists)}</p>
                 
-                {#if trackInfo}
-                    {@const qualityText = formatQuality(trackInfo)}
+                {#if track}
+                    {@const qualityText = formatQuality(track)}
                     {#if qualityText}
                         <div class="quality-badge">{qualityText}</div>
                     {/if}
