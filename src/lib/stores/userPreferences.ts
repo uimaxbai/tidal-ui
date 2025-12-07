@@ -15,7 +15,7 @@ export interface UserPreferencesState {
 const STORAGE_KEY = 'tidal-ui.userPreferences';
 
 const DEFAULT_STATE: UserPreferencesState = {
-	playbackQuality: 'LOSSLESS',
+	playbackQuality: 'HI_RES_LOSSLESS',
 	convertAacToMp3: false,
 	downloadCoversSeperately: false,
 	performanceMode: 'medium'

@@ -39,14 +39,62 @@
 		MoreVertical,
 		List,
 		Play,
-		Shuffle
+		Shuffle,
+		Copy,
+		Code
 	} from 'lucide-svelte';
 
 	import { searchStore, type SearchTab } from '$lib/stores/searchStore.svelte';
 
+	function getLongLink(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
+		return `https://music.binimum.org/${type}/${id}`;
+	}
+
+	function getShortLink(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
+		const prefixMap = {
+			track: 't',
+			album: 'al',
+			artist: 'ar',
+			playlist: 'p'
+		};
+		return `https://okiw.me/${prefixMap[type]}/${id}`;
+	}
+
+	function getEmbedCode(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
+		return `<iframe src="https://music.binimum.org/embed/${type}/${id}" width="100%" height="450" style="border:none; overflow:hidden;" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>`;
+	}
+
+	async function copyToClipboard(text: string) {
+		try {
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				await navigator.clipboard.writeText(text);
+			} else {
+				// Fallback for non-secure contexts
+				const textArea = document.createElement('textarea');
+				textArea.value = text;
+				textArea.style.position = 'fixed';
+				textArea.style.left = '-9999px';
+				textArea.style.top = '0';
+				document.body.appendChild(textArea);
+				textArea.focus();
+				textArea.select();
+				try {
+					document.execCommand('copy');
+				} catch (err) {
+					console.error('Fallback: Oops, unable to copy', err);
+					throw err;
+				}
+				document.body.removeChild(textArea);
+			}
+		} catch (err) {
+			console.error('Failed to copy:', err);
+		}
+	}
+
 	let downloadingIds = $state(new Set<number | string>());
 	let downloadTaskIds = $state(new Map<number | string, string>());
 	let cancelledIds = $state(new Set<number | string>());
+	let activeMenuId = $state<number | string | null>(null);
 
 	const albumDownloadQuality = $derived($userPreferencesStore.playbackQuality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
@@ -159,12 +207,10 @@
 			const target = event.target as HTMLElement;
 			// Check if click is outside any menu
 			if (
-				!target.closest('[id^="track-menu-"]') &&
+				!target.closest('.track-menu-container') &&
 				!target.closest('button[title="Queue actions"]')
 			) {
-				document.querySelectorAll('[id^="track-menu-"]').forEach((el) => {
-					(el as HTMLElement).style.display = 'none';
-				});
+				activeMenuId = null;
 			}
 		};
 
@@ -1112,7 +1158,7 @@
 							handleTrackActivation(track);
 						}}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none {activeMenuId === track.id ? 'z-20 relative' : ''}"
 					>
 						{#if isSonglinkTrack(track)}
 							<!-- Display for SonglinkTrack -->
@@ -1138,17 +1184,7 @@
 									<button
 										onclick={(event) => {
 											event.stopPropagation();
-											const trackMenuId = `track-menu-${track.id}`;
-											const currentMenu = document.getElementById(trackMenuId);
-											if (currentMenu?.style.display === 'block') {
-												currentMenu.style.display = 'none';
-											} else {
-												// Close all other menus
-												document.querySelectorAll('[id^="track-menu-"]').forEach((el) => {
-													(el as HTMLElement).style.display = 'none';
-												});
-												if (currentMenu) currentMenu.style.display = 'block';
-											}
+											activeMenuId = activeMenuId === track.id ? null : track.id;
 										}}
 										class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
 										title="Queue actions"
@@ -1157,25 +1193,66 @@
 										<MoreVertical size={18} />
 									</button>
 									<!-- Dropdown menu for queue actions -->
-									<div
-										id="track-menu-{track.id}"
-										class="absolute right-0 top-full z-10 mt-1 hidden w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
-									>
-										<button
-											onclick={(event) => handlePlayNext(track, event)}
-											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+									{#if activeMenuId === track.id}
+										<div
+											class="track-menu-container absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
 										>
-											<ListVideo size={16} />
-											Play Next
-										</button>
-										<button
-											onclick={(event) => handleAddToQueue(track, event)}
-											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
-										>
-											<ListPlus size={16} />
-											Add to Queue
-										</button>
-									</div>
+											<button
+												onclick={(event) => {
+													handlePlayNext(track, event);
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<ListVideo size={16} />
+												Play Next
+											</button>
+											<button
+												onclick={(event) => {
+													handleAddToQueue(track, event);
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<ListPlus size={16} />
+												Add to Queue
+											</button>
+											<div class="my-1 border-t border-gray-700"></div>
+											<button
+												onclick={(event) => {
+													event.stopPropagation();
+													copyToClipboard(getLongLink('track', track.id));
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<Link2 size={16} />
+												Share Link
+											</button>
+											<button
+												onclick={(event) => {
+													event.stopPropagation();
+													copyToClipboard(getShortLink('track', track.id));
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<Copy size={16} />
+												Share Short Link
+											</button>
+											<button
+												onclick={(event) => {
+													event.stopPropagation();
+													copyToClipboard(getEmbedCode('track', track.id));
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<Code size={16} />
+												Copy Embed Code
+											</button>
+										</div>
+									{/if}
 								</div>
 							</div>
 						{:else}
@@ -1258,17 +1335,7 @@
 									<button
 										onclick={(event) => {
 											event.stopPropagation();
-											const trackMenuId = `track-menu-${track.id}`;
-											const currentMenu = document.getElementById(trackMenuId);
-											if (currentMenu?.style.display === 'block') {
-												currentMenu.style.display = 'none';
-											} else {
-												// Close all other menus
-												document.querySelectorAll('[id^="track-menu-"]').forEach((el) => {
-													(el as HTMLElement).style.display = 'none';
-												});
-												if (currentMenu) currentMenu.style.display = 'block';
-											}
+											activeMenuId = activeMenuId === track.id ? null : track.id;
 										}}
 										class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
 										title="Queue actions"
@@ -1276,25 +1343,66 @@
 									>
 										<MoreVertical size={18} />
 									</button>
-									<div
-										id="track-menu-{track.id}"
-										class="absolute right-0 top-full z-10 mt-1 hidden w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
-									>
-										<button
-											onclick={(event) => handlePlayNext(track, event)}
-											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+									{#if activeMenuId === track.id}
+										<div
+											class="track-menu-container absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
 										>
-											<ListVideo size={16} />
-											Play Next
-										</button>
-										<button
-											onclick={(event) => handleAddToQueue(track, event)}
-											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
-										>
-											<ListPlus size={16} />
-											Add to Queue
-										</button>
-									</div>
+											<button
+												onclick={(event) => {
+													handlePlayNext(track, event);
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<ListVideo size={16} />
+												Play Next
+											</button>
+											<button
+												onclick={(event) => {
+													handleAddToQueue(track, event);
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<ListPlus size={16} />
+												Add to Queue
+											</button>
+											<div class="my-1 border-t border-gray-700"></div>
+											<button
+												onclick={(event) => {
+													event.stopPropagation();
+													copyToClipboard(getLongLink('track', track.id));
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<Link2 size={16} />
+												Share Link
+											</button>
+											<button
+												onclick={(event) => {
+													event.stopPropagation();
+													copyToClipboard(getShortLink('track', track.id));
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<Copy size={16} />
+												Share Short Link
+											</button>
+											<button
+												onclick={(event) => {
+													event.stopPropagation();
+													copyToClipboard(getEmbedCode('track', track.id));
+													activeMenuId = null;
+												}}
+												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											>
+												<Code size={16} />
+												Copy Embed Code
+											</button>
+										</div>
+									{/if}
 								</div>
 							</div>
 						{/if}

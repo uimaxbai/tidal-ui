@@ -63,7 +63,7 @@
 	let currentPlaybackQuality = $state<AudioQuality | null>(null);
 	let isDownloadingCurrentTrack = $state(false);
 	let downloadTaskIdForCurrentTrack: string | null = null;
-	const { onHeightChange = () => {} } = $props<{ onHeightChange?: (height: number) => void }>();
+	const { onHeightChange = () => {}, headless = false } = $props<{ onHeightChange?: (height: number) => void, headless?: boolean }>();
 
 	let containerElement: HTMLDivElement | null = null;
 	let resizeObserver: ResizeObserver | null = null;
@@ -808,6 +808,16 @@
 		return Math.max(0, Math.min(100, (current / total) * 100));
 	}
 
+	function handlePrevious() {
+		if (audioElement && (audioElement.currentTime > 5 || $playerStore.queueIndex <= 0)) {
+			audioElement.currentTime = 0;
+			playerStore.setCurrentTime(0);
+			updateMediaSessionPositionState();
+		} else {
+			playerStore.previous();
+		}
+	}
+
 	function handleEnded() {
 		playerStore.next();
 		updateMediaSessionPositionState();
@@ -1180,7 +1190,7 @@
 		});
 
 		safeSetActionHandler('previoustrack', () => {
-			playerStore.previous();
+			handlePrevious();
 		});
 
 		safeSetActionHandler('nexttrack', () => {
@@ -1324,6 +1334,7 @@
 	class="hidden"
 ></audio>
 
+{#if !headless}
 <div
 	class="audio-player-backdrop fixed inset-x-0 bottom-0 z-50 px-4 pt-16 pb-5 sm:px-6 sm:pt-16 sm:pb-6"
 	bind:this={containerElement}
@@ -1544,9 +1555,9 @@
 							<!-- Controls -->
 							<div class="flex items-center justify-center gap-1 sm:gap-2">
 								<button
-									onclick={() => playerStore.previous()}
+									onclick={handlePrevious}
 									class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-									disabled={$playerStore.queueIndex <= 0}
+									disabled={false}
 									aria-label="Previous track"
 								>
 									<SkipBack size={18} class="sm:w-5 sm:h-5" />
@@ -1770,6 +1781,7 @@
 		</div>
 	</div>
 </div>
+{/if}
 
 <style>
 	.audio-player-glass {

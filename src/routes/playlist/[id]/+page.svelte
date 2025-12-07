@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { losslessAPI } from '$lib/api';
 	import TrackList from '$lib/components/TrackList.svelte';
+	import ShareButton from '$lib/components/ShareButton.svelte';
 	import type { Playlist, Track } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
@@ -139,13 +140,16 @@
 				</div>
 
 				{#if tracks.length > 0}
-					<button
-						onclick={handlePlayAll}
-						class="flex w-fit items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
-					>
-						<Play size={20} fill="currentColor" />
-						Play All
-					</button>
+					<div class="flex items-center gap-3">
+						<button
+							onclick={handlePlayAll}
+							class="flex w-fit items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
+						>
+							<Play size={20} fill="currentColor" />
+							Play All
+						</button>
+						<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
+					</div>
 				{/if}
 			</div>
 		</div>

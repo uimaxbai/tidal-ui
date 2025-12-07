@@ -6,6 +6,7 @@
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { formatArtists } from '$lib/utils';
+	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { Play, Pause, Download, Clock, Plus, ListPlus, X } from 'lucide-svelte';
 
 	interface Props {
@@ -272,6 +273,11 @@
 						>
 							<Plus size={18} />
 						</button>
+						
+						<div class="text-gray-400 hover:text-white">
+							<ShareButton type="track" id={track.id} iconOnly size={18} title="Share track" />
+						</div>
+
 						<button
 							onclick={(e) =>
 								downloadingIds.has(track.id)

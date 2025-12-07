@@ -15,7 +15,8 @@
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
-	import { navigating } from '$app/stores';
+	import { navigating, page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import JSZip from 'jszip';
 	import {
 		Archive,
@@ -44,11 +45,27 @@
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'
-				? Boolean(isZipDownloading || isLegacyQueueDownloading || isCsvExporting)
-				: downloadMode === 'csv'
+			? Boolean(isZipDownloading || isLegacyQueueDownloading || isCsvExporting)
+			: downloadMode === 'csv'
 				? Boolean(isCsvExporting)
 				: Boolean(isLegacyQueueDownloading)
 	);
+
+	const isEmbed = $derived($page.url.pathname.startsWith('/embed'));
+
+	$effect(() => {
+		const current = $playerStore.currentTrack;
+		if (current && !isSonglinkTrack(current)) {
+			const newPath = `/track/${current.id}`;
+			const isTrackPage = $page.url.pathname.startsWith('/track/');
+
+			if ($page.url.pathname !== newPath && !$navigating) {
+				if (isTrackPage) {
+					goto(newPath, { keepFocus: true, noScroll: true });
+				}
+			}
+		}
+	});
 	const mainMinHeight = $derived(() => Math.max(0, viewportHeight - headerHeight - playerHeight));
 	const contentPaddingBottom = $derived(() => Math.max(playerHeight, 24));
 	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
@@ -459,10 +476,14 @@
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </svelte:head>
 
-<div class="app-root">
-	<DynamicBackgroundWebGL />
-	<div class="app-shell">
-		<header class="app-header glass-panel" bind:clientHeight={headerHeight}>
+{#if isEmbed}
+	{@render children?.()}
+	<AudioPlayer headless={true} />
+{:else}
+	<div class="app-root">
+		<DynamicBackgroundWebGL />
+		<div class="app-shell">
+			<header class="app-header glass-panel" bind:clientHeight={headerHeight}>
 			<div class="app-header__inner">
 				<a href="/" class="brand" aria-label="Home">
 					<div class="brand__text">
@@ -714,6 +735,7 @@
 </div>
 
 <LyricsPopup />
+{/if}
 
 <!--
 {#if navigationState}

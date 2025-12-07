@@ -159,7 +159,7 @@ function createPlayerStore() {
 					currentTrack: nextTrack,
 					isPlaying: hasTracks ? state.isPlaying : false,
 					isLoading: hasTracks,
-					currentTime: hasTracks ? state.currentTime : 0,
+					currentTime: 0,
 					duration: nextTrack?.duration ?? 0,
 					sampleRate: resolveSampleRate(state, nextTrack),
 					bitDepth: null,

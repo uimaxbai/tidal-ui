@@ -4,6 +4,7 @@
 	import { downloadAlbum } from '$lib/downloads';
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
+	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { onMount } from 'svelte';
 	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
 	import { playerStore } from '$lib/stores/player';
@@ -275,6 +276,10 @@
 			<div class="flex-1">
 				<p class="mb-2 text-sm text-gray-400">ARTIST</p>
 				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{artist.name}</h1>
+
+				<div class="mb-6">
+					<ShareButton type="artist" id={artist.id} variant="secondary" />
+				</div>
 
 				<div class="mb-6 flex flex-wrap items-center gap-4">
 					{#if artist.popularity}

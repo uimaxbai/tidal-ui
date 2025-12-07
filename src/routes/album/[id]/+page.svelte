@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { losslessAPI } from '$lib/api';
 	import TrackList from '$lib/components/TrackList.svelte';
+	import ShareButton from '$lib/components/ShareButton.svelte';
 	import type { Album, Track } from '$lib/types';
 	import { onMount } from 'svelte';
 	import {
@@ -278,6 +279,7 @@
 								? `Downloading ${downloadedCount}/${tracks.length}`
 								: 'Download All'}
 						</button>
+						<ShareButton type="album" id={album.id} variant="secondary" />
 					</div>
 					{#if downloadError}
 						<p class="mt-2 text-sm text-red-400">{downloadError}</p>
