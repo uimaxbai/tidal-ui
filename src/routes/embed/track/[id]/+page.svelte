@@ -32,9 +32,17 @@
 		try {
 			isLoading = true;
 			error = null;
-			const data = await losslessAPI.getTrack(id);
-			track = data.track;
-            trackInfo = data.info;
+			try {
+				// Try to get Hi-Res first to ensure we have the best metadata
+				const data = await losslessAPI.getTrack(id, 'HI_RES_LOSSLESS');
+				track = data.track;
+				trackInfo = data.info;
+			} catch {
+				// Fallback to Lossless if Hi-Res is not available
+				const data = await losslessAPI.getTrack(id, 'LOSSLESS');
+				track = data.track;
+				trackInfo = data.info;
+			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load track';
 		} finally {
@@ -42,7 +50,8 @@
 		}
 	}
 
-    function formatQuality(info: Track | null): string | null {
+    function formatQuality(info: TrackInfo | null): string | null {
+        console.log(info);
         if (!info) return null;
         if (info.bitDepth && info.sampleRate) {
             return `${info.bitDepth}-bit / ${info.sampleRate / 1000} kHz FLAC`;
@@ -93,8 +102,8 @@
                 <h1 class="title" title={track.title}>{track.title}</h1>
                 <p class="artist" title={formatArtists(track.artists)}>{formatArtists(track.artists)}</p>
                 
-                {#if track}
-                    {@const qualityText = formatQuality(track)}
+                {#if trackInfo}
+                    {@const qualityText = formatQuality(trackInfo)}
                     {#if qualityText}
                         <div class="quality-badge">{qualityText}</div>
                     {/if}

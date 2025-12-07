@@ -10,6 +10,7 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackFilename } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
+	import { deriveTrackQuality } from '$lib/utils/audioQuality';
 	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	import { convertToTidal, extractTidalInfo } from '$lib/utils/songlink';
@@ -646,7 +647,12 @@
 		playerStore.setLoading(true);
 		bufferedPercent = 0;
 		currentPlaybackQuality = null;
-		const requestedQuality = $playerStore.quality;
+		let requestedQuality = $playerStore.quality;
+
+		const trackBestQuality = deriveTrackQuality(tidalTrack);
+		if (isHiResQuality(requestedQuality) && trackBestQuality && !isHiResQuality(trackBestQuality)) {
+			requestedQuality = trackBestQuality;
+		}
 
 		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== tidalTrack.id) {
 			dashFallbackAttemptedTrackId = null;
