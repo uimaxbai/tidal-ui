@@ -45,12 +45,12 @@
     function formatQuality(info: TrackInfo | null): string | null {
         if (!info) return null;
         if (info.bitDepth && info.sampleRate) {
-            return `${info.bitDepth}-bit / ${info.sampleRate / 1000} kHz`;
+            return `${info.bitDepth}-bit / ${info.sampleRate / 1000} kHz FLAC`;
         }
-        if (info.audioQuality === 'HI_RES_LOSSLESS') return 'Hi-Res Lossless';
-        if (info.audioQuality === 'LOSSLESS') return 'Lossless';
-        if (info.audioQuality === 'HIGH') return 'High';
-        if (info.audioQuality === 'LOW') return 'Low';
+        if (info.audioQuality === 'HI_RES_LOSSLESS') return 'Hi-Res FLAC';
+        if (info.audioQuality === 'LOSSLESS') return '16-bit / 44.1 kHz FLAC';
+        if (info.audioQuality === 'HIGH') return '320 kbps AAC';
+        if (info.audioQuality === 'LOW') return '96 kbps AAC';
         return null;
     }
 
