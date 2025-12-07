@@ -23,13 +23,11 @@
     );
 
 	onMount(async () => {
-        if (typeof window !== 'undefined' && (window as any).umami) {
-			try {
-				const referrer = document.referrer;
-				const host = referrer ? new URL(referrer).hostname : 'direct';
-				(window as any).umami.track('embed_loaded', { host, type: 'track' });
-			} catch {}
-		}
+        try {
+            const referrer = document.referrer;
+            const host = referrer ? new URL(referrer).hostname : 'direct';
+            umami.track('embed_loaded', { host, type: 'track' });
+        } catch {}
 
 		if (trackId) {
 			await loadTrack(parseInt(trackId));

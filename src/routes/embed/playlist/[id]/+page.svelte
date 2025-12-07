@@ -24,13 +24,11 @@
     );
 
 	onMount(async () => {
-		if (typeof window !== 'undefined' && (window as any).umami) {
-			try {
-				const referrer = document.referrer;
-				const host = referrer ? new URL(referrer).hostname : 'direct';
-				(window as any).umami.track('embed_loaded', { host, type: 'playlist' });
-			} catch {}
-		}
+		try {
+            const referrer = document.referrer;
+            const host = referrer ? new URL(referrer).hostname : 'direct';
+            umami.track('embed_loaded', { host, type: 'playlist' });
+        } catch {}
 
 		if (playlistId) {
 			await loadPlaylist(playlistId);
