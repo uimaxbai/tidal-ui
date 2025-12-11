@@ -17,7 +17,7 @@ const V2_API_TARGETS = [
 	{
 		name: 'squid-api',
 		baseUrl: 'https://triton.squid.wtf',
-		weight: 60,
+		weight: 30,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
@@ -38,31 +38,35 @@ const V2_API_TARGETS = [
 	{
 		name: 'binimum-2',
 		baseUrl: 'https://tidal-api-2.binimum.org',
-		weight: 20,
+		weight: 10,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
-] satisfies ApiClusterTarget[];
-
-const ALL_API_TARGETS = [
+	{
+		name: 'monochrome-jakarta',
+		baseUrl: 'https://jakarta.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
 	{
 		name: 'monochrome-california',
 		baseUrl: 'https://california.monochrome.tf',
-		weight: 25,
+		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'monochrome-london',
 		baseUrl: 'https://london.monochrome.tf',
-		weight: 40,
+		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'hund',
 		baseUrl: 'https://hund.qqdl.site',
-		weight: 30,
+		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
@@ -81,6 +85,13 @@ const ALL_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
+		name: 'vogel',
+		baseUrl: 'https://vogel.qqdl.site',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
 		name: 'wolf',
 		baseUrl: 'https://wolf.qqdl.site',
 		weight: 15,
@@ -90,17 +101,49 @@ const ALL_API_TARGETS = [
 	{
 		name: 'monochrome-singapore',
 		baseUrl: 'https://singapore.monochrome.tf',
-		weight: 15,
+		weight: 5,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-ohio',
+		baseUrl: 'https://ohio.monochrome.tf',
+		weight: 5,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'monochrome-oregon',
 		baseUrl: 'https://oregon.monochrome.tf',
-		weight: 15,
+		weight: 5,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
+	{
+		name: 'monochrome-virginia',
+		baseUrl: 'https://virginia.monochrome.tf',
+		weight: 5,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-frankfurt',
+		baseUrl: 'https://frankfurt.monochrome.tf',
+		weight: 5,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome-tokyo',
+		baseUrl: 'https://tokyo.monochrome.tf',
+		weight: 5,
+		requiresProxy: false,
+		category: 'auto-only'
+	}
+] satisfies ApiClusterTarget[];
+
+const ALL_API_TARGETS = [
+	...V2_API_TARGETS
 ] satisfies ApiClusterTarget[];
 const US_API_TARGETS = [] satisfies ApiClusterTarget[];
 const TARGET_COLLECTIONS: Record<RegionPreference, ApiClusterTarget[]> = {
@@ -155,7 +198,7 @@ function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
 	return collected;
 }
 
-function ensureWeightedTargets(apiVersion: 'v1' | 'v2' = 'v1'): WeightedTarget[] {
+function ensureWeightedTargets(apiVersion: 'v1' | 'v2' = 'v2'): WeightedTarget[] {
 	if (apiVersion === 'v2') {
 		if (!v2WeightedTargets) {
 			v2WeightedTargets = buildWeightedTargets(V2_API_TARGETS);
@@ -171,12 +214,12 @@ function ensureWeightedTargets(apiVersion: 'v1' | 'v2' = 'v1'): WeightedTarget[]
 	}
 }
 
-export function selectApiTarget(apiVersion: 'v1' | 'v2' = 'v1'): ApiClusterTarget {
+export function selectApiTarget(apiVersion: 'v1' | 'v2' = 'v2'): ApiClusterTarget {
 	const targets = ensureWeightedTargets(apiVersion);
 	return selectFromWeightedTargets(targets);
 }
 
-export function getPrimaryTarget(apiVersion: 'v1' | 'v2' = 'v1'): ApiClusterTarget {
+export function getPrimaryTarget(apiVersion: 'v1' | 'v2' = 'v2'): ApiClusterTarget {
 	return ensureWeightedTargets(apiVersion)[0];
 }
 
@@ -446,7 +489,7 @@ export async function fetchWithCORS(
 		});
 	}
 
-	const apiVersion = options?.apiVersion ?? 'v1';
+	const apiVersion = options?.apiVersion ?? 'v2';
 	const weightedTargets = ensureWeightedTargets(apiVersion);
 	const attemptOrder: ApiClusterTarget[] = [];
 	if (shouldPreferPrimaryTarget(resolvedUrl)) {
@@ -515,7 +558,8 @@ export async function fetchWithCORS(
 		const isCustom =
 			[...V2_API_TARGETS].some((t) => t.name === target.name) &&
 			!target.baseUrl.includes('tidal.com') &&
-			!target.baseUrl.includes('api.tidal.com');
+			!target.baseUrl.includes('api.tidal.com') &&
+			!target.baseUrl.includes('monochrome.tf');
 
 		if (isCustom) {
 			headers.set('X-Client', `BiniLossless/${APP_VERSION}`);

@@ -399,7 +399,7 @@ class LosslessAPI {
 		return undefined;
 	}
 
-	private async fetchTrackMetadata(trackId: number, apiVersion: 'v1' | 'v2' = 'v1'): Promise<Track> {
+	private async fetchTrackMetadata(trackId: number, apiVersion: 'v1' | 'v2' = 'v2'): Promise<Track> {
 		const response = await this.fetch(`${this.baseUrl}/info/?id=${trackId}`, { apiVersion });
 		this.ensureNotRateLimited(response);
 		if (!response.ok) {
@@ -455,7 +455,7 @@ class LosslessAPI {
 	private async parseTrackLookupV2(
 		trackId: number,
 		payload: { data?: unknown },
-		apiVersion: 'v1' | 'v2' = 'v1'
+		apiVersion: 'v1' | 'v2' = 'v2'
 	): Promise<TrackLookup> {
 		const container = (payload?.data ?? payload) as Record<string, unknown>;
 		const trackInfo = this.buildTrackInfoFromV2(container, trackId);
@@ -794,7 +794,10 @@ class LosslessAPI {
 	/**
 	 * Fetch wrapper with CORS handling
 	 */
-	private async fetch(url: string, options?: RequestInit): Promise<Response> {
+	private async fetch(
+		url: string,
+		options?: RequestInit & { apiVersion?: 'v1' | 'v2'; preferredQuality?: string }
+	): Promise<Response> {
 		return fetchWithCORS(url, options);
 	}
 

@@ -22,7 +22,7 @@ const hopByHopHeaders = new Set([
 	'upgrade'
 ]);
 
-const CACHE_NAMESPACE = 'tidal:proxy:v1:';
+const CACHE_NAMESPACE = 'tidal:proxy:v2:';
 
 const DEFAULT_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_SECONDS', 300);
 const SEARCH_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_SEARCH_SECONDS', 300);
