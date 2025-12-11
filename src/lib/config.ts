@@ -43,27 +43,6 @@ const V2_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'monochrome-jakarta',
-		baseUrl: 'https://jakarta.monochrome.tf',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-california',
-		baseUrl: 'https://california.monochrome.tf',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-london',
-		baseUrl: 'https://london.monochrome.tf',
-		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
 		name: 'hund',
 		baseUrl: 'https://hund.qqdl.site',
 		weight: 15,
@@ -95,48 +74,6 @@ const V2_API_TARGETS = [
 		name: 'wolf',
 		baseUrl: 'https://wolf.qqdl.site',
 		weight: 15,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-singapore',
-		baseUrl: 'https://singapore.monochrome.tf',
-		weight: 5,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-ohio',
-		baseUrl: 'https://ohio.monochrome.tf',
-		weight: 5,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-oregon',
-		baseUrl: 'https://oregon.monochrome.tf',
-		weight: 5,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-virginia',
-		baseUrl: 'https://virginia.monochrome.tf',
-		weight: 5,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-frankfurt',
-		baseUrl: 'https://frankfurt.monochrome.tf',
-		weight: 5,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
-		name: 'monochrome-tokyo',
-		baseUrl: 'https://tokyo.monochrome.tf',
-		weight: 5,
 		requiresProxy: false,
 		category: 'auto-only'
 	}
