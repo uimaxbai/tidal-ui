@@ -50,13 +50,14 @@
 
 	let isPlaying = $state(false);
 	let enableAnimations = $state(true);
-	let performanceLevel = $state<'high' | 'medium' | 'low'>('high');
-	let backgroundEnabled = $state(true);
+	let performanceLevel = $state<'high' | 'medium' | 'low'>(get(effectivePerformanceLevel));
+	let backgroundEnabled = $state(performanceLevel !== 'low');
 	let requestToken = 0;
 	let latestState: PlayerStateShape = { currentTrack: null, isPlaying: false };
 	let currentCoverUrl: string | null = null;
 	let retryAttempts = 0;
 	let canvasVisible = $state(false);
+	let webglListenersAttached = false;
 
 	const MAX_RETRY_ATTEMPTS = 3;
 	const RETRY_DELAY_MS = 600;
@@ -372,24 +373,28 @@
 		initializeCellStates(gl);
 
 		// Setup context loss handlers
-		webglCanvas.addEventListener('webglcontextlost', (event) => {
-			event.preventDefault();
-			if (globalAnimationId !== null) {
-				cancelAnimationFrame(globalAnimationId);
-				globalAnimationId = null;
-			}
-			gl = null;
-			glProgram = null;
-			updateStateProgram = null;
-			blurProgram = null;
-		});
+		if (!webglListenersAttached) {
+			webglCanvas.addEventListener('webglcontextlost', (event) => {
+				event.preventDefault();
+				if (globalAnimationId !== null) {
+					cancelAnimationFrame(globalAnimationId);
+					globalAnimationId = null;
+				}
+				gl = null;
+				glProgram = null;
+				updateStateProgram = null;
+				blurProgram = null;
+			});
 
-		webglCanvas.addEventListener('webglcontextrestored', () => {
-			initWebGL();
-			if (currentTargetMasterPalette.length > 0) {
-				updatePaletteTexture(previousMasterPalette, currentTargetMasterPalette);
-			}
-		});
+			webglCanvas.addEventListener('webglcontextrestored', () => {
+				initWebGL();
+				if (currentTargetMasterPalette.length > 0) {
+					updatePaletteTexture(previousMasterPalette, currentTargetMasterPalette);
+				}
+			});
+			
+			webglListenersAttached = true;
+		}
 
 		return true;
 	};
@@ -691,11 +696,13 @@
 	onMount(() => {
 		if (!browser) return;
 		
-		// Initialize WebGL
-		if (!initWebGL()) {
-			console.warn('Failed to initialize WebGL');
-			backgroundEnabled = false;
-			return;
+		// Initialize WebGL only if not in low performance mode
+		if (performanceLevel !== 'low') {
+			if (!initWebGL()) {
+				console.warn('Failed to initialize WebGL');
+				backgroundEnabled = false;
+				// Don't return here, continue setup
+			}
 		}
 		
 		// Setup intersection observer for visibility
@@ -730,11 +737,23 @@
 				currentCoverUrl = null;
 				retryAttempts = 0;
 				stopAnimation();
-			} else if (previousLevel === 'low' && latestState?.currentTrack) {
-				lastProcessedCover = null;
-				currentCoverUrl = null;
-				retryAttempts = 0;
-				updateFromTrack(latestState);
+				
+				// Release WebGL context to free resources
+				if (gl) {
+					gl.getExtension('WEBGL_lose_context')?.loseContext();
+				}
+			} else if (previousLevel === 'low') {
+				// Re-initialize WebGL if needed
+				if (!gl) {
+					initWebGL();
+				}
+				
+				if (latestState?.currentTrack) {
+					lastProcessedCover = null;
+					currentCoverUrl = null;
+					retryAttempts = 0;
+					updateFromTrack(latestState);
+				}
 			}
 		});
 		
