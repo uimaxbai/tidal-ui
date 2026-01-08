@@ -172,34 +172,30 @@
 	}
 </script>
 
-<div class="w-full">
+<div class="track-list">
 	{#if tracks.length === 0}
-		<div class="py-12 text-center text-gray-400">
+		<div class="track-list__empty">
 			<p>No tracks available</p>
 		</div>
 	{:else}
-		<div class="space-y-1">
+		<div class="track-list__items">
 			{#each tracks as track, index}
 				<div
-					class="track-glass group flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors {isCurrentTrack(
-						track
-					)
-						? 'bg-blue-900/20 border-blue-500/30'
-						: 'hover:brightness-110'}"
+					class="track-row {isCurrentTrack(track) ? 'track-row--active' : ''}"
 				>
 					<!-- Track Number / Play Button -->
 					<button
 						onclick={() => handlePlayTrack(track, index)}
-						class="flex w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
+						class="track-row__play-btn touch-target"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>
 						{#if isPlaying(track)}
-							<Pause size={16} class="text-blue-500" />
+							<Pause size={18} class="track-row__icon--active" />
 						{:else if isCurrentTrack(track)}
-							<Play size={16} class="text-blue-500" />
+							<Play size={18} class="track-row__icon--active" />
 						{:else}
-							<span class="text-sm text-gray-400 group-hover:hidden">{formatTrackNumber(track)}</span>
-							<Play size={16} class="hidden text-white group-hover:block" />
+							<span class="track-row__number">{formatTrackNumber(track)}</span>
+							<Play size={18} class="track-row__icon--hover" />
 						{/if}
 					</button>
 
@@ -208,22 +204,21 @@
 						<img
 							src={losslessAPI.getCoverUrl(track.album.cover, '320')}
 							alt={track.title}
-							class="h-16 w-16 flex-shrink-0 rounded object-cover"
+							class="track-row__cover"
+							loading="lazy"
 						/>
 					{/if}
 
 					<!-- Track Info -->
-					<div class="min-w-0 flex-1">
+					<div class="track-row__info">
 						<button
 							onclick={() => handlePlayTrack(track, index)}
-							class="truncate font-medium text-left w-full {isCurrentTrack(track)
-								? 'text-blue-500'
-								: 'text-white group-hover:text-blue-400'}"
+							class="track-row__title {isCurrentTrack(track) ? 'track-row__title--active' : ''}"
 						>
 							{track.title}
 							{#if track.explicit}
 								<svg
-									class="inline h-4 w-4 flex-shrink-0 align-middle"
+									class="track-row__explicit"
 									xmlns="http://www.w3.org/2000/svg"
 									fill="currentColor"
 									height="24"
@@ -237,45 +232,45 @@
 								>
 							{/if}
 						</button>
-						<div class="flex items-center gap-2 text-sm text-gray-400">
+						<div class="track-row__meta">
 							{#if showArtist}
-								<span class="truncate">{formatArtists(track.artists)}</span>
+								<span class="track-row__artist">{formatArtists(track.artists)}</span>
 							{/if}
 							{#if showAlbum && showArtist}
-								<span>•</span>
+								<span class="track-row__sep">•</span>
 							{/if}
 							{#if showAlbum}
-								<span class="truncate">{track.album.title}</span>
+								<span class="track-row__album">{track.album.title}</span>
 							{/if}
 						</div>
-						<div class="mt-0.5 text-xs text-gray-500">
-							{#if getDisplayTags(track.mediaMetadata?.tags).length > 0}
+						{#if getDisplayTags(track.mediaMetadata?.tags).length > 0}
+							<div class="track-row__tags">
 								• {getDisplayTags(track.mediaMetadata?.tags).join(', ')}
-							{/if}
-						</div>
+							</div>
+						{/if}
 					</div>
 
 					<!-- Actions -->
-					<div class="flex flex-shrink-0 items-center gap-2">
+					<div class="track-row__actions">
 						<button
 							onclick={(event) => handlePlayNext(track, event)}
-							class="p-2 text-gray-400 transition-colors hover:text-white"
+							class="track-row__action-btn touch-target"
 							title="Play next"
 							aria-label={`Play ${track.title} next`}
 						>
-							<ListPlus size={18} />
+							<ListPlus size={20} />
 						</button>
 						<button
 							onclick={(event) => handleAddToQueue(track, event)}
-							class="p-2 text-gray-400 transition-colors hover:text-white"
+							class="track-row__action-btn touch-target"
 							title="Add to queue"
 							aria-label={`Add ${track.title} to queue`}
 						>
-							<Plus size={18} />
+							<Plus size={20} />
 						</button>
 						
-						<div class="text-gray-400 hover:text-white">
-							<ShareButton type="track" id={track.id} iconOnly size={18} title="Share track" />
+						<div class="track-row__action-btn">
+							<ShareButton type="track" id={track.id} iconOnly size={20} title="Share track" />
 						</div>
 
 						<button
@@ -283,31 +278,28 @@
 								downloadingIds.has(track.id)
 									? handleCancelDownload(track.id, e)
 									: handleDownload(track, e)}
-							class="p-2 text-gray-400 transition-colors hover:text-white"
+							class="track-row__action-btn touch-target"
 							aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
 							title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
 							aria-busy={downloadingIds.has(track.id)}
-							aria-pressed={downloadingIds.has(track.id)}
 						>
 							{#if downloadingIds.has(track.id)}
-								<span class="flex h-4 w-4 items-center justify-center">
+								<span class="track-row__spinner">
 									{#if cancelledIds.has(track.id)}
-										<X size={14} />
+										<X size={16} />
 									{:else}
-										<span
-											class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-										></span>
+										<span class="track-row__loading"></span>
 									{/if}
 								</span>
 							{:else if cancelledIds.has(track.id)}
-								<X size={18} />
+								<X size={20} />
 							{:else}
-								<Download size={18} />
+								<Download size={20} />
 							{/if}
 						</button>
 
 						<!-- Duration -->
-						<div class="flex w-16 items-center justify-end gap-1 text-sm text-gray-400">
+						<div class="track-row__duration">
 							<Clock size={14} />
 							{losslessAPI.formatDuration(track.duration)}
 						</div>
@@ -319,18 +311,262 @@
 </div>
 
 <style>
-	.track-glass {
-		background: var(--surface-color, rgba(15, 23, 42, 0.55));
-		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.12));
-		backdrop-filter: blur(24px) saturate(150%);
-		-webkit-backdrop-filter: blur(24px) saturate(150%);
-		box-shadow: 
-			0 4px 12px rgba(2, 6, 23, 0.25),
-			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+	.track-list {
+		width: 100%;
+		contain: content;
+	}
+
+	.track-list__empty {
+		padding: var(--space-12, 3rem) 0;
+		text-align: center;
+		color: rgba(148, 163, 184, 0.8);
+	}
+
+	.track-list__items {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1, 0.25rem);
+	}
+
+	/* Track Row - Performance optimized (no backdrop-filter) */
+	.track-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3, 0.75rem);
+		padding: var(--space-3, 0.75rem);
+		border-radius: var(--radius-lg, 0.75rem);
+		background: rgba(15, 23, 42, 0.4);
+		border: 1px solid rgba(148, 163, 184, 0.08);
 		transition: 
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease,
-			filter 0.2s ease;
+			background var(--transition-fast, 150ms ease),
+			border-color var(--transition-fast, 150ms ease);
+		contain: layout style;
+	}
+
+	.track-row:hover {
+		background: rgba(30, 41, 59, 0.6);
+		border-color: rgba(148, 163, 184, 0.15);
+	}
+
+	.track-row--active {
+		background: rgba(59, 130, 246, 0.12);
+		border-color: rgba(59, 130, 246, 0.25);
+		border-left: 3px solid rgba(59, 130, 246, 0.8);
+	}
+
+	/* Play Button */
+	.track-row__play-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		flex-shrink: 0;
+		background: none;
+		border: none;
+		color: inherit;
+		border-radius: var(--radius-md, 0.5rem);
+		transition: background var(--transition-fast, 150ms ease);
+	}
+
+	.track-row__play-btn:hover {
+		background: rgba(148, 163, 184, 0.1);
+	}
+
+	.track-row__number {
+		font-size: 0.875rem;
+		color: rgba(148, 163, 184, 0.7);
+	}
+
+	.track-row__icon--hover {
+		display: none;
+		color: #f8fafc;
+	}
+
+	.track-row__icon--active {
+		color: #3b82f6;
+	}
+
+	.track-row:hover .track-row__number {
+		display: none;
+	}
+
+	.track-row:hover .track-row__icon--hover {
+		display: block;
+	}
+
+	/* Cover */
+	.track-row__cover {
+		width: 3.5rem;
+		height: 3.5rem;
+		flex-shrink: 0;
+		border-radius: var(--radius-md, 0.5rem);
+		object-fit: cover;
+	}
+
+	/* Track Info */
+	.track-row__info {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1, 0.25rem);
+		overflow: hidden;
+	}
+
+	.track-row__title {
+		display: block;
+		font-weight: 500;
+		font-size: 0.9375rem;
+		color: #f1f5f9;
+		background: none;
+		border: none;
+		text-align: left;
+		width: 100%;
+		padding: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		transition: color var(--transition-fast, 150ms ease);
+		cursor: pointer;
+	}
+
+	.track-row:hover .track-row__title {
+		color: #60a5fa;
+	}
+
+	.track-row__title--active {
+		color: #3b82f6;
+	}
+
+	.track-row__explicit {
+		width: 1rem;
+		height: 1rem;
+		flex-shrink: 0;
+		opacity: 0.6;
+	}
+
+	.track-row__meta {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2, 0.5rem);
+		font-size: 0.8125rem;
+		color: rgba(148, 163, 184, 0.8);
+		overflow: hidden;
+	}
+
+	.track-row__artist,
+	.track-row__album {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 45%;
+	}
+
+	.track-row__sep {
+		flex-shrink: 0;
+	}
+
+	.track-row__tags {
+		font-size: 0.75rem;
+		color: rgba(100, 116, 139, 0.8);
+	}
+
+	/* Actions */
+	.track-row__actions {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1, 0.25rem);
+		flex-shrink: 0;
+	}
+
+	.track-row__action-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		border-radius: var(--radius-md, 0.5rem);
+		background: none;
+		border: none;
+		color: rgba(148, 163, 184, 0.7);
+		transition: 
+			color var(--transition-fast, 150ms ease),
+			background var(--transition-fast, 150ms ease);
+	}
+
+	.track-row__action-btn:hover {
+		color: #f8fafc;
+		background: rgba(148, 163, 184, 0.1);
+	}
+
+	.track-row__spinner {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+	}
+
+	.track-row__loading {
+		width: 1rem;
+		height: 1rem;
+		border: 2px solid currentColor;
+		border-top-color: transparent;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.track-row__duration {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1, 0.25rem);
+		width: 4rem;
+		justify-content: flex-end;
+		font-size: 0.8125rem;
+		color: rgba(148, 163, 184, 0.7);
+	}
+
+	/* Mobile optimizations */
+	@media (max-width: 640px) {
+		.track-row {
+			padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+		}
+
+		.track-row__cover {
+			width: 2.75rem;
+			height: 2.75rem;
+		}
+
+		.track-row__title {
+			font-size: 0.875rem;
+		}
+
+		.track-row__meta {
+			font-size: 0.75rem;
+		}
+
+		/* Hide less important actions on mobile */
+		.track-row__action-btn:nth-child(1),
+		.track-row__action-btn:nth-child(2) {
+			display: none;
+		}
+
+		.track-row__duration {
+			width: auto;
+			font-size: 0.75rem;
+		}
+	}
+
+	/* Touch device active state */
+	@media (pointer: coarse) {
+		.track-row:active {
+			background: rgba(59, 130, 246, 0.15);
+		}
 	}
 </style>
+

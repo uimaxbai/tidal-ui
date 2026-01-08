@@ -36,13 +36,6 @@ const V2_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'binimum-2',
-		baseUrl: 'https://tidal-api-2.binimum.org',
-		weight: 10,
-		requiresProxy: false,
-		category: 'auto-only'
-	},
-	{
 		name: 'hund',
 		baseUrl: 'https://hund.qqdl.site',
 		weight: 15,
@@ -79,9 +72,7 @@ const V2_API_TARGETS = [
 	}
 ] satisfies ApiClusterTarget[];
 
-const ALL_API_TARGETS = [
-	...V2_API_TARGETS
-] satisfies ApiClusterTarget[];
+const ALL_API_TARGETS = [...V2_API_TARGETS] satisfies ApiClusterTarget[];
 const US_API_TARGETS = [] satisfies ApiClusterTarget[];
 const TARGET_COLLECTIONS: Record<RegionPreference, ApiClusterTarget[]> = {
 	auto: [...ALL_API_TARGETS],
@@ -412,7 +403,11 @@ function isV2Target(target: ApiClusterTarget): boolean {
  */
 export async function fetchWithCORS(
 	url: string,
-	options?: RequestInit & { apiVersion?: 'v1' | 'v2'; preferredQuality?: string }
+	options?: RequestInit & {
+		apiVersion?: 'v1' | 'v2';
+		preferredQuality?: string;
+		validateResponse?: (res: Response) => Promise<boolean>;
+	}
 ): Promise<Response> {
 	const resolvedUrl = resolveUrl(url);
 	if (!resolvedUrl) {
@@ -464,6 +459,7 @@ export async function fetchWithCORS(
 	let lastError: unknown = null;
 	let lastResponse: Response | null = null;
 	let lastUnexpectedResponse: Response | null = null;
+	let lastValidButRejectedResponse: Response | null = null;
 
 	for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
 		const target = uniqueTargets[attempt % uniqueTargets.length];
@@ -510,6 +506,13 @@ export async function fetchWithCORS(
 			if (response.ok) {
 				const unexpected = await isUnexpectedProxyResponse(response);
 				if (!unexpected) {
+					if (options?.validateResponse) {
+						const isValid = await options.validateResponse(response.clone());
+						if (!isValid) {
+							lastValidButRejectedResponse = response;
+							continue;
+						}
+					}
 					return response;
 				}
 				lastUnexpectedResponse = response;
@@ -523,6 +526,10 @@ export async function fetchWithCORS(
 				continue;
 			}
 		}
+	}
+
+	if (lastValidButRejectedResponse) {
+		return lastValidButRejectedResponse;
 	}
 
 	if (lastUnexpectedResponse) {

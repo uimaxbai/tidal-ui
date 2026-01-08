@@ -21,6 +21,26 @@ const DEFAULT_STATE: UserPreferencesState = {
 	performanceMode: 'medium'
 };
 
+/**
+ * Detect if the user is on a mobile/touch device for initial performance setting
+ */
+function detectIsMobileDevice(): boolean {
+	if (!browser) return false;
+
+	// Check for touch capability
+	const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+	// Check screen size (typical mobile breakpoint)
+	const isSmallScreen = window.innerWidth <= 768;
+
+	// Check for mobile user agent patterns
+	const mobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+		navigator.userAgent
+	);
+
+	return hasTouch && (isSmallScreen || mobileUA);
+}
+
 function parseStoredPreferences(raw: string | null): UserPreferencesState {
 	if (!raw) {
 		return DEFAULT_STATE;
@@ -59,8 +79,31 @@ const readInitialPreferences = (): UserPreferencesState => {
 	if (!browser) {
 		return DEFAULT_STATE;
 	}
+
 	try {
-		return parseStoredPreferences(localStorage.getItem(STORAGE_KEY));
+		const storedRaw = localStorage.getItem(STORAGE_KEY);
+
+		// If no stored preferences, detect mobile and set appropriate defaults
+		if (!storedRaw) {
+			const isMobile = detectIsMobileDevice();
+			const initialState: UserPreferencesState = {
+				...DEFAULT_STATE,
+				// Mobile devices default to 'medium' performance (already default)
+				// Could set to 'low' for very resource-constrained devices if needed
+				performanceMode: isMobile ? 'medium' : 'medium'
+			};
+
+			// Persist the initial preferences so this detection only runs once
+			try {
+				localStorage.setItem(STORAGE_KEY, JSON.stringify(initialState));
+			} catch {
+				// Ignore storage errors
+			}
+
+			return initialState;
+		}
+
+		return parseStoredPreferences(storedRaw);
 	} catch (error) {
 		console.warn('Unable to read user preferences from storage', error);
 		return DEFAULT_STATE;

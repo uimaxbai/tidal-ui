@@ -798,19 +798,20 @@
 	}
 
 	.glass-panel {
-		background: transparent;
-		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.2));
-		border-radius: 18px;
+		background: rgba(15, 23, 42, 0.45);
+		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.15));
+		border-radius: var(--radius-2xl, 1.25rem);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow:
-			0 20px 50px rgba(2, 6, 23, 0.35),
-			0 3px 12px rgba(15, 23, 42, 0.25),
-			inset 0 1px 0 rgba(255, 255, 255, 0.06),
-			inset 0 0 40px rgba(255, 255, 255, 0.015);
+			0 25px 60px rgba(2, 6, 23, 0.4),
+			0 4px 16px rgba(15, 23, 42, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.08),
+			inset 0 0 60px rgba(255, 255, 255, 0.02);
 		transition: 
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease;
+			border-color 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+			box-shadow var(--transition-slow, 0.3s ease),
+			transform var(--transition-base, 0.2s ease);
 	}
 
 	.app-header {
@@ -854,13 +855,18 @@
 	.brand__title {
 		font-size: clamp(1.4rem, 2.2vw, 1.9rem);
 		margin: 0;
+		background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
 	}
 
 	.brand__subtitle {
 		margin: 0.15rem 0 0;
 		font-size: 0.72rem;
-		color: rgba(241, 245, 249, 0.6);
-		font-weight: normal;
+		color: rgba(148, 163, 184, 0.7);
+		font-weight: 400;
+		letter-spacing: 0.02em;
 	}
 
 	.toolbar {
@@ -885,9 +891,11 @@
 	}
 
 	.toolbar-icon:hover {
-		transform: translateY(-1px);
-		border-color: rgba(148, 163, 184, 0.38);
-		box-shadow: 0 8px 24px rgba(8, 11, 19, 0.3);
+		transform: translateY(-2px);
+		border-color: rgba(148, 163, 184, 0.4);
+		box-shadow: 
+			0 8px 24px rgba(8, 11, 19, 0.35),
+			0 0 20px rgba(59, 130, 246, 0.1);
 	}
 
 	.toolbar-icon__svg {

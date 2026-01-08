@@ -148,29 +148,27 @@
 		</div>
 	</div>
 {:else if album}
-	<div class="space-y-6 pb-32 lg:pb-40">
+	<div class="album-page">
 		<!-- Back Button -->
 		<button
 			onclick={() => window.history.back()}
-			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
+			class="back-btn"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
 		<!-- Album Header -->
-		<div class="flex flex-col gap-8 md:flex-row">
+		<div class="album-header">
 			<!-- Album Cover -->
 			{#if album.videoCover || album.cover}
-				<div
-					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-80"
-				>
+				<div class="album-cover-wrapper">
 					{#if album.videoCover}
 						<video
 							src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
 							poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
 							aria-label={album.title}
-							class="h-full w-full object-cover"
+							class="album-cover"
 							autoplay
 							loop
 							muted
@@ -181,20 +179,20 @@
 						<img
 							src={losslessAPI.getCoverUrl(album.cover!, '640')}
 							alt={album.title}
-							class="h-full w-full object-cover"
+							class="album-cover"
 						/>
 					{/if}
 				</div>
 			{/if}
 
 			<!-- Album Info -->
-			<div class="flex flex-1 flex-col justify-end">
-				<p class="mb-2 text-sm text-gray-400">ALBUM</p>
-				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{album.title}</h1>
-				<div class="mb-4 flex items-center gap-1">
+			<div class="album-info">
+				<span class="album-type">ALBUM</span>
+				<h1 class="album-title">{album.title}</h1>
+				<div class="album-artist-row">
 					{#if album.explicit}
 						<svg
-							class="inline h-4 w-4 flex-shrink-0 align-middle"
+							class="explicit-badge"
 							xmlns="http://www.w3.org/2000/svg"
 							fill="currentColor"
 							height="24"
@@ -211,67 +209,58 @@
 						<a
 							href={`/artist/${album.artist.id}`}
 							data-sveltekit-preload-data
-							class="text-left text-xl text-gray-300 hover:text-white hover:underline"
+							class="artist-link"
 						>
 							{album.artist.name}
 						</a>
 					{/if}
 				</div>
 
-				<div class="mb-6 flex flex-wrap items-center gap-4 text-sm text-gray-400">
+				<div class="album-meta">
 					{#if album.releaseDate}
-						<div class="flex items-center gap-1">
+						<div class="meta-badge">
 							<Calendar size={16} />
 							{new Date(album.releaseDate).getFullYear()}
 						</div>
 					{/if}
 					{#if tracks.length > 0 || album.numberOfTracks}
-						<div class="flex items-center gap-1">
+						<div class="meta-badge">
 							<Disc size={16} />
 							{tracks.length || album.numberOfTracks} tracks
 						</div>
 					{/if}
 					{#if totalDuration > 0}
-						<div class="flex items-center gap-1">
+						<div class="meta-badge">
 							<Clock size={16} />
 							{losslessAPI.formatDuration(totalDuration)} total
 						</div>
 					{/if}
-					<!--
-					{#if album.audioQuality}
-						<div class="rounded bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400">
-							{album.audioQuality}
-						</div>
-					{/if}
-					-->
 					{#if album.mediaMetadata?.tags}
 						{#each album.mediaMetadata.tags as tag}
-							<div class="rounded bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400">
-								{tag}
-							</div>
+							<span class="tag-badge">{tag}</span>
 						{/each}
 					{/if}
 				</div>
 
 				{#if tracks.length > 0}
-					<div class="flex flex-wrap items-center gap-3">
+					<div class="action-buttons">
 						<button
 							onclick={handlePlayAll}
-							class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
+							class="btn btn--primary"
 						>
 							<Play size={20} fill="currentColor" />
 							Play All
 						</button>
 						<button
 							onclick={handleShufflePlay}
-							class="flex items-center gap-2 rounded-full border border-purple-400/50 px-6 py-3 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-300 hover:text-purple-100"
+							class="btn btn--accent"
 						>
 							<Shuffle size={18} />
 							Shuffle Play
 						</button>
 						<button
 							onclick={handleDownloadAll}
-							class="flex items-center gap-2 rounded-full border border-blue-400/40 px-6 py-3 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+							class="btn btn--secondary"
 							disabled={isDownloadingAll}
 						>
 							<Download size={18} />
@@ -282,18 +271,18 @@
 						<ShareButton type="album" id={album.id} variant="secondary" />
 					</div>
 					{#if downloadError}
-						<p class="mt-2 text-sm text-red-400">{downloadError}</p>
+						<p class="download-error">{downloadError}</p>
 					{/if}
 				{/if}
 			</div>
 		</div>
 
 		<!-- Tracks -->
-		<div class="mt-8 space-y-4">
-			<h2 class="text-2xl font-bold">Tracks</h2>
+		<div class="tracks-section">
+			<h2 class="section-title">Tracks</h2>
 			<TrackList {tracks} showAlbum={false} />
 			{#if tracks.length === 0}
-				<div class="rounded-lg border border-yellow-900 bg-yellow-900/20 p-6 text-yellow-300">
+				<div class="warning-box">
 					<p>
 						We couldn't find tracks for this album. Try refreshing or searching for individual
 						songs.
@@ -301,8 +290,278 @@
 				</div>
 			{/if}
 			{#if album.copyright}
-				<p class="pt-2 text-xs text-gray-500">{album.copyright}</p>
+				<p class="copyright">{album.copyright}</p>
 			{/if}
 		</div>
 	</div>
 {/if}
+
+<style>
+	.album-page {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-6, 1.5rem);
+		padding-bottom: 8rem;
+	}
+
+	@media (min-width: 1024px) {
+		.album-page {
+			padding-bottom: 10rem;
+		}
+	}
+
+	.back-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2, 0.5rem);
+		color: rgba(148, 163, 184, 0.8);
+		font-size: 0.875rem;
+		font-weight: 500;
+		background: none;
+		border: none;
+		padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+		margin-left: calc(-1 * var(--space-3, 0.75rem));
+		border-radius: var(--radius-lg, 0.75rem);
+		transition: color var(--transition-fast, 150ms ease), background var(--transition-fast, 150ms ease);
+	}
+
+	.back-btn:hover {
+		color: #f8fafc;
+		background: rgba(148, 163, 184, 0.1);
+	}
+
+	.album-header {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-8, 2rem);
+	}
+
+	@media (min-width: 768px) {
+		.album-header {
+			flex-direction: row;
+		}
+	}
+
+	.album-cover-wrapper {
+		flex-shrink: 0;
+		width: 100%;
+		max-width: 20rem;
+		aspect-ratio: 1;
+		border-radius: var(--radius-xl, 1rem);
+		overflow: hidden;
+		box-shadow: 
+			0 25px 80px rgba(0, 0, 0, 0.4),
+			0 10px 30px rgba(0, 0, 0, 0.3);
+		transition: transform var(--transition-slow, 300ms ease), box-shadow var(--transition-slow, 300ms ease);
+	}
+
+	.album-cover-wrapper:hover {
+		transform: scale(1.02) translateY(-4px);
+		box-shadow: 
+			0 35px 100px rgba(0, 0, 0, 0.5),
+			0 15px 40px rgba(0, 0, 0, 0.35),
+			0 0 60px rgba(59, 130, 246, 0.1);
+	}
+
+	.album-cover {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.album-info {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+	}
+
+	.album-type {
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		color: rgba(148, 163, 184, 0.7);
+		margin-bottom: var(--space-2, 0.5rem);
+	}
+
+	.album-title {
+		font-size: clamp(2rem, 5vw, 3.5rem);
+		font-weight: 700;
+		line-height: 1.1;
+		margin: 0 0 var(--space-4, 1rem);
+		background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+	}
+
+	.album-artist-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2, 0.5rem);
+		margin-bottom: var(--space-4, 1rem);
+	}
+
+	.explicit-badge {
+		width: 1rem;
+		height: 1rem;
+		flex-shrink: 0;
+		color: rgba(148, 163, 184, 0.7);
+	}
+
+	.artist-link {
+		font-size: 1.25rem;
+		color: rgba(203, 213, 225, 0.95);
+		text-decoration: none;
+		transition: color var(--transition-fast, 150ms ease);
+	}
+
+	.artist-link:hover {
+		color: #f8fafc;
+		text-decoration: underline;
+	}
+
+	.album-meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-3, 0.75rem);
+		margin-bottom: var(--space-6, 1.5rem);
+	}
+
+	.meta-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1, 0.25rem);
+		font-size: 0.875rem;
+		color: rgba(148, 163, 184, 0.8);
+	}
+
+	.tag-badge {
+		font-size: 0.75rem;
+		font-weight: 600;
+		padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+		border-radius: var(--radius-md, 0.5rem);
+		background: rgba(59, 130, 246, 0.15);
+		border: 1px solid rgba(59, 130, 246, 0.25);
+		color: rgba(147, 197, 253, 0.95);
+	}
+
+	.action-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-3, 0.75rem);
+	}
+
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2, 0.5rem);
+		padding: var(--space-3, 0.75rem) var(--space-5, 1.25rem);
+		font-size: 0.875rem;
+		font-weight: 600;
+		border-radius: var(--radius-full, 9999px);
+		border: none;
+		cursor: pointer;
+		transition: 
+			transform var(--transition-fast, 150ms ease),
+			box-shadow var(--transition-base, 200ms ease),
+			background var(--transition-base, 200ms ease),
+			border-color var(--transition-base, 200ms ease);
+	}
+
+	.btn:hover:not(:disabled) {
+		transform: translateY(-2px);
+	}
+
+	.btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.btn--primary {
+		background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+		color: white;
+		box-shadow: 0 4px 15px rgba(59, 130, 246, 0.35);
+	}
+
+	.btn--primary:hover:not(:disabled) {
+		box-shadow: 0 8px 25px rgba(59, 130, 246, 0.45);
+	}
+
+	.btn--accent {
+		background: transparent;
+		border: 1px solid rgba(167, 139, 250, 0.5);
+		color: rgba(196, 181, 253, 0.95);
+	}
+
+	.btn--accent:hover:not(:disabled) {
+		border-color: rgba(167, 139, 250, 0.7);
+		color: rgba(221, 214, 254, 1);
+		box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+	}
+
+	.btn--secondary {
+		background: transparent;
+		border: 1px solid rgba(96, 165, 250, 0.4);
+		color: rgba(147, 197, 253, 0.95);
+	}
+
+	.btn--secondary:hover:not(:disabled) {
+		border-color: rgba(96, 165, 250, 0.6);
+		color: rgba(191, 219, 254, 1);
+		box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+	}
+
+	.download-error {
+		margin-top: var(--space-2, 0.5rem);
+		font-size: 0.875rem;
+		color: rgba(248, 113, 113, 0.9);
+	}
+
+	.tracks-section {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4, 1rem);
+		margin-top: var(--space-4, 1rem);
+	}
+
+	.section-title {
+		font-size: 1.5rem;
+		font-weight: 700;
+		margin: 0;
+		color: #f8fafc;
+	}
+
+	.warning-box {
+		padding: var(--space-6, 1.5rem);
+		border-radius: var(--radius-lg, 0.75rem);
+		background: rgba(161, 98, 7, 0.15);
+		border: 1px solid rgba(161, 98, 7, 0.3);
+		color: rgba(253, 224, 71, 0.9);
+	}
+
+	.warning-box p {
+		margin: 0;
+	}
+
+	.copyright {
+		margin: var(--space-2, 0.5rem) 0 0;
+		font-size: 0.75rem;
+		color: rgba(100, 116, 139, 0.7);
+	}
+
+	/* Mobile adjustments */
+	@media (max-width: 767px) {
+		.album-cover-wrapper {
+			max-width: 100%;
+			margin: 0 auto;
+		}
+
+		.action-buttons {
+			justify-content: center;
+		}
+	}
+</style>
+

@@ -34,13 +34,13 @@ export type DashManifestResult =
 			kind: 'dash';
 			manifest: string;
 			contentType: string | null;
-		}
+	  }
 	| {
 			kind: 'flac';
 			manifestText: string;
 			urls: string[];
 			contentType: string | null;
-		};
+	  };
 
 export interface DashManifestWithMetadata {
 	result: DashManifestResult;
@@ -311,7 +311,9 @@ class LosslessAPI {
 
 	private isXmlContentType(contentType: string | null): boolean {
 		if (!contentType) return false;
-		return /(application|text)\/(?:.+\+)?xml/i.test(contentType) || /dash\+xml|mpd/i.test(contentType);
+		return (
+			/(application|text)\/(?:.+\+)?xml/i.test(contentType) || /dash\+xml|mpd/i.test(contentType)
+		);
 	}
 
 	private isJsonContentType(contentType: string | null): boolean {
@@ -343,7 +345,7 @@ class LosslessAPI {
 			payload &&
 			typeof payload === 'object' &&
 			'version' in (payload as Record<string, unknown>) &&
-			(payload as { version?: unknown }).version === '2.0'
+			String((payload as { version?: unknown }).version).startsWith('2.')
 		);
 	}
 
@@ -399,7 +401,10 @@ class LosslessAPI {
 		return undefined;
 	}
 
-	private async fetchTrackMetadata(trackId: number, apiVersion: 'v1' | 'v2' = 'v2'): Promise<Track> {
+	private async fetchTrackMetadata(
+		trackId: number,
+		apiVersion: 'v1' | 'v2' = 'v2'
+	): Promise<Track> {
 		const response = await this.fetch(`${this.baseUrl}/info/?id=${trackId}`, { apiVersion });
 		this.ensureNotRateLimited(response);
 		if (!response.ok) {
@@ -429,12 +434,10 @@ class LosslessAPI {
 			manifestHash: typeof data.manifestHash === 'string' ? data.manifestHash : undefined,
 			assetPresentation:
 				typeof data.assetPresentation === 'string' ? data.assetPresentation : 'FULL',
-			albumReplayGain:
-				typeof data.albumReplayGain === 'number' ? data.albumReplayGain : undefined,
+			albumReplayGain: typeof data.albumReplayGain === 'number' ? data.albumReplayGain : undefined,
 			albumPeakAmplitude:
 				typeof data.albumPeakAmplitude === 'number' ? data.albumPeakAmplitude : undefined,
-			trackReplayGain:
-				typeof data.trackReplayGain === 'number' ? data.trackReplayGain : undefined,
+			trackReplayGain: typeof data.trackReplayGain === 'number' ? data.trackReplayGain : undefined,
 			trackPeakAmplitude:
 				typeof data.trackPeakAmplitude === 'number' ? data.trackPeakAmplitude : undefined,
 			bitDepth: typeof data.bitDepth === 'number' ? data.bitDepth : undefined,
@@ -474,7 +477,10 @@ class LosslessAPI {
 	private buildDashManifestResult(payload: string, contentType: string | null): DashManifestResult {
 		const manifestText = this.decodeBase64Manifest(payload);
 
-		if (this.isXmlContentType(contentType) || this.isDashManifestPayload(manifestText, contentType)) {
+		if (
+			this.isXmlContentType(contentType) ||
+			this.isDashManifestPayload(manifestText, contentType)
+		) {
 			return { kind: 'dash', manifest: manifestText, contentType };
 		}
 
@@ -517,9 +523,14 @@ class LosslessAPI {
 		if (normalized.includes('xmlschema')) return false;
 		if (normalized.includes('xmlns')) return false;
 		// Must look like a media URL (has extension or query params suggesting media)
-		if (normalized.includes('.flac') || normalized.includes('.mp4') || 
-		    normalized.includes('.m4a') || normalized.includes('.aac') ||
-		    normalized.includes('token=') || normalized.includes('/audio/')) {
+		if (
+			normalized.includes('.flac') ||
+			normalized.includes('.mp4') ||
+			normalized.includes('.m4a') ||
+			normalized.includes('.aac') ||
+			normalized.includes('token=') ||
+			normalized.includes('/audio/')
+		) {
 			return true;
 		}
 		// If it has a file-like path segment, it's likely valid
@@ -560,7 +571,9 @@ class LosslessAPI {
 		if (typeof DOMParser !== 'undefined') {
 			try {
 				const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
-				const baseUrls = Array.from(doc.getElementsByTagName('BaseURL')).map((n) => n.textContent?.trim() ?? '');
+				const baseUrls = Array.from(doc.getElementsByTagName('BaseURL')).map(
+					(n) => n.textContent?.trim() ?? ''
+				);
 				if (baseUrls.length > 0) {
 					const best = pickBest(baseUrls);
 					if (best) return best;
@@ -569,7 +582,9 @@ class LosslessAPI {
 				const reps = Array.from(doc.getElementsByTagName('Representation'));
 				for (const rep of reps) {
 					const codecs = rep.getAttribute('codecs')?.toLowerCase() ?? '';
-					const base = Array.from(rep.getElementsByTagName('BaseURL')).map((n) => n.textContent?.trim() ?? '');
+					const base = Array.from(rep.getElementsByTagName('BaseURL')).map(
+						(n) => n.textContent?.trim() ?? ''
+					);
 					if (base.length > 0 && codecs.includes('flac')) {
 						const best = pickBest(base);
 						if (best) return best;
@@ -592,18 +607,14 @@ class LosslessAPI {
 		return null;
 	}
 
-	private parseMpdSegmentTemplate(
-		manifestText: string
-	):
-		| {
-				initializationUrl: string;
-				mediaUrlTemplate: string;
-				startNumber: number;
-				segmentTimeline: Array<{ duration: number; repeat: number }>;
-				baseUrl?: string;
-				codec?: string;
-			}
-		| null {
+	private parseMpdSegmentTemplate(manifestText: string): {
+		initializationUrl: string;
+		mediaUrlTemplate: string;
+		startNumber: number;
+		segmentTimeline: Array<{ duration: number; repeat: number }>;
+		baseUrl?: string;
+		codec?: string;
+	} | null {
 		const trimmed = manifestText.trim();
 		if (!trimmed) return null;
 
@@ -697,16 +708,14 @@ class LosslessAPI {
 	}
 
 	private buildMpdSegmentUrls(
-		template:
-			| {
-					initializationUrl: string;
-					mediaUrlTemplate: string;
-					startNumber: number;
-					segmentTimeline: Array<{ duration: number; repeat: number }>;
-					baseUrl?: string;
-					codec?: string;
-				}
-			| null
+		template: {
+			initializationUrl: string;
+			mediaUrlTemplate: string;
+			startNumber: number;
+			segmentTimeline: Array<{ duration: number; repeat: number }>;
+			baseUrl?: string;
+			codec?: string;
+		} | null
 	): { initializationUrl: string; segmentUrls: string[] } | null {
 		if (!template) return null;
 
@@ -725,7 +734,8 @@ class LosslessAPI {
 		const initializationUrl = resolveUrl(template.initializationUrl);
 		const segmentUrls: string[] = [];
 		let segmentNumber = template.startNumber;
-		const timeline = template.segmentTimeline.length > 0 ? template.segmentTimeline : [{ duration: 0, repeat: 0 }];
+		const timeline =
+			template.segmentTimeline.length > 0 ? template.segmentTimeline : [{ duration: 0, repeat: 0 }];
 
 		for (const entry of timeline) {
 			const repeat = Number.isFinite(entry.repeat) ? entry.repeat : 0;
@@ -778,7 +788,9 @@ class LosslessAPI {
 	private async resolveHiResStreamFromDash(trackId: number): Promise<string> {
 		const manifest = await this.getDashManifest(trackId, 'HI_RES_LOSSLESS');
 		if (manifest.kind === 'flac') {
-			const url = manifest.urls.find((candidate) => typeof candidate === 'string' && candidate.length > 0);
+			const url = manifest.urls.find(
+				(candidate) => typeof candidate === 'string' && candidate.length > 0
+			);
 			if (url) {
 				return url;
 			}
@@ -796,7 +808,11 @@ class LosslessAPI {
 	 */
 	private async fetch(
 		url: string,
-		options?: RequestInit & { apiVersion?: 'v1' | 'v2'; preferredQuality?: string }
+		options?: RequestInit & {
+			apiVersion?: 'v1' | 'v2';
+			preferredQuality?: string;
+			validateResponse?: (res: Response) => Promise<boolean>;
+		}
 	): Promise<Response> {
 		return fetchWithCORS(url, options);
 	}
@@ -821,7 +837,10 @@ class LosslessAPI {
 	/**
 	 * Search for artists
 	 */
-	async searchArtists(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Artist>> {
+	async searchArtists(
+		query: string,
+		region: RegionOption = 'auto'
+	): Promise<SearchResponse<Artist>> {
 		const response = await this.fetch(
 			this.buildRegionalUrl(`/search/?a=${encodeURIComponent(query)}`, region)
 		);
@@ -855,7 +874,10 @@ class LosslessAPI {
 	/**
 	 * Search for playlists
 	 */
-	async searchPlaylists(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Playlist>> {
+	async searchPlaylists(
+		query: string,
+		region: RegionOption = 'auto'
+	): Promise<SearchResponse<Playlist>> {
 		const response = await this.fetch(
 			this.buildRegionalUrl(`/search/?p=${encodeURIComponent(query)}`, region)
 		);
@@ -876,7 +898,9 @@ class LosslessAPI {
 		const parsed = parseTidalUrl(url);
 
 		if (parsed.type === 'unknown') {
-			throw new Error('Invalid Tidal URL. Please provide a valid track, album, artist, or playlist URL.');
+			throw new Error(
+				'Invalid Tidal URL. Please provide a valid track, album, artist, or playlist URL.'
+			);
 		}
 
 		switch (parsed.type) {
@@ -938,7 +962,18 @@ class LosslessAPI {
 		let lastError: Error | null = null;
 
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			const response = await this.fetch(url, { apiVersion: 'v2' });
+			const response = await this.fetch(url, {
+				apiVersion: 'v2',
+				validateResponse: async (res) => {
+					try {
+						const data = await res.json();
+						const container = (data?.data ?? data) as Record<string, unknown>;
+						return container?.assetPresentation !== 'PREVIEW';
+					} catch {
+						return true;
+					}
+				}
+			});
 			this.ensureNotRateLimited(response);
 			if (response.ok) {
 				const data = await response.json();
@@ -1068,7 +1103,7 @@ class LosslessAPI {
 							if (!i || typeof i !== 'object') return null;
 							const itemObj = i as { item?: unknown };
 							const t = (itemObj.item || itemObj) as Track;
-							
+
 							if (!t) return null;
 							// Ensure track has album reference
 							return this.prepareTrack({ ...t, album: albumEntry });
@@ -1433,7 +1468,12 @@ class LosslessAPI {
 	async getStreamData(
 		trackId: number,
 		quality: AudioQuality = 'LOSSLESS'
-	): Promise<{ url: string; replayGain: number | null; sampleRate: number | null; bitDepth: number | null }> {
+	): Promise<{
+		url: string;
+		replayGain: number | null;
+		sampleRate: number | null;
+		bitDepth: number | null;
+	}> {
 		let replayGain: number | null = null;
 		let sampleRate: number | null = null;
 		let bitDepth: number | null = null;
@@ -1602,9 +1642,17 @@ class LosslessAPI {
 		}
 
 		// Check for WebP magic bytes (52 49 46 46 ... 57 45 42 50)
-		if (data.length >= 12 &&
-		    data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
-		    data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50) {
+		if (
+			data.length >= 12 &&
+			data[0] === 0x52 &&
+			data[1] === 0x49 &&
+			data[2] === 0x46 &&
+			data[3] === 0x46 &&
+			data[8] === 0x57 &&
+			data[9] === 0x45 &&
+			data[10] === 0x42 &&
+			data[11] === 0x50
+		) {
 			return true;
 		}
 
@@ -1627,9 +1675,17 @@ class LosslessAPI {
 		}
 
 		// Check for WebP magic bytes (52 49 46 46 ... 57 45 42 50)
-		if (data.length >= 12 &&
-		    data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
-		    data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50) {
+		if (
+			data.length >= 12 &&
+			data[0] === 0x52 &&
+			data[1] === 0x49 &&
+			data[2] === 0x46 &&
+			data[3] === 0x46 &&
+			data[8] === 0x57 &&
+			data[9] === 0x45 &&
+			data[10] === 0x42 &&
+			data[11] === 0x50
+		) {
 			return { extension: 'webp', mimeType: 'image/webp' };
 		}
 
@@ -1641,7 +1697,8 @@ class LosslessAPI {
 		const { track } = lookup;
 		const album = track.album;
 		const mainArtist = formatArtistsForMetadata(track.artists);
-		const albumArtist = album?.artist?.name ??
+		const albumArtist =
+			album?.artist?.name ??
 			(album?.artists && album.artists.length > 0 ? album.artists[0]?.name : undefined) ??
 			track.artists?.[0]?.name;
 
@@ -1697,8 +1754,9 @@ class LosslessAPI {
 
 		// ReplayGain
 		if (lookup.info) {
-			const { trackReplayGain, trackPeakAmplitude, albumReplayGain, albumPeakAmplitude } = lookup.info;
-			
+			const { trackReplayGain, trackPeakAmplitude, albumReplayGain, albumPeakAmplitude } =
+				lookup.info;
+
 			if (trackReplayGain !== undefined && trackReplayGain !== null) {
 				entries.push(['REPLAYGAIN_TRACK_GAIN', `${trackReplayGain} dB`]);
 			}
@@ -1787,7 +1845,7 @@ class LosslessAPI {
 
 		let ffmpeg: Awaited<ReturnType<typeof ffmpegModule.getFFmpeg>>;
 		let progressHandler: ((data: { progress: number }) => void) | null = null;
-		
+
 		try {
 			const loadOptions: Parameters<typeof ffmpegModule.getFFmpeg>[0] = {
 				signal: options?.signal,
@@ -1806,7 +1864,7 @@ class LosslessAPI {
 				}
 			};
 			ffmpeg = await ffmpegModule.getFFmpeg(loadOptions);
-			
+
 			// Set up progress tracking for this specific job
 			progressHandler = ({ progress }: { progress: number }) => {
 				if (options?.onProgress && progress >= 0) {
@@ -1814,7 +1872,7 @@ class LosslessAPI {
 				}
 			};
 			ffmpeg.on('progress', progressHandler);
-			
+
 			options?.onFfmpegProgress?.(1);
 			options?.onFfmpegComplete?.();
 		} catch (loadError) {
@@ -1835,25 +1893,25 @@ class LosslessAPI {
 			if (options?.onProgress) {
 				options.onProgress({ stage: 'embedding', progress: 0 });
 			}
-			
+
 			// Convert blob to Uint8Array to ensure proper memory handling
 			const arrayBuffer = await blob.arrayBuffer();
 			const uint8Array = new Uint8Array(arrayBuffer);
-			
+
 			await ffmpeg.writeFile(inputName, uint8Array);
 
 			const artworkId = lookup.track.album?.cover;
-			
+
 			if (artworkId) {
 				// Try multiple sizes as fallback
 				const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
 				let coverFetchSuccess = false;
-				
+
 				for (const size of coverSizes) {
 					if (coverFetchSuccess) break;
-					
+
 					const coverUrl = this.getCoverUrl(artworkId, size);
-					
+
 					// Try two fetch strategies: with headers, then without
 					const fetchStrategies = [
 						{
@@ -1861,7 +1919,7 @@ class LosslessAPI {
 							options: {
 								method: 'GET' as const,
 								headers: {
-									'Accept': 'image/jpeg,image/jpg,image/png,image/*',
+									Accept: 'image/jpeg,image/jpg,image/png,image/*',
 									'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 								},
 								signal: AbortSignal.timeout(10000)
@@ -1875,61 +1933,60 @@ class LosslessAPI {
 							}
 						}
 					];
-					
+
 					for (const strategy of fetchStrategies) {
 						if (coverFetchSuccess) break;
-					
-					try {
-						const coverResponse = await fetch(coverUrl, strategy.options);
-						
-						if (!coverResponse.ok) {
-							continue; // Try next size
-						}
-						
-						const contentType = coverResponse.headers.get('Content-Type');
-						const contentLength = coverResponse.headers.get('Content-Length');
-						
-						// Check if Content-Length indicates empty response
-						if (contentLength && parseInt(contentLength, 10) === 0) {
-							continue; // Try next size
-						}
-						
-						if (contentType && !contentType.startsWith('image/')) {
-							continue; // Try next size
-						}
-						
-						// Try arrayBuffer directly instead of blob first (more reliable)
-						let coverArrayBuffer: ArrayBuffer;
-						
+
 						try {
-							coverArrayBuffer = await coverResponse.arrayBuffer();
+							const coverResponse = await fetch(coverUrl, strategy.options);
+
+							if (!coverResponse.ok) {
+								continue; // Try next size
+							}
+
+							const contentType = coverResponse.headers.get('Content-Type');
+							const contentLength = coverResponse.headers.get('Content-Length');
+
+							// Check if Content-Length indicates empty response
+							if (contentLength && parseInt(contentLength, 10) === 0) {
+								continue; // Try next size
+							}
+
+							if (contentType && !contentType.startsWith('image/')) {
+								continue; // Try next size
+							}
+
+							// Try arrayBuffer directly instead of blob first (more reliable)
+							let coverArrayBuffer: ArrayBuffer;
+
+							try {
+								coverArrayBuffer = await coverResponse.arrayBuffer();
+							} catch {
+								continue; // Try next size
+							}
+
+							if (!coverArrayBuffer || coverArrayBuffer.byteLength === 0) {
+								continue; // Try next size
+							}
+
+							const coverUint8Array = new Uint8Array(coverArrayBuffer);
+
+							// Detect image format from magic bytes
+							const imageFormat = this.detectImageFormat(coverUint8Array);
+							if (!imageFormat) {
+								continue; // Try next size
+							}
+
+							coverExtension = imageFormat.extension;
+							const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
+
+							await ffmpeg.writeFile(finalCoverName, coverUint8Array);
+							coverWritten = true;
+							coverFetchSuccess = true;
+							break; // Success, exit strategy loop
 						} catch {
-							continue; // Try next size
+							// Continue to next strategy
 						}
-						
-						if (!coverArrayBuffer || coverArrayBuffer.byteLength === 0) {
-							continue; // Try next size
-						}
-						
-						const coverUint8Array = new Uint8Array(coverArrayBuffer);
-						
-						// Detect image format from magic bytes
-						const imageFormat = this.detectImageFormat(coverUint8Array);
-						if (!imageFormat) {
-							continue; // Try next size
-						}
-						
-						coverExtension = imageFormat.extension;
-						const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
-						
-						await ffmpeg.writeFile(finalCoverName, coverUint8Array);
-						coverWritten = true;
-						coverFetchSuccess = true;
-						break; // Success, exit strategy loop
-						
-					} catch {
-						// Continue to next strategy
-					}
 					} // End strategy loop
 				} // End size loop
 			}
@@ -1939,16 +1996,16 @@ class LosslessAPI {
 				const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
 				args.push('-i', finalCoverName);
 			}
-			
+
 			// Map streams FIRST (matching working command pattern)
 			// Working command: -map 0:a -map 1 -codec copy
 			if (coverWritten) {
-				args.push('-map', '0:a');  // Map audio stream from first input
-				args.push('-map', '1');    // Map entire second input (cover image)
+				args.push('-map', '0:a'); // Map audio stream from first input
+				args.push('-map', '1'); // Map entire second input (cover image)
 			} else {
 				args.push('-map', '0:a');
 			}
-			
+
 			// Codec settings
 			if (shouldConvertToMp3) {
 				args.push('-codec:a', 'libmp3lame');
@@ -1956,19 +2013,19 @@ class LosslessAPI {
 			} else {
 				args.push('-codec', 'copy');
 			}
-			
+
 			// Track metadata (title, artist, album, etc.)
 			for (const [key, value] of this.buildMetadataEntries(lookup)) {
 				args.push('-metadata', `${key}=${value}`);
 			}
-			
+
 			// Cover-specific metadata and disposition (matching working command)
 			if (coverWritten) {
 				args.push('-metadata:s:v', 'title=Album cover');
 				args.push('-metadata:s:v', 'comment=Cover (front)');
 				args.push('-disposition:v', 'attached_pic');
 			}
-			
+
 			// MP3-specific settings
 			if (shouldConvertToMp3) {
 				args.push('-id3v2_version', '3');
@@ -1976,35 +2033,45 @@ class LosslessAPI {
 			}
 
 			args.push(outputName);
-			
+
 			// Execute FFmpeg with timeout protection (3 minutes for large files)
 			const timeoutMs = 180000; // 3 minutes
 			const execPromise = ffmpeg.exec(args);
 			const timeoutPromise = new Promise<never>((_, reject) => {
 				setTimeout(() => {
-					reject(new Error(`FFmpeg execution timeout - processing took longer than 3 minutes. Try using "Download covers separately" option instead.`));
+					reject(
+						new Error(
+							`FFmpeg execution timeout - processing took longer than 3 minutes. Try using "Download covers separately" option instead.`
+						)
+					);
 				}, timeoutMs);
 			});
-			
+
 			try {
 				await Promise.race([execPromise, timeoutPromise]);
 			} catch (execError) {
 				// Check if it's a timeout
 				const errorMessage = execError instanceof Error ? execError.message : String(execError);
 				if (errorMessage.includes('timeout')) {
-					throw new Error('FFmpeg timeout: Processing took too long. Enable "Download covers separately" option for FLAC files.');
+					throw new Error(
+						'FFmpeg timeout: Processing took too long. Enable "Download covers separately" option for FLAC files.'
+					);
 				}
-				
+
 				// Check if it's a memory error
-				if (errorMessage.includes('memory access out of bounds') || 
-				    errorMessage.includes('RuntimeError') ||
-				    errorMessage.includes('out of memory')) {
-					throw new Error('FFmpeg memory error: File may be too large for browser processing. Try a smaller file or download without metadata embedding.');
+				if (
+					errorMessage.includes('memory access out of bounds') ||
+					errorMessage.includes('RuntimeError') ||
+					errorMessage.includes('out of memory')
+				) {
+					throw new Error(
+						'FFmpeg memory error: File may be too large for browser processing. Try a smaller file or download without metadata embedding.'
+					);
 				}
-				
+
 				throw execError;
 			}
-			
+
 			const outputData = await ffmpeg.readFile(outputName);
 			if (options?.onProgress) {
 				options.onProgress({ stage: 'embedding', progress: 1 });
@@ -2027,15 +2094,19 @@ class LosslessAPI {
 		} catch (error) {
 			// Check if it's a memory error and provide helpful message
 			const errorMessage = error instanceof Error ? error.message : String(error);
-			if (errorMessage.includes('memory access out of bounds') || 
-			    errorMessage.includes('RuntimeError') ||
-			    errorMessage.includes('out of memory') ||
-			    errorMessage.includes('memory error')) {
-				options?.onFfmpegError?.(new Error('Memory error: File processed without metadata due to browser limitations'));
+			if (
+				errorMessage.includes('memory access out of bounds') ||
+				errorMessage.includes('RuntimeError') ||
+				errorMessage.includes('out of memory') ||
+				errorMessage.includes('memory error')
+			) {
+				options?.onFfmpegError?.(
+					new Error('Memory error: File processed without metadata due to browser limitations')
+				);
 			} else {
 				options?.onFfmpegError?.(error);
 			}
-			
+
 			// Return null to fallback to original blob (handled by caller)
 			return null;
 		} finally {
@@ -2043,7 +2114,7 @@ class LosslessAPI {
 			if (progressHandler && ffmpeg) {
 				ffmpeg.off('progress', progressHandler);
 			}
-			
+
 			// Clean up temporary files
 			if (ffmpeg) {
 				try {
@@ -2126,7 +2197,7 @@ class LosslessAPI {
 			if (!response) {
 				let manifestSource = manifestLookup;
 				const decodedManifest = this.decodeBase64Manifest(manifestSource.info.manifest);
-				
+
 				// For segmented DASH manifests, go directly to segment download
 				if (this.isSegmentedDashManifest(decodedManifest)) {
 					try {
@@ -2157,7 +2228,10 @@ class LosslessAPI {
 								manifestSource = losslessLookup;
 							}
 						} catch (manifestError) {
-							console.warn('Failed to fetch lossless manifest for download fallback', manifestError);
+							console.warn(
+								'Failed to fetch lossless manifest for download fallback',
+								manifestError
+							);
 						}
 					}
 
@@ -2300,17 +2374,17 @@ class LosslessAPI {
 					const coverId = metadata.track.album?.cover;
 					if (coverId) {
 						console.log('[Cover Download] Fetching cover for separate download...');
-						
+
 						// Try multiple sizes as fallback
 						const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
 						let coverDownloadSuccess = false;
-						
+
 						for (const size of coverSizes) {
 							if (coverDownloadSuccess) break;
-							
+
 							const coverUrl = this.getCoverUrl(coverId, size);
 							console.log(`[Cover Download] Attempting size ${size}:`, coverUrl);
-							
+
 							// Try two fetch strategies: with headers, then without
 							const fetchStrategies = [
 								{
@@ -2318,7 +2392,7 @@ class LosslessAPI {
 									options: {
 										method: 'GET' as const,
 										headers: {
-											'Accept': 'image/jpeg,image/jpg,image/png,image/*',
+											Accept: 'image/jpeg,image/jpg,image/png,image/*',
 											'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 										},
 										signal: AbortSignal.timeout(10000)
@@ -2332,81 +2406,95 @@ class LosslessAPI {
 									}
 								}
 							];
-							
+
 							for (const strategy of fetchStrategies) {
 								if (coverDownloadSuccess) break;
-								
+
 								console.log(`[Cover Download] Trying strategy: ${strategy.name}`);
-							
-							try {
-								const coverResponse = await fetch(coverUrl, strategy.options);
-								
-								console.log(`[Cover Download] Response status: ${coverResponse.status}, Content-Length: ${coverResponse.headers.get('Content-Length')}`);
-								
-								if (!coverResponse.ok) {
-									console.warn(`[Cover Download] Failed with status ${coverResponse.status} for size ${size}`);
-									continue;
+
+								try {
+									const coverResponse = await fetch(coverUrl, strategy.options);
+
+									console.log(
+										`[Cover Download] Response status: ${coverResponse.status}, Content-Length: ${coverResponse.headers.get('Content-Length')}`
+									);
+
+									if (!coverResponse.ok) {
+										console.warn(
+											`[Cover Download] Failed with status ${coverResponse.status} for size ${size}`
+										);
+										continue;
+									}
+
+									const contentType = coverResponse.headers.get('Content-Type');
+									const contentLength = coverResponse.headers.get('Content-Length');
+
+									if (contentLength && parseInt(contentLength, 10) === 0) {
+										console.warn(`[Cover Download] Content-Length is 0 for size ${size}`);
+										continue;
+									}
+
+									if (contentType && !contentType.startsWith('image/')) {
+										console.warn(`[Cover Download] Invalid content type: ${contentType}`);
+										continue;
+									}
+
+									// Use arrayBuffer directly for more reliable data retrieval
+									const arrayBuffer = await coverResponse.arrayBuffer();
+
+									if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+										console.warn(`[Cover Download] Empty array buffer for size ${size}`);
+										continue;
+									}
+
+									const uint8Array = new Uint8Array(arrayBuffer);
+									console.log(`[Cover Download] Received ${uint8Array.length} bytes`);
+									console.log(
+										`[Cover Download] First 16 bytes:`,
+										Array.from(uint8Array.slice(0, 16))
+											.map((b) => b.toString(16).padStart(2, '0'))
+											.join(' ')
+									);
+
+									// Validate image data
+									if (!this.validateImageData(uint8Array)) {
+										console.warn(`[Cover Download] Invalid image data for size ${size}`);
+										continue;
+									}
+
+									// Detect image format
+									const imageFormat = this.detectImageFormat(uint8Array);
+									if (!imageFormat) {
+										console.warn(`[Cover Download] Unknown image format for size ${size}`);
+										continue;
+									}
+
+									// Create blob with correct MIME type
+									const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
+
+									const coverObjectUrl = URL.createObjectURL(coverBlob);
+									const coverLink = document.createElement('a');
+									coverLink.href = coverObjectUrl;
+									coverLink.download = `cover.${imageFormat.extension}`;
+									document.body.appendChild(coverLink);
+									coverLink.click();
+									document.body.removeChild(coverLink);
+									URL.revokeObjectURL(coverObjectUrl);
+
+									coverDownloadSuccess = true;
+									console.log(
+										`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
+									);
+									break;
+								} catch (sizeError) {
+									console.warn(
+										`[Cover Download] Failed at size ${size} with strategy ${strategy.name}:`,
+										sizeError
+									);
 								}
-								
-								const contentType = coverResponse.headers.get('Content-Type');
-								const contentLength = coverResponse.headers.get('Content-Length');
-								
-								if (contentLength && parseInt(contentLength, 10) === 0) {
-									console.warn(`[Cover Download] Content-Length is 0 for size ${size}`);
-									continue;
-								}
-								
-								if (contentType && !contentType.startsWith('image/')) {
-									console.warn(`[Cover Download] Invalid content type: ${contentType}`);
-									continue;
-								}
-								
-								// Use arrayBuffer directly for more reliable data retrieval
-								const arrayBuffer = await coverResponse.arrayBuffer();
-								
-								if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-									console.warn(`[Cover Download] Empty array buffer for size ${size}`);
-									continue;
-								}
-								
-								const uint8Array = new Uint8Array(arrayBuffer);
-								console.log(`[Cover Download] Received ${uint8Array.length} bytes`);
-								console.log(`[Cover Download] First 16 bytes:`, Array.from(uint8Array.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
-								
-								// Validate image data
-								if (!this.validateImageData(uint8Array)) {
-									console.warn(`[Cover Download] Invalid image data for size ${size}`);
-									continue;
-								}
-								
-								// Detect image format
-								const imageFormat = this.detectImageFormat(uint8Array);
-								if (!imageFormat) {
-									console.warn(`[Cover Download] Unknown image format for size ${size}`);
-									continue;
-								}
-								
-								// Create blob with correct MIME type
-								const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
-								
-								const coverObjectUrl = URL.createObjectURL(coverBlob);
-								const coverLink = document.createElement('a');
-								coverLink.href = coverObjectUrl;
-								coverLink.download = `cover.${imageFormat.extension}`;
-								document.body.appendChild(coverLink);
-								coverLink.click();
-								document.body.removeChild(coverLink);
-								URL.revokeObjectURL(coverObjectUrl);
-								
-								coverDownloadSuccess = true;
-								console.log(`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`);
-								break;
-							} catch (sizeError) {
-								console.warn(`[Cover Download] Failed at size ${size} with strategy ${strategy.name}:`, sizeError);
-							}
 							} // End strategy loop
 						} // End size loop
-						
+
 						if (!coverDownloadSuccess) {
 							console.warn('[Cover Download] All attempts failed');
 						}
@@ -2448,7 +2536,10 @@ class LosslessAPI {
 	/**
 	 * Get video cover URL
 	 */
-	getVideoCoverUrl(videoCoverId: string, size: '1280' | '640' | '320' | '160' | '80' = '640'): string {
+	getVideoCoverUrl(
+		videoCoverId: string,
+		size: '1280' | '640' | '320' | '160' | '80' = '640'
+	): string {
 		return `https://resources.tidal.com/videos/${videoCoverId.replace(/-/g, '/')}/${size}x${size}.mp4`;
 	}
 

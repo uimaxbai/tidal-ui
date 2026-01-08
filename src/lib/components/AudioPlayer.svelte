@@ -1492,7 +1492,7 @@
 									<!-- Only show album cover for regular tracks -->
 									{#if asTrack($playerStore.currentTrack).album.videoCover}
 										<video
-											src={losslessAPI.getCoverUrl(asTrack($playerStore.currentTrack).album.videoCover!, '640')}
+											src={losslessAPI.getVideoCoverUrl(asTrack($playerStore.currentTrack).album.videoCover!, '640')}
 											autoplay
 											loop
 											muted

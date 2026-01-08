@@ -162,7 +162,7 @@
 		</div>
 	</div>
 {:else if track}
-	<div class="mx-auto max-w-4xl space-y-8 py-8">
+	<div class="track-page">
 		<!-- Back Button -->
 		<button
 			onclick={() => {
@@ -172,57 +172,55 @@
 					goto('/');
 				}
 			}}
-			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
+			class="back-btn"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
-		<div class="flex flex-col gap-8 md:flex-row">
+		<div class="track-layout">
 			<!-- Album Art -->
-			<div class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-96">
+			<div class="album-art-wrapper">
 				{#if track.album.cover}
 					<img
 						src={losslessAPI.getCoverUrl(track.album.cover, '1280')}
 						alt={track.album.title}
-						class="h-full w-full object-cover"
+						class="album-art"
 					/>
 				{:else}
-					<div class="flex h-full w-full items-center justify-center bg-gray-800">
+					<div class="album-art-placeholder">
 						<Disc size={64} class="text-gray-600" />
 					</div>
 				{/if}
 			</div>
 
 			<!-- Track Info -->
-			<div class="flex flex-1 flex-col justify-end">
-				<h1 class="mb-2 text-4xl font-bold md:text-5xl">{track.title}</h1>
+			<div class="track-info">
+				<h1 class="track-title">{track.title}</h1>
 				{#if track.version}
-					<span class="mb-4 inline-block rounded bg-gray-800 px-2 py-1 text-sm text-gray-300">
-						{track.version}
-					</span>
+					<span class="track-version">{track.version}</span>
 				{/if}
 
-				<div class="mb-6 space-y-2">
-					<div class="flex items-center gap-2 text-xl text-gray-300">
+				<div class="track-meta">
+					<div class="meta-item meta-item--artist">
 						<User size={20} />
-						<a href={`/artist/${track.artist.id}`} class="hover:text-blue-400 hover:underline">
+						<a href={`/artist/${track.artist.id}`} class="meta-link">
 							{formatArtists(track.artists)}
 						</a>
 					</div>
-					<div class="flex items-center gap-2 text-lg text-gray-400">
+					<div class="meta-item">
 						<Disc size={20} />
-						<a href={`/album/${track.album.id}`} class="hover:text-blue-400 hover:underline">
+						<a href={`/album/${track.album.id}`} class="meta-link">
 							{track.album.title}
 						</a>
 					</div>
-					<div class="flex items-center gap-2 text-gray-500">
+					<div class="meta-item meta-item--muted">
 						<Clock size={18} />
 						<span>{formatDuration(track.duration)}</span>
 					</div>
 				</div>
 
-				<div class="flex gap-4">
+				<div class="action-buttons">
 					<button
 						onclick={() => {
 							if (track) {
@@ -230,7 +228,7 @@
 								playerStore.play();
 							}
 						}}
-						class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
+						class="btn btn--primary"
 					>
 						<Play size={20} fill="currentColor" />
 						Play
@@ -239,7 +237,7 @@
 					{#if isDownloading}
 						<button
 							onclick={handleCancelDownload}
-							class="flex items-center gap-2 rounded-full bg-red-600 px-8 py-3 font-semibold transition-colors hover:bg-red-700"
+							class="btn btn--danger"
 						>
 							<X size={20} />
 							Cancel
@@ -247,7 +245,7 @@
 					{:else if isCancelled}
 						<button
 							disabled
-							class="flex items-center gap-2 rounded-full bg-gray-600 px-8 py-3 font-semibold text-gray-300"
+							class="btn btn--disabled"
 						>
 							<X size={20} />
 							Cancelled
@@ -255,7 +253,7 @@
 					{:else}
 						<button
 							onclick={handleDownload}
-							class="flex items-center gap-2 rounded-full bg-gray-800 px-8 py-3 font-semibold transition-colors hover:bg-gray-700"
+							class="btn btn--secondary"
 						>
 							<Download size={20} />
 							Download
@@ -268,3 +266,229 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	.track-page {
+		max-width: 56rem;
+		margin: 0 auto;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-8, 2rem);
+		padding: var(--space-8, 2rem) 0;
+	}
+
+	.back-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2, 0.5rem);
+		color: rgba(148, 163, 184, 0.8);
+		font-size: 0.875rem;
+		font-weight: 500;
+		background: none;
+		border: none;
+		padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+		margin-left: calc(-1 * var(--space-3, 0.75rem));
+		border-radius: var(--radius-lg, 0.75rem);
+		transition: color var(--transition-fast, 150ms ease), background var(--transition-fast, 150ms ease);
+	}
+
+	.back-btn:hover {
+		color: #f8fafc;
+		background: rgba(148, 163, 184, 0.1);
+	}
+
+	.track-layout {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-8, 2rem);
+	}
+
+	@media (min-width: 768px) {
+		.track-layout {
+			flex-direction: row;
+		}
+	}
+
+	.album-art-wrapper {
+		flex-shrink: 0;
+		width: 100%;
+		max-width: 24rem;
+		aspect-ratio: 1;
+		border-radius: var(--radius-xl, 1rem);
+		overflow: hidden;
+		box-shadow: 
+			0 25px 80px rgba(0, 0, 0, 0.4),
+			0 10px 30px rgba(0, 0, 0, 0.3);
+		transition: transform var(--transition-slow, 300ms ease), box-shadow var(--transition-slow, 300ms ease);
+	}
+
+	.album-art-wrapper:hover {
+		transform: scale(1.02) translateY(-4px);
+		box-shadow: 
+			0 35px 100px rgba(0, 0, 0, 0.5),
+			0 15px 40px rgba(0, 0, 0, 0.35),
+			0 0 60px rgba(59, 130, 246, 0.1);
+	}
+
+	.album-art {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.album-art-placeholder {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(30, 41, 59, 0.8);
+	}
+
+	.track-info {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+	}
+
+	.track-title {
+		font-size: clamp(2rem, 5vw, 3.5rem);
+		font-weight: 700;
+		line-height: 1.1;
+		margin: 0 0 var(--space-2, 0.5rem);
+		background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+	}
+
+	.track-version {
+		display: inline-block;
+		font-size: 0.8rem;
+		font-weight: 500;
+		padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
+		margin-bottom: var(--space-4, 1rem);
+		border-radius: var(--radius-md, 0.5rem);
+		background: rgba(99, 102, 241, 0.15);
+		border: 1px solid rgba(99, 102, 241, 0.25);
+		color: rgba(196, 181, 253, 0.9);
+	}
+
+	.track-meta {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3, 0.75rem);
+		margin-bottom: var(--space-6, 1.5rem);
+	}
+
+	.meta-item {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2, 0.5rem);
+		color: rgba(148, 163, 184, 0.9);
+	}
+
+	.meta-item--artist {
+		font-size: 1.25rem;
+		color: rgba(203, 213, 225, 0.95);
+	}
+
+	.meta-item--muted {
+		color: rgba(100, 116, 139, 0.9);
+	}
+
+	.meta-link {
+		color: inherit;
+		text-decoration: none;
+		transition: color var(--transition-fast, 150ms ease);
+	}
+
+	.meta-link:hover {
+		color: #60a5fa;
+		text-decoration: underline;
+	}
+
+	.action-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3, 0.75rem);
+	}
+
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2, 0.5rem);
+		padding: var(--space-3, 0.75rem) var(--space-6, 1.5rem);
+		font-size: 0.9rem;
+		font-weight: 600;
+		border-radius: var(--radius-full, 9999px);
+		border: none;
+		cursor: pointer;
+		transition: 
+			transform var(--transition-fast, 150ms ease),
+			box-shadow var(--transition-base, 200ms ease),
+			background var(--transition-base, 200ms ease);
+	}
+
+	.btn:hover {
+		transform: translateY(-2px);
+	}
+
+	.btn--primary {
+		background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+		color: white;
+		box-shadow: 0 4px 15px rgba(59, 130, 246, 0.35);
+	}
+
+	.btn--primary:hover {
+		box-shadow: 0 8px 25px rgba(59, 130, 246, 0.45);
+	}
+
+	.btn--secondary {
+		background: rgba(30, 41, 59, 0.8);
+		border: 1px solid rgba(148, 163, 184, 0.2);
+		color: rgba(226, 232, 240, 0.95);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+	}
+
+	.btn--secondary:hover {
+		background: rgba(51, 65, 85, 0.9);
+		border-color: rgba(148, 163, 184, 0.3);
+		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
+	}
+
+	.btn--danger {
+		background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+		color: white;
+		box-shadow: 0 4px 15px rgba(239, 68, 68, 0.35);
+	}
+
+	.btn--danger:hover {
+		box-shadow: 0 8px 25px rgba(239, 68, 68, 0.45);
+	}
+
+	.btn--disabled {
+		background: rgba(71, 85, 105, 0.6);
+		color: rgba(148, 163, 184, 0.7);
+		cursor: not-allowed;
+	}
+
+	.btn--disabled:hover {
+		transform: none;
+	}
+
+	/* Mobile adjustments */
+	@media (max-width: 767px) {
+		.album-art-wrapper {
+			max-width: 100%;
+			margin: 0 auto;
+		}
+
+		.action-buttons {
+			justify-content: center;
+		}
+	}
+</style>
+

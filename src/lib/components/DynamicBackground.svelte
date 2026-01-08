@@ -19,9 +19,33 @@
 	const STRETCHED_GRID_WIDTH = 32;
 	const STRETCHED_GRID_HEIGHT = 18;
 	const BLUR_DOWNSAMPLE_FACTOR = 26;
-	const CANVAS_SIZE = 512;
-	const SONG_PALETTE_TRANSITION_SPEED = 0.003; // Even slower transition (was 0.006)
-	const SCROLL_SPEED = 0.0005; // Much slower scroll (was 0.002)
+	const SONG_PALETTE_TRANSITION_SPEED = 0.003;
+	const SCROLL_SPEED = 0.0005;
+	
+	// Mobile performance settings
+	const MOBILE_BREAKPOINT = 768;
+	const MOBILE_TARGET_FPS = 30;
+	const DESKTOP_TARGET_FPS = 60;
+	const MOBILE_CANVAS_SIZE = 256;
+	const DESKTOP_CANVAS_SIZE = 512;
+	
+	// Detect mobile viewport
+	const isMobileViewport = (): boolean => {
+		if (!browser) return false;
+		return window.innerWidth <= MOBILE_BREAKPOINT;
+	};
+	
+	// Get appropriate canvas size based on device
+	const getCanvasSize = (): number => {
+		return isMobileViewport() ? MOBILE_CANVAS_SIZE : DESKTOP_CANVAS_SIZE;
+	};
+	
+	// Frame rate limiter
+	let lastRenderTime = 0;
+	const getFrameInterval = (): number => {
+		const targetFps = isMobileViewport() ? MOBILE_TARGET_FPS : DESKTOP_TARGET_FPS;
+		return 1000 / targetFps;
+	};
 
 	// WebGL state
 	let webglCanvas: HTMLCanvasElement;
@@ -324,9 +348,10 @@
 
 		gl = context;
 
-		// Set canvas size
-		webglCanvas.width = CANVAS_SIZE;
-		webglCanvas.height = CANVAS_SIZE;
+		// Set canvas size based on device
+		const canvasSize = getCanvasSize();
+		webglCanvas.width = canvasSize;
+		webglCanvas.height = canvasSize;
 
 		// Create shaders and programs
 		const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
@@ -362,8 +387,8 @@
 		colorRenderTexture = createTexture(gl, STRETCHED_GRID_WIDTH, STRETCHED_GRID_HEIGHT);
 		colorRenderFramebuffer = createFramebuffer(gl, colorRenderTexture);
 		
-		const blurWidth = Math.round(CANVAS_SIZE / BLUR_DOWNSAMPLE_FACTOR);
-		const blurHeight = Math.round(CANVAS_SIZE / BLUR_DOWNSAMPLE_FACTOR);
+		const blurWidth = Math.round(canvasSize / BLUR_DOWNSAMPLE_FACTOR);
+		const blurHeight = Math.round(canvasSize / BLUR_DOWNSAMPLE_FACTOR);
 		blurTexture1 = createTexture(gl, blurWidth, blurHeight);
 		blurFramebuffer1 = createFramebuffer(gl, blurTexture1);
 		blurTexture2 = createTexture(gl, blurWidth, blurHeight);
@@ -432,6 +457,20 @@
 	const animateWebGLBackground = (timestamp: number) => {
 		if (!gl || !glProgram || !updateStateProgram || !blurProgram) return;
 
+		// Frame rate limiting for mobile performance
+		const frameInterval = getFrameInterval();
+		const elapsed = timestamp - lastRenderTime;
+		
+		if (elapsed < frameInterval) {
+			// Skip this frame, schedule next
+			if (canvasVisible && backgroundEnabled) {
+				globalAnimationId = requestAnimationFrame(animateWebGLBackground);
+			}
+			return;
+		}
+		
+		lastRenderTime = timestamp - (elapsed % frameInterval);
+
 		const deltaTime = lastFrameTime > 0 ? (timestamp - lastFrameTime) / 1000 : 0.016;
 		lastFrameTime = timestamp;
 
@@ -490,8 +529,9 @@
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
 		// Pass 3: Horizontal blur
-		const blurWidth = Math.round(CANVAS_SIZE / BLUR_DOWNSAMPLE_FACTOR);
-		const blurHeight = Math.round(CANVAS_SIZE / BLUR_DOWNSAMPLE_FACTOR);
+		const canvasSize = getCanvasSize();
+		const blurWidth = Math.round(canvasSize / BLUR_DOWNSAMPLE_FACTOR);
+		const blurHeight = Math.round(canvasSize / BLUR_DOWNSAMPLE_FACTOR);
 
 		gl.bindFramebuffer(gl.FRAMEBUFFER, blurFramebuffer1);
 		gl.viewport(0, 0, blurWidth, blurHeight);
@@ -511,7 +551,7 @@
 
 		// Pass 4: Vertical blur & display
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-		gl.viewport(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+		gl.viewport(0, 0, canvasSize, canvasSize);
 		gl.useProgram(blurProgram);
 
 		gl.enableVertexAttribArray(positionLocation3);
