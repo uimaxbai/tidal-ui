@@ -22,6 +22,20 @@ const V2_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
+		name: 'spotisaver-1',
+		baseUrl: 'https://hifi-one.spotisaver.net',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'spotisaver-2',
+		baseUrl: 'https://hifi-two.spotisaver.net',
+		weight: 20,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
 		name: 'kinoplus',
 		baseUrl: 'https://tidal.kinoplus.online',
 		weight: 20,
