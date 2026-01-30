@@ -1,9 +1,10 @@
 <script lang="ts">
 	import SearchInterface from '$lib/components/SearchInterface.svelte';
-	import type { Track, PlayableTrack } from '$lib/types';
+	import { type Track, type PlayableTrack, isSonglinkTrack } from '$lib/types';
 	import { playerStore } from '$lib/stores/player';
 	import { onMount } from 'svelte';
 	import { APP_VERSION } from '$lib/version';
+	import { losslessAPI } from '$lib/api.js';
 
 	let { data } = $props();
 
@@ -15,9 +16,18 @@
 		}
 	});
 
+	async function fillQueueWithRecommendations(track: PlayableTrack) {
+		if (isSonglinkTrack(track)) return;
+
+		const recommendations = await losslessAPI.getRecommendations(track.id);
+		playerStore.setQueue([track, ...recommendations], 0);
+	}
+
 	function handleTrackSelect(track: PlayableTrack) {
 		playerStore.setQueue([track], 0);
 		playerStore.play();
+
+		fillQueueWithRecommendations(track);
 	}
 </script>
 

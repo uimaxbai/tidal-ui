@@ -16,7 +16,8 @@ import type {
 	Lyrics,
 	TrackInfo,
 	TrackLookup,
-	ArtistDetails
+	ArtistDetails,
+	TrackRecommendationsResponse
 } from './types';
 
 const API_BASE = API_CONFIG.baseUrl;
@@ -1022,6 +1023,19 @@ class LosslessAPI {
 		}
 
 		throw lastError ?? new Error('Failed to get track');
+	}
+
+	async getRecommendations(trackId: number): Promise<Track[]> {
+		const response = await this.fetch(`${this.baseUrl}/recommendations/?id=${trackId}`);
+		this.ensureNotRateLimited(response);
+		if (!response.ok) {
+			throw new Error('Failed to fetch track recommendations');
+		}
+		const payload: TrackRecommendationsResponse = await response.json();
+		if (!payload.data.items) {
+			throw new Error('No recommendations found');
+		}
+		return payload.data.items.map(item => item.track);
 	}
 
 	async getDashManifest(
