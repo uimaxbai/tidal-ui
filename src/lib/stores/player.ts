@@ -152,18 +152,22 @@ function createPlayerStore() {
 					? Math.min(Math.max(startIndex, 0), queue.length - 1)
 					: -1;
 				const nextTrack = hasTracks ? queue[clampedIndex]! : null;
+
+				// Check if we are staying on the same track (prevent reload if so)
+				const isSameTrack = state.currentTrack && nextTrack && state.currentTrack.id === nextTrack.id;
+
 				let next: PlayerState = {
 					...state,
 					queue,
 					queueIndex: clampedIndex,
 					currentTrack: nextTrack,
 					isPlaying: hasTracks ? state.isPlaying : false,
-					isLoading: hasTracks,
-					currentTime: 0,
-					duration: nextTrack?.duration ?? 0,
-					sampleRate: resolveSampleRate(state, nextTrack),
-					bitDepth: null,
-					replayGain: null
+					isLoading: isSameTrack ? state.isLoading : hasTracks,
+					currentTime: isSameTrack ? state.currentTime : 0,
+					duration: isSameTrack ? state.duration : (nextTrack?.duration ?? 0),
+					sampleRate: isSameTrack ? state.sampleRate : resolveSampleRate(state, nextTrack),
+					bitDepth: isSameTrack ? state.bitDepth : null,
+					replayGain: isSameTrack ? state.replayGain : null
 				};
 
 				if (!hasTracks) {
