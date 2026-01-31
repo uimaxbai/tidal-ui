@@ -1170,10 +1170,10 @@
 								class="h-12 w-12 flex-shrink-0 rounded object-cover"
 							/>
 							<div class="min-w-0 flex-1">
-								<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+								<h3 class="truncate font-semibold text-white group-hover:text-blue-400 w-full">
 									{track.title}
 								</h3>
-								<p class="truncate text-sm text-gray-400">
+								<p class="truncate text-sm text-gray-400 w-full">
 									{track.artistName}
 								</p>
 								<p class="text-xs text-gray-500">
@@ -1267,7 +1267,7 @@
 								/>
 							{/if}
 							<div class="min-w-0 flex-1">
-								<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+								<h3 class="truncate font-semibold text-white group-hover:text-blue-400 w-full">
 									{track.title}{asTrack(track).version ? ` (${asTrack(track).version})` : ''}
 									{#if asTrack(track).explicit}
 										<svg
@@ -1287,7 +1287,7 @@
 								</h3>
 								<a
 									href={`/artist/${asTrack(track).artist.id}`}
-									class="inline-block truncate text-sm text-gray-400 hover:text-blue-400 hover:underline"
+									class="inline-block truncate text-sm text-gray-400 hover:text-blue-400 hover:underline w-full"
 									data-sveltekit-preload-data
 								>
 									{formatArtists(asTrack(track).artists)}
@@ -1463,7 +1463,7 @@
 									</div>
 								{/if}
 							</div>
-							<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+							<h3 class="truncate font-semibold text-white group-hover:text-blue-400 w-full">
 								{album.title}
 								{#if album.explicit}
 									<svg
@@ -1482,7 +1482,7 @@
 								{/if}
 							</h3>
 							{#if album.artist}
-								<p class="truncate text-sm text-gray-400">{album.artist.name}</p>
+								<p class="truncate text-sm text-gray-400 w-full">{album.artist.name}</p>
 							{/if}
 							{#if album.releaseDate}
 								<p class="text-xs text-gray-500">{album.releaseDate.split('-')[0]}</p>
@@ -1525,7 +1525,7 @@
 								</div>
 							{/if}
 						</div>
-						<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+						<h3 class="truncate font-semibold text-white group-hover:text-blue-400 w-full">
 							{artist.name}
 						</h3>
 						<p class="text-xs text-gray-500">Artist</p>
@@ -1549,10 +1549,10 @@
 								/>
 							{/if}
 						</div>
-						<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+						<h3 class="truncate font-semibold text-white group-hover:text-blue-400 w-full">
 							{playlist.title}
 						</h3>
-						<p class="truncate text-sm text-gray-400">{playlist.creator.name}</p>
+						<p class="truncate text-sm text-gray-400 w-full">{playlist.creator.name}</p>
 						<p class="text-xs text-gray-500">{playlist.numberOfTracks} tracks</p>
 					</a>
 			{/each}

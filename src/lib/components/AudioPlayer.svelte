@@ -1508,24 +1508,24 @@
 									{/if}
 								{/if}
 								<div class="min-w-0 flex-1">
-									<h3 class="truncate font-semibold text-white">
+									<h3 class="truncate font-semibold text-white w-full">
 										{$playerStore.currentTrack.title}{!isSonglinkTrack($playerStore.currentTrack) && asTrack($playerStore.currentTrack).version ? ` (${asTrack($playerStore.currentTrack).version})` : ''}
 									</h3>
 									{#if isSonglinkTrack($playerStore.currentTrack)}
 										<!-- Display for SonglinkTrack -->
-										<p class="truncate text-sm text-gray-400">
+										<p class="truncate text-sm text-gray-400 w-full">
 											{$playerStore.currentTrack.artistName}
 										</p>
 									{:else}
 										<!-- Display for regular Track -->
 										<a
 											href={`/artist/${asTrack($playerStore.currentTrack).artist.id}`}
-											class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
+											class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block w-full"
 											data-sveltekit-preload-data
 										>
 											{formatArtists(asTrack($playerStore.currentTrack).artists)}
 										</a>
-										<p class="text-xs text-gray-500">
+										<p class="truncate text-xs text-gray-500 w-full">
 											<a
 												href={`/album/${asTrack($playerStore.currentTrack).album.id}`}
 												class="hover:text-blue-400 hover:underline"
