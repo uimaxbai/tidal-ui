@@ -156,6 +156,19 @@ export interface TrackLookup {
 	originalTrackUrl?: string;
 }
 
+export interface TrackRecommendationsResponse {
+	version: string,
+	data: {
+		limit: number;
+		offset: number;
+		totalNumberOfItems: number,
+		items: {
+			track: Track;
+			sources: string[]
+		}[]
+	}
+}
+
 /**
  * Songlink API response types (copied to avoid circular dependency)
  */
