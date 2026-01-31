@@ -45,9 +45,10 @@
 	} from 'lucide-svelte';
 
 	import { searchStore, type SearchTab } from '$lib/stores/searchStore.svelte';
+	import { page } from '$app/stores';
 
 	function getLongLink(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
-		return `https://music.binimum.org/${type}/${id}`;
+		return `${$page.url.protocol}://${$page.url.host}/${type}/${id}`;
 	}
 
 	function getShortLink(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
