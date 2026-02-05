@@ -17,28 +17,28 @@ const V2_API_TARGETS = [
 	{
 		name: 'squid-api',
 		baseUrl: 'https://triton.squid.wtf',
-		weight: 30,
+		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'spotisaver-1',
 		baseUrl: 'https://hifi-one.spotisaver.net',
-		weight: 20,
+		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'spotisaver-2',
 		baseUrl: 'https://hifi-two.spotisaver.net',
-		weight: 20,
+		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'kinoplus',
 		baseUrl: 'https://tidal.kinoplus.online',
-		weight: 20,
+		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
 	},
@@ -83,7 +83,14 @@ const V2_API_TARGETS = [
 		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
-	}
+	},
+	{
+		name: 'monochrome',
+		baseUrl: 'https://arran.monochrome.tf/',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
 ] satisfies ApiClusterTarget[];
 
 const ALL_API_TARGETS = [...V2_API_TARGETS] satisfies ApiClusterTarget[];
