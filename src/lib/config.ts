@@ -86,7 +86,7 @@ const V2_API_TARGETS = [
 	},
 	{
 		name: 'monochrome',
-		baseUrl: 'https://arran.monochrome.tf/',
+		baseUrl: 'https://arran.monochrome.tf',
 		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
