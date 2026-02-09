@@ -2,6 +2,12 @@
 
 High-fidelity music streaming UI built with SvelteKit and Tailwind.
 
+> [!important]
+> I am beginning to retire `tidal-ui` in favour of newer projects such as [Monochrome](https://monochrome.tf) - and will have the repo archived by the end of this month. music.binimum.org will begin to redirect to tidal.squid.wtf over the course of February 2026. Thanks to everybody who used the website for showing so much support - it really means a lot. For clarification - the API will still be maintained into the forseeable future.
+
+> [!important]
+> Your reminder that music piracy is *illegal* in most countries and this tool is for use by people with an active Tidal account for educational purposes.
+
 ## See a list of instances of APIs and frontends [here](https://github.com/SamidyFR/monochrome/blob/main/INSTANCES.md).
 
 ## API + API docs are [here](https://github.com/uimaxbai/hifi-api)
