@@ -1497,7 +1497,8 @@ class LosslessAPI {
 				// Try to fetch metadata for replay gain, but don't fail if it fails
 				try {
 					const lookup = await this.getTrack(trackId, quality);
-					replayGain = lookup.info.trackReplayGain ?? null;
+					// Use track replay gain, fall back to album replay gain if not available
+					replayGain = lookup.info.trackReplayGain ?? lookup.info.albumReplayGain ?? null;
 					sampleRate = lookup.info.sampleRate ?? null;
 					bitDepth = lookup.info.bitDepth ?? null;
 				} catch {
@@ -1517,7 +1518,8 @@ class LosslessAPI {
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
 			try {
 				const lookup = await this.getTrack(trackId, quality);
-				replayGain = lookup.info.trackReplayGain ?? null;
+				// Use track replay gain, fall back to album replay gain if not available
+				replayGain = lookup.info.trackReplayGain ?? lookup.info.albumReplayGain ?? null;
 				sampleRate = lookup.info.sampleRate ?? null;
 				bitDepth = lookup.info.bitDepth ?? null;
 

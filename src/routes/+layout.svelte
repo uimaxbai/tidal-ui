@@ -6,12 +6,10 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
-	import DynamicBackgroundWebGL from '$lib/components/DynamicBackground.svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore, type DownloadMode } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
-	import { effectivePerformanceLevel } from '$lib/stores/performance';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
@@ -37,11 +35,10 @@
 	let viewportHeight = $state(0);
 	let navigationState = $state<Navigation | null>(null);
 	let showSettingsMenu = $state(false);
-	let performanceLevel = $state<'high' | 'medium' | 'low'>('high');
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
-	let settingsMenuContainer: HTMLDivElement | null = null;
+	let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'
@@ -100,23 +97,6 @@
 		}
 	];
 
-	const PERFORMANCE_OPTIONS: Array<{
-		value: 'medium' | 'low';
-		label: string;
-		description: string;
-	}> = [
-		{
-			value: 'medium',
-			label: 'Balanced',
-			description: 'Smooth animations with visual effects'
-		},
-		{
-			value: 'low',
-			label: 'Performance',
-			description: 'Minimal effects for better performance'
-		}
-	];
-
 	const playbackQualityLabel = $derived(() => {
 		const quality = $playerStore.quality;
 		if (quality === 'HI_RES_LOSSLESS') {
@@ -146,10 +126,6 @@
 
 	function setDownloadMode(mode: DownloadMode): void {
 		downloadPreferencesStore.setMode(mode);
-	}
-
-	function setPerformanceMode(mode: 'medium' | 'low'): void {
-		userPreferencesStore.setPerformanceMode(mode);
 	}
 
 	const navigationMessage = $derived(() => {
@@ -389,13 +365,10 @@
 	let controllerChangeHandler: (() => void) | null = null;
 
 	onMount(() => {
-		// Subscribe to performance level and update data attribute
-		const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
-			performanceLevel = level;
-			if (typeof document !== 'undefined') {
-				document.documentElement.setAttribute('data-performance', level);
-			}
-		});
+		// Set performance mode globally
+		if (typeof document !== 'undefined') {
+			document.documentElement.setAttribute('data-performance', 'low');
+		}
 
 		const updateViewportHeight = () => {
 			viewportHeight = window.innerHeight;
@@ -458,7 +431,6 @@
 			window.removeEventListener('resize', updateViewportHeight);
 			document.removeEventListener('click', handleDocumentClick);
 			unsubscribe();
-			unsubPerf();
 			if (controllerChangeHandler) {
 				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
 			}
@@ -481,7 +453,6 @@
 	<AudioPlayer headless={true} />
 {:else}
 	<div class="app-root">
-		<DynamicBackgroundWebGL />
 		<div class="app-shell">
 			<header class="app-header glass-panel" bind:clientHeight={headerHeight}>
 			<div class="app-header__inner">
@@ -584,7 +555,7 @@
 												<span class="glass-option__content">
 													<span class="glass-option__label">
 														<Download size={16} />
-														<span>Individual files</span>
+														<span>Single files</span>
 													</span>
 												</span>
 												{#if downloadMode === 'individual'}
@@ -625,27 +596,7 @@
 											</button>
 										</div>
 									</section>
-									<section class="settings-section settings-section--wide">
-										<p class="section-heading">Performance Mode</p>
-										<div class="option-grid option-grid--compact">
-											{#each PERFORMANCE_OPTIONS as option}
-												<button
-													type="button"
-													onclick={() => setPerformanceMode(option.value)}
-													class={`glass-option glass-option--compact ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
-													aria-pressed={option.value === $userPreferencesStore.performanceMode}
-												>
-													<div class="glass-option__content">
-														<span class="glass-option__label">{option.label}</span>
-													</div>
-													{#if option.value === $userPreferencesStore.performanceMode}
-														<Check size={14} class="glass-option__check" />
-													{/if}
-												</button>
-											{/each}
-										</div>
-									</section>
-									<section class="settings-section settings-section--bordered">
+									<section class="settings-section settings-section--wide settings-section--bordered">
 										<p class="section-heading">Queue actions</p>
 										<div class="actions-column">
 											<button
@@ -981,10 +932,10 @@
 		margin: 0;
 		max-height: calc(100vh - var(--settings-menu-offset, 88px) - 8rem);
 		overflow-y: auto;
-		padding: clamp(0.85rem, 1.5vw, 1.2rem);
+		padding: clamp(0.6rem, 1rem, 0.8rem);
 		border-radius: 18px;
-		background: rgba(15, 23, 42, 0.75);
-		border: 1px solid rgba(148, 163, 184, 0.25);
+		background: rgba(15, 23, 42, 0.95);
+		border: 1px solid rgba(148, 163, 184, 0.35);
 		backdrop-filter: blur(48px) saturate(180%) brightness(1.05);
 		-webkit-backdrop-filter: blur(48px) saturate(180%) brightness(1.05);
 		box-shadow: 
@@ -1000,26 +951,34 @@
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
-	/* Hide scrollbar for Chrome, Safari and Opera */
+	/* Thin scrollbar styling */
 	.settings-menu::-webkit-scrollbar {
-		display: none;
+		width: 6px;
 	}
 
-	/* Hide scrollbar for IE, Edge and Firefox */
+	.settings-menu::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.settings-menu::-webkit-scrollbar-thumb {
+		background: rgba(148, 163, 184, 0.3);
+	}
+
+	/* Firefox scrollbar */
 	.settings-menu {
-		-ms-overflow-style: none;  /* IE and Edge */
-		scrollbar-width: none;  /* Firefox */
+		scrollbar-width: thin;
+		scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
 	}
 
 	.settings-grid {
 		display: grid;
-		gap: 0.85rem;
+		gap: 0.5rem;
 	}
 
 	.settings-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.settings-section--wide {
@@ -1143,28 +1102,30 @@
 	}
 
 	.settings-section--bordered {
-		padding-top: 0.65rem;
+		padding-top: 0.35rem;
 		border-top: 1px solid rgba(148, 163, 184, 0.12);
 	}
 
 	.actions-column {
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		gap: 0.5rem;
+		width: 100%;
 	}
 
 	.glass-action {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.85rem;
-		border-radius: 14px;
+		gap: 0.6rem;
+		flex: 1;
+		border-radius: 12px;
 		border: 1px solid rgba(148, 163, 184, 0.2);
 		background: transparent;
 		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		padding: 0.7rem 0.9rem;
-		font-size: 0.8rem;
+		padding: 0.5rem 0.7rem;
+		font-size: 0.75rem;
 		font-weight: 600;
 		color: inherit;
 		cursor: pointer;
@@ -1185,7 +1146,7 @@
 	.glass-action__label {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.55rem;
+		gap: 0.4rem;
 	}
 
 	.glass-action__spinner {
@@ -1194,10 +1155,10 @@
 	}
 
 	.section-footnote {
-		margin: 0;
-		font-size: 0.68rem;
+		margin: 0.4rem 0 0 0;
+		font-size: 0.65rem;
 		color: rgba(203, 213, 225, 0.58);
-		line-height: 1.4;
+		line-height: 1.3;
 	}
 
 	.app-main {
