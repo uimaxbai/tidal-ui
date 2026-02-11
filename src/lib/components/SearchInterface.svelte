@@ -158,6 +158,11 @@
 
 	const newsItems = [
 		{
+			title: 'v3.5 - UI Polish & Performance Work',
+			description:
+				'Quality of life improvements across the board: refined settings menu, better scrollbar styling, improved button layouts, and audio playback fixes. Note: We are actively working on fixing performance issues on Chrome-based browsers. Please report any slowdowns!'
+		},
+		{
 			title: 'Hi-Res downloading!!!',
 			description:
 				"You can finally download and stream in Hi-Res again because of a much better API. It should also be much faster - try it out for yourself!"

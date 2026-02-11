@@ -152,7 +152,7 @@
 		<!-- Back Button -->
 		<button
 			onclick={() => window.history.back()}
-			class="back-btn"
+			class="w-fit flex items-center gap-2 rounded-lg px-3 py-2 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
 		>
 			<ArrowLeft size={20} />
 			Back
@@ -308,26 +308,6 @@
 		.album-page {
 			padding-bottom: 10rem;
 		}
-	}
-
-	.back-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2, 0.5rem);
-		color: rgba(148, 163, 184, 0.8);
-		font-size: 0.875rem;
-		font-weight: 500;
-		background: none;
-		border: none;
-		padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-		margin-left: calc(-1 * var(--space-3, 0.75rem));
-		border-radius: var(--radius-lg, 0.75rem);
-		transition: color var(--transition-fast, 150ms ease), background var(--transition-fast, 150ms ease);
-	}
-
-	.back-btn:hover {
-		color: #f8fafc;
-		background: rgba(148, 163, 184, 0.1);
 	}
 
 	.album-header {

@@ -45,8 +45,12 @@
 	}
 
 	function handlePlayTrack(track: Track, index: number) {
-		playerStore.setQueue(displayedTracks, index);
-		playerStore.play();
+		if (isCurrentTrack(track) && $playerStore.isPlaying) {
+			playerStore.pause();
+		} else {
+			playerStore.setQueue(displayedTracks, index);
+			playerStore.play();
+		}
 	}
 
 	function handleAddToQueue(track: Track, event: MouseEvent) {

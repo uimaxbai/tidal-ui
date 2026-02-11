@@ -1,15 +1,11 @@
 import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
 import type { AudioQuality } from '$lib/types';
-import { type PerformanceLevel } from '$lib/utils/performance';
-
-export type PerformanceMode = 'medium' | 'low';
 
 export interface UserPreferencesState {
 	playbackQuality: AudioQuality;
 	convertAacToMp3: boolean;
 	downloadCoversSeperately: boolean;
-	performanceMode: PerformanceMode;
 }
 
 const STORAGE_KEY = 'tidal-ui.userPreferences';
@@ -17,30 +13,12 @@ const STORAGE_KEY = 'tidal-ui.userPreferences';
 const DEFAULT_STATE: UserPreferencesState = {
 	playbackQuality: 'HI_RES_LOSSLESS',
 	convertAacToMp3: false,
-	downloadCoversSeperately: false,
-	performanceMode: 'medium'
+	downloadCoversSeperately: false
 };
 
 /**
- * Detect if the user is on a mobile/touch device for initial performance setting
+ * Parse stored user preferences from JSON
  */
-function detectIsMobileDevice(): boolean {
-	if (!browser) return false;
-
-	// Check for touch capability
-	const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-
-	// Check screen size (typical mobile breakpoint)
-	const isSmallScreen = window.innerWidth <= 768;
-
-	// Check for mobile user agent patterns
-	const mobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-		navigator.userAgent
-	);
-
-	return hasTouch && (isSmallScreen || mobileUA);
-}
-
 function parseStoredPreferences(raw: string | null): UserPreferencesState {
 	if (!raw) {
 		return DEFAULT_STATE;
@@ -51,7 +29,6 @@ function parseStoredPreferences(raw: string | null): UserPreferencesState {
 		const quality = parsed?.playbackQuality;
 		const convertFlag = parsed?.convertAacToMp3;
 		const downloadCoversFlag = parsed?.downloadCoversSeperately;
-		const perfMode = parsed?.performanceMode;
 		return {
 			playbackQuality:
 				quality === 'HI_RES_LOSSLESS' ||
@@ -65,9 +42,7 @@ function parseStoredPreferences(raw: string | null): UserPreferencesState {
 			downloadCoversSeperately:
 				typeof downloadCoversFlag === 'boolean'
 					? downloadCoversFlag
-					: DEFAULT_STATE.downloadCoversSeperately,
-			performanceMode:
-				perfMode === 'medium' || perfMode === 'low' ? perfMode : DEFAULT_STATE.performanceMode
+					: DEFAULT_STATE.downloadCoversSeperately
 		};
 	} catch (error) {
 		console.warn('Failed to parse stored user preferences', error);
@@ -82,27 +57,6 @@ const readInitialPreferences = (): UserPreferencesState => {
 
 	try {
 		const storedRaw = localStorage.getItem(STORAGE_KEY);
-
-		// If no stored preferences, detect mobile and set appropriate defaults
-		if (!storedRaw) {
-			const isMobile = detectIsMobileDevice();
-			const initialState: UserPreferencesState = {
-				...DEFAULT_STATE,
-				// Mobile devices default to 'medium' performance (already default)
-				// Could set to 'low' for very resource-constrained devices if needed
-				performanceMode: isMobile ? 'medium' : 'medium'
-			};
-
-			// Persist the initial preferences so this detection only runs once
-			try {
-				localStorage.setItem(STORAGE_KEY, JSON.stringify(initialState));
-			} catch {
-				// Ignore storage errors
-			}
-
-			return initialState;
-		}
-
 		return parseStoredPreferences(storedRaw);
 	} catch (error) {
 		console.warn('Unable to read user preferences from storage', error);
@@ -159,18 +113,6 @@ const createUserPreferencesStore = () => {
 		},
 		toggleDownloadCoversSeperately() {
 			update((state) => ({ ...state, downloadCoversSeperately: !state.downloadCoversSeperately }));
-		},
-		setPerformanceMode(mode: PerformanceMode) {
-			update((state) => {
-				if (state.performanceMode === mode) {
-					return state;
-				}
-				return { ...state, performanceMode: mode };
-			});
-		},
-		getEffectivePerformanceLevel(): PerformanceLevel {
-			const state = readInitialPreferences();
-			return state.performanceMode as PerformanceLevel;
 		},
 		reset() {
 			set(DEFAULT_STATE);
