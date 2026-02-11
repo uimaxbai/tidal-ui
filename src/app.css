@@ -2,6 +2,34 @@
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+	width: auto;
+	height: auto;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(148, 163, 184, 0.5);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(148, 163, 184, 0.7);
+}
+
+html {
+	scrollbar-width: auto;
+	scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+}
+
+html:hover {
+	scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
+}
+
 button,
 [type='button'],
 [type='submit'],
@@ -26,51 +54,12 @@ a[aria-disabled='true'] {
    ============================================ */
 
 /* Performance-optimized blur and effects */
-:root[data-performance='medium'] {
-  --perf-blur-high: 22px;
-  --perf-blur-medium: 18px;
-  --perf-blur-low: 14px;
-  --perf-saturate: 125%;
-}
-
-:root[data-performance='low'] {
+/* Performance mode is applied globally by default */
+:root {
   --perf-blur-high: 0px;
   --perf-blur-medium: 0px;
   --perf-blur-low: 0px;
   --perf-saturate: 100%;
-}
-
-:root[data-performance='low'] * {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-:root[data-performance='low'] .glass-panel,
-:root[data-performance='low'] .glass-toolbar,
-:root[data-performance='low'] .settings-menu,
-:root[data-performance='low'] .toolbar-button,
-:root[data-performance='low'] .glass-option,
-:root[data-performance='low'] .glass-action,
-:root[data-performance='low'] .glass-option__chip,
-:root[data-performance='low'] .glass-panel__footer,
-:root[data-performance='low'] .navigation-overlay,
-:root[data-performance='low'] .navigation-overlay__progress {
-  background-color: rgba(15, 23, 42, 0.92) !important;
-  border-color: rgba(148, 163, 184, 0.2) !important;
-  box-shadow: none !important;
-}
-
-:root[data-performance='low'] .toolbar-button,
-:root[data-performance='low'] .glass-option,
-:root[data-performance='low'] .glass-action {
-  transition: none;
-}
-
-:root:not([data-performance='medium']):not([data-performance='low']) {
-	--perf-blur-high: 32px;
-	--perf-blur-medium: 28px;
-	--perf-blur-low: 24px;
-	--perf-saturate: 160%;
 }
 
 /* Enhanced Color Palette */
@@ -228,23 +217,6 @@ a[aria-disabled='true'] {
 /* ============================================
    MOBILE PERFORMANCE OPTIMIZATIONS
    ============================================ */
-
-/* Mobile-specific blur reduction (major GPU savings) */
-@media (max-width: 768px) {
-  :root:not([data-performance='low']) {
-    --perf-blur-high: 16px;
-    --perf-blur-medium: 12px;
-    --perf-blur-low: 8px;
-    --perf-saturate: 130%;
-  }
-  
-  :root[data-performance='medium'] {
-    --perf-blur-high: 12px;
-    --perf-blur-medium: 8px;
-    --perf-blur-low: 6px;
-    --perf-saturate: 120%;
-  }
-}
 
 /* Touch device optimizations */
 @media (pointer: coarse) {

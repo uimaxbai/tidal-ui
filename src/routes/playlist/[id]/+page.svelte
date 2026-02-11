@@ -79,7 +79,7 @@
 		<!-- Back Button -->
 		<button
 			onclick={() => window.history.back()}
-			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
+			class="flex items-center gap-2 rounded-lg px-3 py-2 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
 		>
 			<ArrowLeft size={20} />
 			Back
