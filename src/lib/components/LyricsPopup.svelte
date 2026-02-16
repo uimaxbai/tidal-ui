@@ -553,7 +553,7 @@
 								song-duration={metadata.durationMs}
 								query={metadata.query}
 								isrc={metadata.isrc || undefined}
-								highlight-color="#93c5fd"
+								highlight-color="#fff"
 								hover-background-color="rgba(59, 130, 246, 0.14)"
 								font-family="'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif"
 								autoscroll
