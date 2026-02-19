@@ -20,7 +20,10 @@
 		if (isSonglinkTrack(track)) return;
 
 		const recommendations = await losslessAPI.getRecommendations(track.id);
-		playerStore.setQueue([track, ...recommendations], 0);
+		// Add recommendations to queue without interrupting playback
+		for (const rec of recommendations) {
+			playerStore.enqueue(rec);
+		}
 	}
 
 	function handleTrackSelect(track: PlayableTrack) {

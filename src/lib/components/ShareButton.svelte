@@ -10,7 +10,9 @@
 		title?: string;
 		size?: number;
 		iconOnly?: boolean;
-		variant?: 'ghost' | 'primary' | 'secondary';
+		variant?: 'ghost' | 'primary' | 'secondary' | 'minimal';
+		dropdownPosition?: 'above' | 'below';
+		noRound?: boolean;
 	}
 
 	let { 
@@ -19,13 +21,15 @@
 		title = 'Share', 
 		size = 20, 
 		iconOnly = false,
-		variant = 'ghost'
+		variant = 'ghost',
+		dropdownPosition = 'below',
+		noRound = false
 	}: Props = $props();
 
 	let showMenu = $state(false);
 	let copied = $state(false);
-	let menuRef: HTMLDivElement | null = null;
-	let buttonRef: HTMLButtonElement | null = null;
+	let menuRef = $state<HTMLDivElement | null>(null);
+	let buttonRef = $state<HTMLButtonElement | null>(null);
 
 	function getLongLink() {
 		return `${$page.url.protocol}://${$page.url.host}/${type}/${id}`;
@@ -102,14 +106,15 @@
 	const variantClasses = {
 		ghost: 'text-gray-400 hover:text-white hover:bg-white/10',
 		primary: 'bg-blue-600 text-white hover:bg-blue-700',
-		secondary: 'bg-gray-800 text-white hover:bg-gray-700'
+		secondary: 'border border-white/30 text-white hover:bg-white/10 hover:border-white/50 bg-white/5 backdrop-blur-sm',
+		minimal: 'text-gray-400'
 	};
 </script>
 
 <div class="relative inline-block">
 	<button
 		bind:this={buttonRef}
-		class="flex items-center gap-2 rounded-full transition-colors {variantClasses[variant]} {iconOnly ? 'p-2' : 'px-4 py-2'}"
+		class="flex items-center gap-2 transition-colors {!noRound ? 'rounded-full' : ''} {variantClasses[variant]} {iconOnly ? 'p-2' : 'px-4 py-2'} touch-target"
 		onclick={(e) => {
 			e.stopPropagation();
 			showMenu = !showMenu;
@@ -133,7 +138,7 @@
 		<div
 			bind:this={menuRef}
 			transition:scale={{ duration: 100, start: 0.95 }}
-			class="absolute right-0 top-full z-50 mt-2 w-48 origin-top-right rounded-lg border border-white/10 bg-gray-900 p-1 shadow-xl backdrop-blur-xl"
+			class="absolute right-0 z-50 w-48 rounded-lg border border-white/10 bg-gray-900 p-1 shadow-xl backdrop-blur-xl {dropdownPosition === 'above' ? 'bottom-full mb-2 origin-bottom-right' : 'top-full mt-2 origin-top-right'}"
 		>
 			<button
 				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white"

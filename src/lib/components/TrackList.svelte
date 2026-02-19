@@ -50,8 +50,12 @@
 	}
 
 	function handlePlayTrack(track: Track, index: number) {
-		playerStore.setQueue(tracks, index);
-		playerStore.play();
+		if (isCurrentTrack(track) && $playerStore.isPlaying) {
+			playerStore.pause();
+		} else {
+			playerStore.setQueue(tracks, index);
+			playerStore.play();
+		}
 	}
 
 	function handleAddToQueue(track: Track, event: MouseEvent) {
@@ -268,20 +272,20 @@
 						>
 							<Plus size={20} />
 						</button>
-						
-						<div class="track-row__action-btn">
-							<ShareButton type="track" id={track.id} iconOnly size={20} title="Share track" />
-						</div>
-
-						<button
-							onclick={(e) =>
-								downloadingIds.has(track.id)
-									? handleCancelDownload(track.id, e)
-									: handleDownload(track, e)}
-							class="track-row__action-btn touch-target"
-							aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-							title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-							aria-busy={downloadingIds.has(track.id)}
+					
+					<div class="track-row__action-btn">
+						<ShareButton type="track" id={track.id} iconOnly size={20} title="Share track" variant="minimal" />
+					</div>
+					
+					<button
+						onclick={(e) =>
+							downloadingIds.has(track.id)
+								? handleCancelDownload(track.id, e)
+								: handleDownload(track, e)}
+						class="track-row__action-btn touch-target"
+						aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+						title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+						aria-busy={downloadingIds.has(track.id)}
 						>
 							{#if downloadingIds.has(track.id)}
 								<span class="track-row__spinner">
@@ -370,6 +374,7 @@
 	}
 
 	.track-row__play-btn:hover {
+		color: #f8fafc;
 		background: rgba(148, 163, 184, 0.1);
 	}
 
@@ -378,21 +383,8 @@
 		color: rgba(148, 163, 184, 0.7);
 	}
 
-	.track-row__icon--hover {
-		display: none;
-		color: #f8fafc;
-	}
-
-	.track-row__icon--active {
-		color: #3b82f6;
-	}
-
 	.track-row:hover .track-row__number {
 		display: none;
-	}
-
-	.track-row:hover .track-row__icon--hover {
-		display: block;
 	}
 
 	/* Cover */
