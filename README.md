@@ -45,5 +45,6 @@ Pass any optional configuration (for example `TITLE`) with additional `-e` flags
 ### I want free BrowserStack
 
 This project is tested with BrowserStack.
+This project is tested with BrowserStack
 
 ## Todo
