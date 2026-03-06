@@ -42,4 +42,8 @@ Pass any optional configuration (for example `TITLE`) with additional `-e` flags
 - Cached responses are stored only for safe GET requests without `Authorization`, `Cookie`, or `Range` headers. Responses larger than `REDIS_CACHE_MAX_BODY_BYTES`, non-text/JSON payloads, 4xx/5xx statuses, and responses with `Cache-Control: no-store|private` are never cached.
 - Install dependencies with `npm install` after updating `package.json`.
 
+### I want free BrowserStack
+
+This project is tested with BrowserStack.
+
 ## Todo
