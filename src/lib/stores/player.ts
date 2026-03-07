@@ -258,7 +258,7 @@ function createPlayerStore() {
 						duration: nextTrack?.duration ?? 0,
 						sampleRate: resolveSampleRate(state, nextTrack),
 						bitDepth: null,
-						replayGain: null
+						replayGain: state.replayGain
 					};
 					return applyAutoQuality(nextState, nextTrack);
 				}
@@ -277,7 +277,7 @@ function createPlayerStore() {
 						duration: nextTrack?.duration ?? 0,
 						sampleRate: resolveSampleRate(state, nextTrack),
 						bitDepth: null,
-						replayGain: null
+						replayGain: state.replayGain
 					};
 					return applyAutoQuality(nextState, nextTrack);
 				}
@@ -368,7 +368,7 @@ function createPlayerStore() {
 					duration: nextTrack?.duration ?? 0,
 					sampleRate: resolveSampleRate(state, nextTrack),
 					bitDepth: null,
-					replayGain: null
+					replayGain: state.replayGain
 				};
 				return applyAutoQuality(nextState, nextTrack);
 			}),

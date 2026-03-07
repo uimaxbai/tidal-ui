@@ -66,8 +66,8 @@
 	let downloadTaskIdForCurrentTrack: string | null = null;
 	const { onHeightChange = () => {}, headless = false } = $props<{ onHeightChange?: (height: number) => void, headless?: boolean }>();
 
-	let containerElement: HTMLDivElement | null = null;
-	let resizeObserver: ResizeObserver | null = null;
+	let containerElement = $state<HTMLDivElement | null>(null);
+	let resizeObserver = $state<ResizeObserver | null>(null);
 	let showQueuePanel = $state(false);
 	const streamCache = new Map<
 		string,
@@ -380,6 +380,20 @@
 		return trackLookup.track;
 	}
 
+	function applyVolumeToAudioElement(replayGain: number | null): void {
+		if (!audioElement) return;
+		
+		const baseVolume = $playerStore.volume;
+		if (replayGain !== null && typeof replayGain === 'number') {
+			// Apply replay gain directly: volume * 10^(gain / 20)
+			const gainFactor = Math.pow(10, replayGain / 20);
+			const adjusted = baseVolume * gainFactor;
+			audioElement.volume = Math.min(1, Math.max(0, adjusted));
+		} else {
+			audioElement.volume = baseVolume;
+		}
+	}
+
 	function maybePreloadNextTrack(remainingSeconds: number) {
 		if (remainingSeconds > PRELOAD_THRESHOLD_SECONDS) {
 			return;
@@ -553,6 +567,8 @@
 
 	$effect(() => {
 		if ($playerStore.isPlaying && audioElement) {
+			// Ensure volume is correct before playing to prevent audio spike
+			applyVolumeToAudioElement($playerStore.replayGain);
 			audioElement.play().catch(console.error);
 		} else if (!$playerStore.isPlaying && audioElement) {
 			audioElement.pause();
@@ -562,19 +578,62 @@
 	async function loadStandardTrack(track: Track, quality: AudioQuality, sequence: number) {
 		await destroyShakaPlayer();
 		dashPlaybackActive = false;
+		
+		// Stop all playback first and mute immediately to prevent audio bleeding
+		playerStore.pause();
+		if (audioElement) {
+			audioElement.pause();
+			audioElement.currentTime = 0;
+			audioElement.volume = 0;
+		}
+		
 		const { url, replayGain, sampleRate, bitDepth } = await resolveStream(track, quality);
 		if (sequence !== loadSequence) {
 			return;
 		}
+		
+		// Load new audio source with fresh position
+		if (audioElement) {
+			audioElement.src = url;
+			audioElement.crossOrigin = 'anonymous';
+			audioElement.currentTime = 0;
+			audioElement.load();
+		}
+		
+		// Store metadata for later application
 		streamUrl = url;
 		currentPlaybackQuality = quality;
-		playerStore.setReplayGain(replayGain);
 		playerStore.setSampleRate(sampleRate);
 		playerStore.setBitDepth(bitDepth);
 		pruneStreamCache();
-		if (audioElement) {
-			audioElement.crossOrigin = 'anonymous';
-			audioElement.load();
+		
+		// Wait for audio to be fully loaded and ready to play
+		await new Promise<void>(resolve => {
+			const onCanPlay = () => {
+				audioElement?.removeEventListener('canplay', onCanPlay);
+				resolve();
+			};
+			if (audioElement) {
+				audioElement.addEventListener('canplay', onCanPlay, { once: true });
+				// Timeout after 5 seconds
+				setTimeout(() => {
+					audioElement?.removeEventListener('canplay', onCanPlay);
+					resolve();
+				}, 5000);
+			} else {
+				resolve();
+			}
+		});
+		
+		// Audio is now fully ready - apply replay gain directly and play
+		if (sequence === loadSequence) {
+			// Apply volume synchronously before playing - don't update store yet
+			applyVolumeToAudioElement(replayGain);
+			// NOW update store so future volume changes work correctly
+			// This won't trigger volume effect since audio hasn't started yet
+			playerStore.setReplayGain(replayGain);
+			// Play immediately - volume is already correct
+			playerStore.play();
 		}
 	}
 
@@ -595,6 +654,15 @@
 			dashPlaybackActive = false;
 			return cached;
 		}
+		
+		// Stop playback first and mute immediately to prevent audio bleeding
+		playerStore.pause();
+		if (audioElement) {
+			audioElement.pause();
+			audioElement.currentTime = 0;
+			audioElement.volume = 0;
+		}
+		
 		revokeHiResObjectUrl();
 		const blob = new Blob([manifestResult.manifest], {
 			type: manifestResult.contentType ?? 'application/dash+xml'
@@ -607,21 +675,78 @@
 		if (audioElement) {
 			audioElement.pause();
 			audioElement.removeAttribute('src');
+			audioElement.currentTime = 0;
 			audioElement.load();
 		}
 		await player.unload();
 		await player.load(hiResObjectUrl);
+		
 		dashPlaybackActive = true;
 		streamUrl = '';
 		currentPlaybackQuality = 'HI_RES_LOSSLESS';
 		
-		// Apply metadata directly from the API response - no second API call needed
+		// Apply metadata
 		if (sequence === loadSequence && currentTrackId === track.id) {
 			playerStore.setSampleRate(trackInfo.sampleRate);
 			playerStore.setBitDepth(trackInfo.bitDepth);
-			if (trackInfo.replayGain !== null) {
-				playerStore.setReplayGain(trackInfo.replayGain);
+		}
+		
+		// Wait for media to be ready before seeking
+		// Use both timeout and event-based waiting to be safe
+		let ready = false;
+		const onCanPlay = () => {
+			ready = true;
+			audioElement?.removeEventListener('canplay', onCanPlay);
+		};
+		const onLoadedMetadata = () => {
+			ready = true;
+			audioElement?.removeEventListener('loadedmetadata', onLoadedMetadata);
+		};
+		
+		if (audioElement) {
+			audioElement.addEventListener('canplay', onCanPlay);
+			audioElement.addEventListener('loadedmetadata', onLoadedMetadata);
+		}
+		
+		// Wait up to 2 seconds for media ready event
+		const maxWait = 2000;
+		const checkInterval = 50;
+		let elapsed = 0;
+		while (!ready && elapsed < maxWait) {
+			await new Promise<void>(resolve => setTimeout(resolve, checkInterval));
+			elapsed += checkInterval;
+		}
+		
+		// Clean up listeners
+		if (audioElement) {
+			audioElement.removeEventListener('canplay', onCanPlay);
+			audioElement.removeEventListener('loadedmetadata', onLoadedMetadata);
+		}
+		
+		// Now seek to 0 after media is ready
+		try {
+			if (sequence === loadSequence) {
+				player.seek(0);
+				if (audioElement) {
+					audioElement.currentTime = 0;
+				}
 			}
+		} catch (e) {
+			console.debug('Failed to seek Shaka player to 0:', e);
+			if (audioElement) {
+				audioElement.currentTime = 0;
+			}
+		}
+		
+		// Audio is ready - apply replay gain directly and play
+		if (sequence === loadSequence && currentTrackId === track.id) {
+			// Apply volume synchronously before playing - don't update store yet  
+			applyVolumeToAudioElement(trackInfo.replayGain);
+			// NOW update store so future volume changes work correctly
+			// This won't trigger volume effect since audio hasn't started yet
+			playerStore.setReplayGain(trackInfo.replayGain);
+			// Play immediately - volume is already correct
+			playerStore.play();
 		}
 		
 		pruneDashManifestCache();
